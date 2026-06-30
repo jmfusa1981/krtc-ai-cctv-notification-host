@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Django
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# OpenCV / Camera temp files
+*.avi
+*.mp4
+*.mjpeg
+*.jpg
+*.png
+
+# Except documentation images if needed
+!docs/images/
+!docs/images/*.png
+!docs/images/*.jpg

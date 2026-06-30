@@ -1,0 +1,7 @@
+Django>=5.2,<5.3
+djangorestframework
+django-cors-headers
+opencv-python
+python-dotenv
+Pillow
+requests
