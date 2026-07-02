@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>KRTC AI CCTV 通報主機 Dashboard</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, "Microsoft JhengHei", sans-serif;
+            background: #0f172a;
+            color: #e5e7eb;
+        }
+
+        header {
+            padding: 20px 28px;
+            background: #020617;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        header p {
+            margin: 8px 0 0;
+            color: #94a3b8;
+            font-size: 14px;
+        }
+
+        main {
+            padding: 24px 28px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .summary-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 18px;
+        }
+
+        .summary-card h3 {
+            margin: 0 0 10px;
+            color: #cbd5e1;
+            font-size: 14px;
+            font-weight: normal;
+        }
+
+        .summary-card .number {
+            font-size: 30px;
+            font-weight: bold;
+            color: #f8fafc;
+        }
+
+        .summary-card.warning .number {
+            color: #f97316;
+        }
+
+        .section {
+            margin-bottom: 28px;
+            background: #111827;
+            border: 1px solid #334155;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 14px 18px;
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            font-weight: bold;
+        }
+
+        .section-body {
+            padding: 18px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #334155;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        th {
+            color: #cbd5e1;
+            background: #0f172a;
+            font-weight: normal;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: #334155;
+            color: #e5e7eb;
+        }
+
+        .badge-new {
+            background: #1d4ed8;
+        }
+
+        .badge-processing {
+            background: #7c2d12;
+        }
+
+        .badge-confirmed {
+            background: #166534;
+        }
+
+        .badge-dismissed,
+        .badge-closed {
+            background: #475569;
+        }
+
+        .badge-abnormal {
+            background: #b91c1c;
+        }
+
+        .badge-normal {
+            background: #166534;
+        }
+
+        .empty-message {
+            color: #94a3b8;
+            padding: 12px 0;
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+        }
+
+        @media (max-width: 1000px) {
+            .summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            main {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>KRTC AI CCTV 通報主機 Dashboard</h1>
+        <p>資料來源：Django Database / Camera / Event / Crowd Flow</p>
+    </header>
+
+    <main>
+        <section class="summary-grid">
+            <div class="summary-card">
+                <h3>攝影機數量</h3>
+                <div class="number">{{ camera_count }}</div>
+            </div>
+
+            <div class="summary-card">
+                <h3>事件總數</h3>
+                <div class="number">{{ event_count }}</div>
+            </div>
+
+            <div class="summary-card warning">
+                <h3>New 事件</h3>
+                <div class="number">{{ new_event_count }}</div>
+            </div>
+
+            <div class="summary-card warning">
+                <h3>人流異常紀錄</h3>
+                <div class="number">{{ abnormal_crowd_count }}</div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-header">
+                即時人流摘要
+            </div>
+            <div class="section-body">
+                {% if latest_crowd_record %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>攝影機</th>
+                                <th>最新人流數</th>
+                                <th>狀態</th>
+                                <th>紀錄時間</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ latest_crowd_record.camera }}</td>
+                                <td>{{ latest_crowd_record.count }}</td>
+                                <td>
+                                    {% if latest_crowd_record.is_abnormal %}
+                                        <span class="badge badge-abnormal">異常</span>
+                                    {% else %}
+                                        <span class="badge badge-normal">正常</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ latest_crowd_record.recorded_at|date:"Y-m-d H:i:s" }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-message">目前尚無人流統計資料。</div>
+                {% endif %}
+            </div>
+        </section>
+
+        <div class="two-column">
+            <section class="section">
+                <div class="section-header">
+                    Camera 清單
+                </div>
+                <div class="section-body">
+                    {% if cameras %}
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名稱</th>
+                                    <th>區域</th>
+                                    <th>建立時間</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for camera in cameras %}
+                                    <tr>
+                                        <td>{{ camera.id }}</td>
+                                        <td>{{ camera.name }}</td>
+                                        <td>{{ camera.area }}</td>
+                                        <td>{{ camera.created_at|date:"Y-m-d H:i:s" }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="empty-message">目前尚無 Camera 資料。</div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-header">
+                    人流正常範圍設定
+                </div>
+                <div class="section-body">
+                    {% if active_crowd_settings %}
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>設定名稱</th>
+                                    <th>攝影機</th>
+                                    <th>正常範圍</th>
+                                    <th>狀態</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for setting in active_crowd_settings %}
+                                    <tr>
+                                        <td>{{ setting.name }}</td>
+                                        <td>{{ setting.camera }}</td>
+                                        <td>{{ setting.min_count }} - {{ setting.max_count }}</td>
+                                        <td>
+                                            {% if setting.is_active %}
+                                                <span class="badge badge-normal">啟用</span>
+                                            {% else %}
+                                                <span class="badge">停用</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="empty-message">目前尚無啟用中的人流正常範圍設定。</div>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+
+        <section class="section">
+            <div class="section-header">
+                最新事件
+            </div>
+            <div class="section-body">
+                {% if latest_events %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>攝影機</th>
+                                <th>AI 模型</th>
+                                <th>事件類型</th>
+                                <th>信心分數</th>
+                                <th>狀態</th>
+                                <th>偵測時間</th>
+                                <th>說明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for event in latest_events %}
+                                <tr>
+                                    <td>{{ event.id }}</td>
+                                    <td>{{ event.camera }}</td>
+                                    <td>
+                                        {% if event.ai_model %}
+                                            {{ event.ai_model }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ event.get_event_type_display }}</td>
+                                    <td>{{ event.confidence }}</td>
+                                    <td>
+                                        <span class="badge badge-{{ event.status }}">
+                                            {{ event.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>{{ event.detected_at|date:"Y-m-d H:i:s" }}</td>
+                                    <td>{{ event.description }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-message">目前尚無事件資料。</div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-header">
+                最新人流統計紀錄
+            </div>
+            <div class="section-body">
+                {% if latest_crowd_records %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>攝影機</th>
+                                <th>人流數量</th>
+                                <th>是否異常</th>
+                                <th>紀錄時間</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in latest_crowd_records %}
+                                <tr>
+                                    <td>{{ record.id }}</td>
+                                    <td>{{ record.camera }}</td>
+                                    <td>{{ record.count }}</td>
+                                    <td>
+                                        {% if record.is_abnormal %}
+                                            <span class="badge badge-abnormal">異常</span>
+                                        {% else %}
+                                            <span class="badge badge-normal">正常</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ record.recorded_at|date:"Y-m-d H:i:s" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-message">目前尚無人流統計紀錄。</div>
+                {% endif %}
+            </div>
+        </section>
+    </main>
+</body>
+</html>
