@@ -3,19 +3,561 @@
 <head>
     <meta charset="UTF-8">
     <title>KRTC AI CCTV 通報主機 Dashboard</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, "Microsoft JhengHei", sans-serif;
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .dashboard-layout {
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .dashboard-header {
+            margin-bottom: 24px;
+        }
+
+        .dashboard-header h1 {
+            margin: 0;
+            font-size: 28px;
+            color: #0f172a;
+        }
+
+        .dashboard-header p {
+            margin: 8px 0 0;
+            color: #64748b;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .summary-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        .summary-card h3 {
+            margin: 0;
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .summary-card .number {
+            margin-top: 10px;
+            font-size: 30px;
+            font-weight: 700;
+            color: #1d4ed8;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        .monitor-section,
+        .side-section,
+        .table-section {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .section-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: #111827;
+        }
+
+        .section-header p {
+            margin: 4px 0 0;
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+        .grid-mode-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .grid-mode-btn {
+            min-width: 36px;
+            height: 32px;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .grid-mode-btn.active {
+            background: #1d4ed8;
+            color: #ffffff;
+            border-color: #1d4ed8;
+        }
+
+        .camera-grid {
+            display: grid;
+            gap: 14px;
+        }
+
+        .camera-grid.grid-1 {
+            grid-template-columns: repeat(1, minmax(0, 1fr));
+        }
+
+        .camera-grid.grid-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .camera-grid.grid-9 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .camera-grid.grid-16 {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .camera-card {
+            background: #f8fafc;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+
+        .camera-screen {
+            aspect-ratio: 16 / 9;
+            background: #020617;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stream-placeholder {
+            color: #cbd5e1;
+            text-align: center;
+        }
+
+        .camera-code {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+        }
+
+        .placeholder-text {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .camera-info {
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .camera-info h3 {
+            margin: 0;
+            font-size: 15px;
+            color: #0f172a;
+        }
+
+        .camera-info p {
+            margin: 4px 0 0;
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .camera-status {
+            flex-shrink: 0;
+            padding: 4px 9px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-online {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-offline {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-maintenance {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-error {
+            background: #fee2e2;
+            color: #7f1d1d;
+        }
+
+        .camera-description {
+            padding: 0 14px 14px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .side-section {
+            margin-bottom: 20px;
+        }
+
+        .event-list,
+        .flow-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .event-item,
+        .flow-item {
+            padding: 12px;
+            border-radius: 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+
+        .event-item h3,
+        .flow-item h3 {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .event-item p,
+        .flow-item p {
+            margin: 6px 0 0;
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .event-type {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .event-meta {
+            color: #64748b;
+        }
+
+        .empty-state {
+            padding: 24px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            color: #64748b;
+            background: #f8fafc;
+        }
+
+        .bottom-grid {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1200px) {
+            .summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .main-grid,
+            .bottom-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .camera-grid.grid-16 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-layout {
+                padding: 16px;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .camera-grid.grid-4,
+            .camera-grid.grid-9,
+            .camera-grid.grid-16 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
+
 <body>
-    <h1>KRTC AI CCTV 通報主機 Dashboard</h1>
+    <div class="dashboard-layout">
+        <header class="dashboard-header">
+            <h1>KRTC AI CCTV 通報主機 Dashboard</h1>
+            <p>需求版本 v2.0｜AI 事件通報、攝影機監控、人流統計、IP Speaker 廣播規則預留</p>
+        </header>
 
-    <p>Django Dashboard 已成功啟動。</p>
+        <section class="summary-grid">
+            <div class="summary-card">
+                <h3>啟用攝影機</h3>
+                <div class="number">{{ cameras|length }}</div>
+            </div>
 
-    <hr>
+            <div class="summary-card">
+                <h3>近期事件</h3>
+                <div class="number">{{ recent_events|length }}</div>
+            </div>
 
-    <h2>目前階段</h2>
-    <ul>
-        <li>Django project 啟動測試</li>
-        <li>Camera / AIModel / Event models 建立</li>
-        <li>後續將接入 IP Camera 與 AI event API</li>
-    </ul>
+            <div class="summary-card">
+                <h3>人流設定</h3>
+                <div class="number">{{ crowd_flow_settings|length }}</div>
+            </div>
+
+            <div class="summary-card">
+                <h3>人流紀錄</h3>
+                <div class="number">{{ crowd_flow_records|length }}</div>
+            </div>
+        </section>
+
+        <main class="main-grid">
+            <section class="monitor-section">
+                <div class="section-header">
+                    <div>
+                        <h2>攝影機即時監控</h2>
+                        <p>Camera Monitoring Grid｜RTSP / MJPEG 串流導入位置</p>
+                    </div>
+
+                    <div class="grid-mode-buttons">
+                        <button type="button" class="grid-mode-btn" data-grid="1">1</button>
+                        <button type="button" class="grid-mode-btn active" data-grid="4">4</button>
+                        <button type="button" class="grid-mode-btn" data-grid="9">9</button>
+                        <button type="button" class="grid-mode-btn" data-grid="16">16</button>
+                    </div>
+                </div>
+
+                <div class="camera-grid grid-4" id="cameraGrid">
+                    {% for camera in cameras %}
+                        <div class="camera-card" data-camera-card>
+                            <div class="camera-screen">
+                                <div class="stream-placeholder">
+                                    <div class="camera-code">{{ camera.camera_code }}</div>
+
+                                    <div class="placeholder-text">
+                                        {% if camera.rtsp_url %}
+                                            RTSP Ready
+                                        {% else %}
+                                            No Stream URL
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="camera-info">
+                                <div>
+                                    <h3>{{ camera.name }}</h3>
+                                    <p>{{ camera.area }}</p>
+                                </div>
+
+                                <span class="camera-status status-{{ camera.status }}">
+                                    {{ camera.get_status_display }}
+                                </span>
+                            </div>
+
+                            {% if camera.description %}
+                                <div class="camera-description">
+                                    {{ camera.description }}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <div class="empty-state">
+                            尚未建立啟用中的攝影機資料。
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <aside>
+                <section class="side-section">
+                    <div class="section-header">
+                        <div>
+                            <h2>近期 AI 事件</h2>
+                            <p>Recent AI Events</p>
+                        </div>
+                    </div>
+
+                    <div class="event-list">
+                        {% for event in recent_events %}
+                            <div class="event-item">
+                                <h3 class="event-type">{{ event.event_type }}</h3>
+
+                                {% if event.camera %}
+                                    <p class="event-meta">
+                                        攝影機：{{ event.camera.camera_code }} - {{ event.camera.name }}
+                                    </p>
+                                {% else %}
+                                    <p class="event-meta">攝影機：未指定</p>
+                                {% endif %}
+
+                                <p>狀態：{{ event.status }}</p>
+                                <p>時間：{{ event.created_at }}</p>
+                            </div>
+                        {% empty %}
+                            <div class="empty-state">
+                                目前尚無事件資料。
+                            </div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </aside>
+        </main>
+
+        <section class="bottom-grid">
+            <section class="table-section">
+                <div class="section-header">
+                    <div>
+                        <h2>人流正常範圍設定</h2>
+                        <p>Crowd Flow Settings</p>
+                    </div>
+                </div>
+
+                <div class="flow-list">
+                    {% for setting in crowd_flow_settings %}
+                        <div class="flow-item">
+                            <h3>{{ setting.name }}</h3>
+
+                            {% if setting.camera %}
+                                <p>攝影機：{{ setting.camera.camera_code }} - {{ setting.camera.name }}</p>
+                            {% endif %}
+
+                            <p>最小值：{{ setting.min_count }}｜最大值：{{ setting.max_count }}</p>
+
+                            {% if setting.description %}
+                                <p>說明：{{ setting.description }}</p>
+                            {% endif %}
+                        </div>
+                    {% empty %}
+                        <div class="empty-state">
+                            目前尚無人流設定資料。
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="table-section">
+                <div class="section-header">
+                    <div>
+                        <h2>近期人流統計紀錄</h2>
+                        <p>Crowd Flow Records</p>
+                    </div>
+                </div>
+
+                <div class="flow-list">
+                    {% for record in crowd_flow_records %}
+                        <div class="flow-item">
+                            <h3>
+                                {% if record.camera %}
+                                    {{ record.camera.camera_code }} - {{ record.camera.name }}
+                                {% else %}
+                                    未指定攝影機
+                                {% endif %}
+                            </h3>
+
+                            <p>人數：{{ record.people_count }}</p>
+
+                            {% if record.is_abnormal %}
+                                <p>狀態：異常</p>
+                            {% else %}
+                                <p>狀態：正常</p>
+                            {% endif %}
+
+                            <p>時間：{{ record.created_at }}</p>
+                        </div>
+                    {% empty %}
+                        <div class="empty-state">
+                            目前尚無人流紀錄資料。
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+        </section>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const cameraGrid = document.getElementById("cameraGrid");
+            const buttons = document.querySelectorAll(".grid-mode-btn");
+            const cameraCards = document.querySelectorAll("[data-camera-card]");
+
+            if (!cameraGrid || buttons.length === 0) {
+                return;
+            }
+
+            function setGridMode(gridSize) {
+                const maxVisible = parseInt(gridSize, 10);
+
+                cameraGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
+                cameraGrid.classList.add("grid-" + gridSize);
+
+                cameraCards.forEach(function (card, index) {
+                    if (index < maxVisible) {
+                        card.style.display = "";
+                    } else {
+                        card.style.display = "none";
+                    }
+                });
+
+                buttons.forEach(function (btn) {
+                    if (btn.dataset.grid === gridSize) {
+                        btn.classList.add("active");
+                    } else {
+                        btn.classList.remove("active");
+                    }
+                });
+            }
+
+            buttons.forEach(function (button) {
+                button.addEventListener("click", function () {
+                    setGridMode(button.dataset.grid);
+                });
+            });
+
+            setGridMode("4");
+        });
+    </script>
 </body>
 </html>
