@@ -137,6 +137,14 @@
             flex-direction: column;
         }
 
+        .monitor-camera-card.stream-loaded {
+            border-color: #14532d;
+        }
+
+        .monitor-camera-card.stream-error {
+            border-color: #7f1d1d;
+        }
+
         .monitor-camera-screen {
             flex: 1;
             min-height: 0;
@@ -145,6 +153,7 @@
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            position: relative;
         }
 
         .camera-stream {
@@ -153,6 +162,44 @@
             object-fit: cover;
             display: block;
             background: #000000;
+        }
+
+        .stream-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(2, 6, 23, 0.86);
+            color: #cbd5e1;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .stream-overlay.hidden {
+            display: none;
+        }
+
+        .stream-overlay-title {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #e5e7eb;
+        }
+
+        .stream-overlay-message {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .stream-overlay-error .stream-overlay-title {
+            color: #fecaca;
+        }
+
+        .stream-overlay-error .stream-overlay-message {
+            color: #fca5a5;
         }
 
         .stream-placeholder {
@@ -305,18 +352,32 @@
         <main class="monitor-content">
             <section class="monitor-grid grid-4" id="monitorGrid">
                 {% for camera in cameras %}
-                    <article class="monitor-camera-card" data-monitor-camera-card>
+                    <article
+                        class="monitor-camera-card"
+                        data-monitor-camera-card
+                        data-camera-code="{{ camera.camera_code }}"
+                    >
                         <div class="monitor-camera-screen">
                             {% if camera.rtsp_url %}
                                 <img
                                     src="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
                                     alt="{{ camera.camera_code }}"
                                     class="camera-stream"
+                                    data-camera-stream
                                 >
+
+                                <div class="stream-overlay" data-stream-overlay>
+                                    <div>
+                                        <div class="stream-overlay-title">{{ camera.camera_code }}</div>
+                                        <div class="stream-overlay-message">Loading stream...</div>
+                                    </div>
+                                </div>
                             {% else %}
-                                <div class="stream-placeholder">
-                                    <div class="camera-code">{{ camera.camera_code }}</div>
-                                    <div class="placeholder-text">No Stream URL</div>
+                                <div class="stream-overlay stream-overlay-error">
+                                    <div>
+                                        <div class="stream-overlay-title">{{ camera.camera_code }}</div>
+                                        <div class="stream-overlay-message">No stream URL</div>
+                                    </div>
                                 </div>
                             {% endif %}
                         </div>
@@ -346,6 +407,7 @@
             const monitorGrid = document.getElementById("monitorGrid");
             const buttons = document.querySelectorAll(".grid-mode-btn");
             const cameraCards = document.querySelectorAll("[data-monitor-camera-card]");
+            const cameraStreams = document.querySelectorAll("[data-camera-stream]");
 
             if (!monitorGrid || buttons.length === 0) {
                 return;
@@ -373,6 +435,65 @@
                     }
                 });
             }
+
+            function markStreamLoaded(imageElement) {
+                const card = imageElement.closest("[data-monitor-camera-card]");
+                if (!card) {
+                    return;
+                }
+
+                const overlay = card.querySelector("[data-stream-overlay]");
+
+                card.classList.add("stream-loaded");
+                card.classList.remove("stream-error");
+
+                if (overlay) {
+                    overlay.classList.add("hidden");
+                }
+            }
+
+            function markStreamError(imageElement) {
+                const card = imageElement.closest("[data-monitor-camera-card]");
+                if (!card) {
+                    return;
+                }
+
+                const overlay = card.querySelector("[data-stream-overlay]");
+                const cameraCode = card.dataset.cameraCode || "CAMERA";
+
+                card.classList.add("stream-error");
+                card.classList.remove("stream-loaded");
+
+                if (overlay) {
+                    overlay.classList.remove("hidden");
+                    overlay.classList.add("stream-overlay-error");
+                    overlay.innerHTML = `
+                        <div>
+                            <div class="stream-overlay-title">${cameraCode}</div>
+                            <div class="stream-overlay-message">Stream unavailable</div>
+                        </div>
+                    `;
+                }
+            }
+
+            cameraStreams.forEach(function (stream) {
+                stream.addEventListener("load", function () {
+                    markStreamLoaded(stream);
+                });
+
+                stream.addEventListener("error", function () {
+                    markStreamError(stream);
+                });
+
+                setTimeout(function () {
+                    const card = stream.closest("[data-monitor-camera-card]");
+                    if (!card || card.classList.contains("stream-loaded")) {
+                        return;
+                    }
+
+                    markStreamError(stream);
+                }, 8000);
+            });
 
             buttons.forEach(function (button) {
                 button.addEventListener("click", function () {
