@@ -2,6 +2,7 @@ import time
 
 import cv2
 from django.http import Http404, JsonResponse, StreamingHttpResponse
+from django.utils import timezone
 
 from .models import Camera
 
@@ -14,8 +15,7 @@ def camera_list_api(request):
     GET /api/cameras/
 
     Security note:
-    This API does not expose the raw RTSP URL because it may contain
-    the IP camera username and password.
+    This API does not expose raw RTSP URLs, usernames, or passwords.
     """
 
     cameras = Camera.objects.all().order_by("camera_code")
@@ -30,6 +30,7 @@ def camera_list_api(request):
             "area": camera.area,
             "has_stream": bool(camera.rtsp_url),
             "stream_url": f"/api/cameras/{camera.id}/stream/",
+            "check_url": f"/api/cameras/{camera.id}/check/",
             "status": camera.status,
             "is_active": camera.is_active,
             "is_online": camera.is_online,
@@ -130,3 +131,114 @@ def camera_mjpeg_stream(request, camera_id):
     response["X-Accel-Buffering"] = "no"
 
     return response
+
+
+def camera_stream_check(request, camera_id):
+    """
+    Camera stream health check API.
+
+    URL:
+    GET /api/cameras/<camera_id>/check/
+
+    Purpose:
+    - Try to open the camera RTSP stream with OpenCV
+    - Try to read one frame
+    - Update camera.status, camera.is_online, and camera.last_checked_at
+    """
+
+    try:
+        camera = Camera.objects.get(id=camera_id)
+    except Camera.DoesNotExist:
+        raise Http404("Camera not found.")
+
+    if not camera.is_active:
+        camera.status = "offline"
+        camera.is_online = False
+        camera.last_checked_at = timezone.now()
+        camera.save(update_fields=["status", "is_online", "last_checked_at"])
+
+        return JsonResponse(
+            {
+                "success": False,
+                "camera_id": camera.id,
+                "camera_code": camera.camera_code,
+                "is_online": camera.is_online,
+                "status": camera.status,
+                "message": "Camera is inactive.",
+            },
+            status=400,
+            json_dumps_params={"ensure_ascii": False},
+        )
+
+    if not camera.rtsp_url:
+        camera.status = "error"
+        camera.is_online = False
+        camera.last_checked_at = timezone.now()
+        camera.save(update_fields=["status", "is_online", "last_checked_at"])
+
+        return JsonResponse(
+            {
+                "success": False,
+                "camera_id": camera.id,
+                "camera_code": camera.camera_code,
+                "is_online": camera.is_online,
+                "status": camera.status,
+                "message": "Camera does not have an RTSP URL.",
+            },
+            status=400,
+            json_dumps_params={"ensure_ascii": False},
+        )
+
+    cap = cv2.VideoCapture(camera.rtsp_url)
+
+    # These properties are best-effort. Some OpenCV builds/camera drivers may ignore them.
+    try:
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000)
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000)
+    except Exception:
+        pass
+
+    is_opened = cap.isOpened()
+    frame_read_success = False
+
+    if is_opened:
+        frame_read_success, _ = cap.read()
+
+    cap.release()
+
+    if is_opened and frame_read_success:
+        camera.status = "online"
+        camera.is_online = True
+        camera.last_checked_at = timezone.now()
+        camera.save(update_fields=["status", "is_online", "last_checked_at"])
+
+        return JsonResponse(
+            {
+                "success": True,
+                "camera_id": camera.id,
+                "camera_code": camera.camera_code,
+                "is_online": camera.is_online,
+                "status": camera.status,
+                "message": "Camera stream is available.",
+                "stream_url": f"/api/cameras/{camera.id}/stream/",
+            },
+            json_dumps_params={"ensure_ascii": False},
+        )
+
+    camera.status = "error"
+    camera.is_online = False
+    camera.last_checked_at = timezone.now()
+    camera.save(update_fields=["status", "is_online", "last_checked_at"])
+
+    return JsonResponse(
+        {
+            "success": False,
+            "camera_id": camera.id,
+            "camera_code": camera.camera_code,
+            "is_online": camera.is_online,
+            "status": camera.status,
+            "message": "Unable to open RTSP stream or read frame.",
+        },
+        status=503,
+        json_dumps_params={"ensure_ascii": False},
+    )
