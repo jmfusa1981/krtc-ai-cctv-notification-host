@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>KRTC AI CCTV 監控牆</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, "Microsoft JhengHei", sans-serif;
+            background: #020617;
+            color: #e5e7eb;
+        }
+
+        .monitor-wall-layout {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #020617;
+        }
+
+        .monitor-toolbar {
+            height: 64px;
+            padding: 0 20px;
+            background: #0f172a;
+            border-bottom: 1px solid #1e293b;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .monitor-title h1 {
+            margin: 0;
+            font-size: 20px;
+            color: #f8fafc;
+        }
+
+        .monitor-title p {
+            margin: 4px 0 0;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .monitor-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .grid-mode-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .grid-mode-btn {
+            min-width: 38px;
+            height: 34px;
+            border: 1px solid #475569;
+            background: #1e293b;
+            color: #cbd5e1;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .grid-mode-btn.active {
+            background: #2563eb;
+            color: #ffffff;
+            border-color: #2563eb;
+        }
+
+        .back-dashboard-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 0 14px;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #0f172a;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid #f8fafc;
+        }
+
+        .back-dashboard-link:hover {
+            background: #e2e8f0;
+        }
+
+        .monitor-content {
+            flex: 1;
+            padding: 14px;
+            min-height: 0;
+        }
+
+        .monitor-grid {
+            height: calc(100vh - 92px);
+            display: grid;
+            gap: 10px;
+        }
+
+        .monitor-grid.grid-1 {
+            grid-template-columns: repeat(1, minmax(0, 1fr));
+            grid-template-rows: repeat(1, minmax(0, 1fr));
+        }
+
+        .monitor-grid.grid-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-rows: repeat(2, minmax(0, 1fr));
+        }
+
+        .monitor-grid.grid-9 {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-rows: repeat(3, minmax(0, 1fr));
+        }
+
+        .monitor-grid.grid-16 {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-rows: repeat(4, minmax(0, 1fr));
+        }
+
+        .monitor-camera-card {
+            min-width: 0;
+            min-height: 0;
+            background: #000000;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .monitor-camera-screen {
+            flex: 1;
+            min-height: 0;
+            background: #000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .camera-stream {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background: #000000;
+        }
+
+        .stream-placeholder {
+            text-align: center;
+            color: #94a3b8;
+        }
+
+        .camera-code {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #e5e7eb;
+        }
+
+        .placeholder-text {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        .monitor-camera-info {
+            height: 42px;
+            padding: 0 12px;
+            background: rgba(15, 23, 42, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border-top: 1px solid #1e293b;
+        }
+
+        .monitor-camera-name {
+            min-width: 0;
+        }
+
+        .monitor-camera-name h3 {
+            margin: 0;
+            font-size: 13px;
+            color: #f8fafc;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .monitor-camera-name p {
+            margin: 2px 0 0;
+            font-size: 11px;
+            color: #94a3b8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .camera-status {
+            flex-shrink: 0;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .status-online {
+            background: #14532d;
+            color: #bbf7d0;
+        }
+
+        .status-offline {
+            background: #7f1d1d;
+            color: #fecaca;
+        }
+
+        .status-maintenance {
+            background: #78350f;
+            color: #fde68a;
+        }
+
+        .status-error {
+            background: #7f1d1d;
+            color: #fecaca;
+        }
+
+        .empty-state {
+            height: 100%;
+            border: 1px dashed #334155;
+            border-radius: 12px;
+            color: #94a3b8;
+            background: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @media (max-width: 900px) {
+            .monitor-toolbar {
+                height: auto;
+                padding: 14px;
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .monitor-actions {
+                width: 100%;
+                justify-content: space-between;
+                flex-wrap: wrap;
+            }
+
+            .monitor-grid {
+                height: calc(100vh - 142px);
+            }
+
+            .monitor-grid.grid-9,
+            .monitor-grid.grid-16 {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 600px) {
+            .monitor-grid.grid-4,
+            .monitor-grid.grid-9,
+            .monitor-grid.grid-16 {
+                grid-template-columns: repeat(1, minmax(0, 1fr));
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="monitor-wall-layout">
+        <header class="monitor-toolbar">
+            <div class="monitor-title">
+                <h1>KRTC AI CCTV 監控牆</h1>
+                <p>純影像監看模式｜1 / 4 / 9 / 16 分割畫面</p>
+            </div>
+
+            <div class="monitor-actions">
+                <div class="grid-mode-buttons">
+                    <button type="button" class="grid-mode-btn" data-grid="1">1</button>
+                    <button type="button" class="grid-mode-btn active" data-grid="4">4</button>
+                    <button type="button" class="grid-mode-btn" data-grid="9">9</button>
+                    <button type="button" class="grid-mode-btn" data-grid="16">16</button>
+                </div>
+
+                <a href="{% url 'dashboard_home' %}" class="back-dashboard-link">
+                    返回 Dashboard
+                </a>
+            </div>
+        </header>
+
+        <main class="monitor-content">
+            <section class="monitor-grid grid-4" id="monitorGrid">
+                {% for camera in cameras %}
+                    <article class="monitor-camera-card" data-monitor-camera-card>
+                        <div class="monitor-camera-screen">
+                            {% if camera.rtsp_url %}
+                                <img
+                                    src="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
+                                    alt="{{ camera.camera_code }}"
+                                    class="camera-stream"
+                                >
+                            {% else %}
+                                <div class="stream-placeholder">
+                                    <div class="camera-code">{{ camera.camera_code }}</div>
+                                    <div class="placeholder-text">No Stream URL</div>
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="monitor-camera-info">
+                            <div class="monitor-camera-name">
+                                <h3>{{ camera.camera_code }}｜{{ camera.name }}</h3>
+                                <p>{{ camera.area }}</p>
+                            </div>
+
+                            <span class="camera-status status-{{ camera.status }}">
+                                {{ camera.get_status_display }}
+                            </span>
+                        </div>
+                    </article>
+                {% empty %}
+                    <div class="empty-state">
+                        尚未建立啟用中的攝影機資料。
+                    </div>
+                {% endfor %}
+            </section>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const monitorGrid = document.getElementById("monitorGrid");
+            const buttons = document.querySelectorAll(".grid-mode-btn");
+            const cameraCards = document.querySelectorAll("[data-monitor-camera-card]");
+
+            if (!monitorGrid || buttons.length === 0) {
+                return;
+            }
+
+            function setGridMode(gridSize) {
+                const maxVisible = parseInt(gridSize, 10);
+
+                monitorGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
+                monitorGrid.classList.add("grid-" + gridSize);
+
+                cameraCards.forEach(function (card, index) {
+                    if (index < maxVisible) {
+                        card.style.display = "";
+                    } else {
+                        card.style.display = "none";
+                    }
+                });
+
+                buttons.forEach(function (btn) {
+                    if (btn.dataset.grid === gridSize) {
+                        btn.classList.add("active");
+                    } else {
+                        btn.classList.remove("active");
+                    }
+                });
+            }
+
+            buttons.forEach(function (button) {
+                button.addEventListener("click", function () {
+                    setGridMode(button.dataset.grid);
+                });
+            });
+
+            setGridMode("4");
+        });
+    </script>
+</body>
+</html>

@@ -25,6 +25,13 @@
             margin-bottom: 24px;
         }
 
+        .dashboard-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
         .dashboard-header h1 {
             margin: 0;
             font-size: 28px;
@@ -34,6 +41,26 @@
         .dashboard-header p {
             margin: 8px 0 0;
             color: #64748b;
+        }
+
+        .monitor-wall-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40px;
+            padding: 0 16px;
+            border-radius: 10px;
+            background: #0f172a;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 14px;
+            border: 1px solid #0f172a;
+            white-space: nowrap;
+        }
+
+        .monitor-wall-link:hover {
+            background: #1e293b;
         }
 
         .summary-grid {
@@ -306,6 +333,11 @@
                 padding: 16px;
             }
 
+            .dashboard-header-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
             .summary-grid {
                 grid-template-columns: 1fr;
             }
@@ -327,8 +359,16 @@
 <body>
     <div class="dashboard-layout">
         <header class="dashboard-header">
-            <h1>KRTC AI CCTV 通報主機 Dashboard</h1>
-            <p>需求版本 v2.0｜AI 事件通報、攝影機監控、人流統計、IP Speaker 廣播規則預留</p>
+            <div class="dashboard-header-row">
+                <div>
+                    <h1>KRTC AI CCTV 通報主機 Dashboard</h1>
+                    <p>需求版本 v2.0｜AI 事件通報、攝影機監控、人流統計、IP Speaker 廣播規則預留</p>
+                </div>
+
+                <a href="{% url 'dashboard_monitor' %}" class="monitor-wall-link">
+                    進入監控牆
+                </a>
+            </div>
         </header>
 
         <section class="summary-grid">
