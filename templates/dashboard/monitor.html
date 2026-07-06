@@ -163,8 +163,16 @@
             flex-direction: column;
         }
 
+        .monitor-camera-card.stream-loading {
+            border-color: #334155;
+        }
+
         .monitor-camera-card.stream-loaded {
             border-color: #14532d;
+        }
+
+        .monitor-camera-card.stream-warning {
+            border-color: #78350f;
         }
 
         .monitor-camera-card.stream-error {
@@ -220,6 +228,20 @@
             color: #94a3b8;
         }
 
+        .stream-overlay-small {
+            margin-top: 8px;
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .stream-overlay-warning .stream-overlay-title {
+            color: #fde68a;
+        }
+
+        .stream-overlay-warning .stream-overlay-message {
+            color: #fbbf24;
+        }
+
         .stream-overlay-error .stream-overlay-title {
             color: #fecaca;
         }
@@ -229,7 +251,7 @@
         }
 
         .monitor-camera-info {
-            height: 42px;
+            height: 46px;
             padding: 0 12px;
             background: rgba(15, 23, 42, 0.92);
             display: flex;
@@ -295,6 +317,11 @@
             color: #cbd5e1;
         }
 
+        .status-checking {
+            background: #1e3a8a;
+            color: #bfdbfe;
+        }
+
         .empty-state {
             height: 100%;
             border: 1px dashed #334155;
@@ -356,7 +383,7 @@
         <header class="monitor-toolbar">
             <div class="monitor-title">
                 <h1>KRTC AI CCTV 監控牆</h1>
-                <p>純影像監看模式｜1 / 4 / 9 / 16 分割畫面</p>
+                <p>純影像監看模式｜1 / 4 / 9 / 16 分割畫面｜Stream health check enabled</p>
             </div>
 
             <div class="monitor-actions">
@@ -388,9 +415,10 @@
             <section class="monitor-grid grid-4" id="monitorGrid">
                 {% for camera in cameras %}
                     <article
-                        class="monitor-camera-card"
+                        class="monitor-camera-card stream-loading"
                         data-monitor-camera-card
                         data-camera-code="{{ camera.camera_code }}"
+                        data-check-url="{% url 'cameras:camera_stream_check' camera.id %}"
                     >
                         <div class="monitor-camera-screen">
                             <img
@@ -404,6 +432,7 @@
                                 <div>
                                     <div class="stream-overlay-title">{{ camera.camera_code }}</div>
                                     <div class="stream-overlay-message">Loading stream...</div>
+                                    <div class="stream-overlay-small">正在連接攝影機串流</div>
                                 </div>
                             </div>
                         </div>
@@ -419,7 +448,10 @@
                                 {% endif %}
                             </div>
 
-                            <span class="camera-status status-{{ camera.status|default:'unknown' }}">
+                            <span
+                                class="camera-status status-{{ camera.status|default:'unknown' }}"
+                                data-status-badge
+                            >
                                 {% if camera.get_status_display %}
                                     {{ camera.get_status_display }}
                                 {% else %}
@@ -471,6 +503,66 @@
                 });
             }
 
+            function setCardState(card, state) {
+                card.classList.remove(
+                    "stream-loading",
+                    "stream-loaded",
+                    "stream-warning",
+                    "stream-error"
+                );
+
+                card.classList.add("stream-" + state);
+            }
+
+            function setStatusBadge(card, statusText, statusClass) {
+                const badge = card.querySelector("[data-status-badge]");
+
+                if (!badge) {
+                    return;
+                }
+
+                badge.className = "camera-status status-" + statusClass;
+                badge.textContent = statusText;
+            }
+
+            function setOverlay(card, type, title, message, smallText) {
+                const overlay = card.querySelector("[data-stream-overlay]");
+
+                if (!overlay) {
+                    return;
+                }
+
+                overlay.classList.remove(
+                    "hidden",
+                    "stream-overlay-warning",
+                    "stream-overlay-error"
+                );
+
+                if (type === "warning") {
+                    overlay.classList.add("stream-overlay-warning");
+                }
+
+                if (type === "error") {
+                    overlay.classList.add("stream-overlay-error");
+                }
+
+                overlay.innerHTML = `
+                    <div>
+                        <div class="stream-overlay-title">${title}</div>
+                        <div class="stream-overlay-message">${message}</div>
+                        ${smallText ? `<div class="stream-overlay-small">${smallText}</div>` : ""}
+                    </div>
+                `;
+            }
+
+            function hideOverlay(card) {
+                const overlay = card.querySelector("[data-stream-overlay]");
+
+                if (overlay) {
+                    overlay.classList.add("hidden");
+                }
+            }
+
             function markStreamLoaded(imageElement) {
                 const card = imageElement.closest("[data-monitor-camera-card]");
 
@@ -478,14 +570,9 @@
                     return;
                 }
 
-                const overlay = card.querySelector("[data-stream-overlay]");
-
-                card.classList.add("stream-loaded");
-                card.classList.remove("stream-error");
-
-                if (overlay) {
-                    overlay.classList.add("hidden");
-                }
+                setCardState(card, "loaded");
+                setStatusBadge(card, "ONLINE", "online");
+                hideOverlay(card);
             }
 
             function markStreamError(imageElement) {
@@ -495,21 +582,87 @@
                     return;
                 }
 
-                const overlay = card.querySelector("[data-stream-overlay]");
                 const cameraCode = card.dataset.cameraCode || "CAMERA";
 
-                card.classList.add("stream-error");
-                card.classList.remove("stream-loaded");
+                setCardState(card, "error");
+                setStatusBadge(card, "ERROR", "error");
 
-                if (overlay) {
-                    overlay.classList.remove("hidden");
-                    overlay.classList.add("stream-overlay-error");
-                    overlay.innerHTML = `
-                        <div>
-                            <div class="stream-overlay-title">${cameraCode}</div>
-                            <div class="stream-overlay-message">Stream unavailable</div>
-                        </div>
-                    `;
+                setOverlay(
+                    card,
+                    "error",
+                    cameraCode,
+                    "Stream unavailable",
+                    "串流端點無法載入，請檢查 IP Camera 或後端串流服務"
+                );
+            }
+
+            async function checkCameraHealth(card) {
+                const checkUrl = card.dataset.checkUrl;
+                const cameraCode = card.dataset.cameraCode || "CAMERA";
+
+                if (!checkUrl) {
+                    return;
+                }
+
+                setStatusBadge(card, "CHECKING", "checking");
+
+                try {
+                    const response = await fetch(checkUrl, {
+                        method: "GET",
+                        cache: "no-store",
+                        headers: {
+                            "Accept": "application/json"
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Health check HTTP error");
+                    }
+
+                    const data = await response.json();
+
+                    const isOnline =
+                        data.is_online === true ||
+                        data.online === true ||
+                        data.status === "online" ||
+                        data.status === "success";
+
+                    if (isOnline) {
+                        setStatusBadge(card, "ONLINE", "online");
+
+                        if (!card.classList.contains("stream-loaded")) {
+                            setCardState(card, "warning");
+                            setOverlay(
+                                card,
+                                "warning",
+                                cameraCode,
+                                "Camera online, stream loading",
+                                "Health check 已通過，等待 MJPEG 影像載入"
+                            );
+                        }
+                    } else {
+                        setCardState(card, "error");
+                        setStatusBadge(card, "OFFLINE", "offline");
+
+                        setOverlay(
+                            card,
+                            "error",
+                            cameraCode,
+                            "Camera offline",
+                            "Health check 未通過，請確認攝影機連線狀態"
+                        );
+                    }
+                } catch (error) {
+                    setCardState(card, "error");
+                    setStatusBadge(card, "ERROR", "error");
+
+                    setOverlay(
+                        card,
+                        "error",
+                        cameraCode,
+                        "Health check failed",
+                        "無法取得攝影機健康檢查結果"
+                    );
                 }
             }
 
@@ -533,18 +686,29 @@
                         return;
                     }
 
-                    const overlay = card.querySelector("[data-stream-overlay]");
+                    const cameraCode = card.dataset.cameraCode || "CAMERA";
 
-                    if (overlay) {
-                        overlay.innerHTML = `
-                            <div>
-                                <div class="stream-overlay-title">${card.dataset.cameraCode || "CAMERA"}</div>
-                                <div class="stream-overlay-message">Still loading stream...</div>
-                            </div>
-                        `;
-                    }
+                    setCardState(card, "warning");
+
+                    setOverlay(
+                        card,
+                        "warning",
+                        cameraCode,
+                        "Still loading stream...",
+                        "串流載入時間較長，系統將持續檢查 Camera 狀態"
+                    );
                 }, 15000);
             });
+
+            cameraCards.forEach(function (card) {
+                checkCameraHealth(card);
+            });
+
+            setInterval(function () {
+                cameraCards.forEach(function (card) {
+                    checkCameraHealth(card);
+                });
+            }, 30000);
 
             buttons.forEach(function (button) {
                 button.addEventListener("click", function () {
