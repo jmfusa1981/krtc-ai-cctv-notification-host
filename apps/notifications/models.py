@@ -95,6 +95,13 @@ class SpeakerDevice(models.Model):
         verbose_name="Protocol",
     )
 
+    sip_uri = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="SIP URI",
+        help_text="例如：sip:4267@192.168.6.120。若使用 MicroSIP 撥號，優先使用此欄位。",
+    )
+
     username = models.CharField(
         max_length=100,
         blank=True,
@@ -152,6 +159,12 @@ class SpeakerDevice(models.Model):
     @property
     def endpoint_base_url(self):
         return f"{self.protocol}://{self.ip_address}:{self.port}"
+
+    @property
+    def resolved_sip_uri(self):
+        if self.sip_uri:
+            return self.sip_uri
+        return f"sip:{self.ip_address}"
 
 
 class AudioFile(models.Model):

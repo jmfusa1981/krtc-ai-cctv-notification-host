@@ -18,6 +18,7 @@ class SpeakerDeviceAdmin(admin.ModelAdmin):
         "ip_address",
         "port",
         "protocol",
+        "sip_uri",
         "status",
         "is_active",
         "last_checked_at",
@@ -36,12 +37,14 @@ class SpeakerDeviceAdmin(admin.ModelAdmin):
         "area",
         "location_note",
         "ip_address",
+        "sip_uri",
     )
     ordering = ("speaker_code",)
     readonly_fields = (
         "created_at",
         "updated_at",
         "endpoint_base_url",
+        "resolved_sip_uri",
     )
 
 
@@ -100,6 +103,7 @@ class BroadcastRuleAdmin(admin.ModelAdmin):
         "camera__name",
         "speaker__speaker_code",
         "speaker__name",
+        "speaker__sip_uri",
         "audio_file__audio_code",
         "audio_file__name",
     )
@@ -136,6 +140,7 @@ class BroadcastLogAdmin(admin.ModelAdmin):
         "message",
         "speaker__speaker_code",
         "speaker__name",
+        "speaker__sip_uri",
         "audio_file__audio_code",
         "audio_file__name",
         "rule__rule_code",
