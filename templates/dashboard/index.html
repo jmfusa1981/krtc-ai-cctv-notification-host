@@ -121,6 +121,12 @@
             color: #1d4ed8;
         }
 
+        .summary-card .note {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
         .main-grid {
             display: grid;
             grid-template-columns: 2fr 1fr;
@@ -130,7 +136,8 @@
 
         .monitor-section,
         .side-section,
-        .table-section {
+        .table-section,
+        .broadcast-section {
             background: #ffffff;
             border-radius: 16px;
             padding: 20px;
@@ -205,6 +212,22 @@
             border-radius: 14px;
             overflow: hidden;
             border: 1px solid #e2e8f0;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .camera-card.event-camera-card {
+            border-color: #dc2626;
+            box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
+        }
+
+        .camera-card.selected-event-camera-card {
+            border-color: #dc2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35), 0 10px 28px rgba(127, 29, 29, 0.22);
+        }
+
+        .camera-card.selected-event-camera-card .camera-screen {
+            outline: 3px solid #dc2626;
+            outline-offset: -3px;
         }
 
         .camera-screen {
@@ -213,12 +236,33 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
+            overflow: hidden;
         }
 
-        .stream-placeholder {
+        .dashboard-camera-stream {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background: #020617;
+        }
+
+        .dashboard-stream-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            background: rgba(2, 6, 23, 0.86);
             color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             text-align: center;
             padding: 16px;
+        }
+
+        .dashboard-stream-overlay.hidden {
+            display: none;
         }
 
         .camera-code {
@@ -231,6 +275,21 @@
             margin-top: 8px;
             font-size: 13px;
             color: #94a3b8;
+        }
+
+        .event-camera-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 3;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: #dc2626;
+            color: #ffffff;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            box-shadow: 0 4px 12px rgba(127, 29, 29, 0.4);
         }
 
         .camera-info {
@@ -334,6 +393,22 @@
             color: #64748b;
         }
 
+        .clickable-event-item {
+            cursor: pointer;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+
+        .clickable-event-item:hover {
+            border-color: #93c5fd;
+            background: #eff6ff;
+        }
+
+        .clickable-event-item.selected-ai-event {
+            border-color: #dc2626;
+            background: #fef2f2;
+            box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.16);
+        }
+
         .empty-state {
             padding: 24px;
             border: 1px dashed #cbd5e1;
@@ -347,6 +422,109 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
+        }
+
+        .broadcast-section {
+            margin-top: 20px;
+        }
+
+        .broadcast-table-wrapper {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #ffffff;
+        }
+
+        .broadcast-table {
+            width: 100%;
+            min-width: 980px;
+            border-collapse: collapse;
+        }
+
+        .broadcast-table th,
+        .broadcast-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+            font-size: 13px;
+            vertical-align: top;
+        }
+
+        .broadcast-table th {
+            background: #f8fafc;
+            color: #475569;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .broadcast-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .broadcast-main-text {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .broadcast-sub-text {
+            margin-top: 4px;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .broadcast-status {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 4px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .broadcast-status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .broadcast-status-playing {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .broadcast-status-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .broadcast-status-failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .broadcast-status-skipped {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
+        .broadcast-note-box {
+            margin-bottom: 14px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: #fffbeb;
+            color: #92400e;
+            border: 1px solid #fde68a;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .empty-table-message {
+            text-align: center;
+            color: #64748b;
+            padding: 24px;
         }
 
         @media (max-width: 1200px) {
@@ -428,21 +606,49 @@
             <div class="summary-card">
                 <h3>啟用攝影機</h3>
                 <div class="number">{{ cameras|length }}</div>
+                <div class="note">目前可用 Camera 數量</div>
             </div>
 
             <div class="summary-card">
                 <h3>近期事件</h3>
                 <div class="number">{{ recent_events|length }}</div>
+                <div class="note">最近 10 筆 AI Event</div>
             </div>
 
             <div class="summary-card">
                 <h3>人流設定</h3>
                 <div class="number">{{ crowd_flow_settings|length }}</div>
+                <div class="note">啟用中的人流規則</div>
             </div>
 
             <div class="summary-card">
                 <h3>人流紀錄</h3>
                 <div class="number">{{ crowd_flow_records|length }}</div>
+                <div class="note">最近 10 筆人流紀錄</div>
+            </div>
+
+            <div class="summary-card">
+                <h3>啟用 Speaker</h3>
+                <div class="number">{{ active_speakers }}</div>
+                <div class="note">IP Speaker / PAO 設備</div>
+            </div>
+
+            <div class="summary-card">
+                <h3>廣播規則</h3>
+                <div class="number">{{ active_broadcast_rules }}</div>
+                <div class="note">啟用中的 BroadcastRule</div>
+            </div>
+
+            <div class="summary-card">
+                <h3>待播放任務</h3>
+                <div class="number">{{ pending_broadcast_logs }}</div>
+                <div class="note">BroadcastLog pending</div>
+            </div>
+
+            <div class="summary-card">
+                <h3>啟用音檔</h3>
+                <div class="number">{{ active_audio_files }}</div>
+                <div class="note">可用預錄廣播音檔</div>
             </div>
         </section>
 
@@ -450,8 +656,8 @@
             <section class="monitor-section">
                 <div class="section-header">
                     <div>
-                        <h2>攝影機即時監控</h2>
-                        <p>Camera Monitoring Grid｜此區為 Dashboard 預覽，正式即時影像請進入 Monitor Wall</p>
+                        <h2>事件攝影機即時監控</h2>
+                        <p>Event Camera Live Preview｜點擊右側 AI 事件後，對應 Camera 會以紅框標示</p>
                     </div>
 
                     <div class="grid-mode-buttons">
@@ -464,19 +670,31 @@
 
                 <div class="camera-grid grid-4" id="cameraGrid">
                     {% for camera in cameras %}
-                        <div class="camera-card" data-camera-card>
+                        <div
+                            class="camera-card {% if camera.id in recent_event_camera_ids %}event-camera-card{% endif %}"
+                            data-camera-card
+                            data-camera-id="{{ camera.id }}"
+                        >
                             <div class="camera-screen">
-                                <div class="stream-placeholder">
-                                    <div class="camera-code">{{ camera.camera_code }}</div>
+                                <img
+                                    src="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
+                                    alt="{{ camera.camera_code }}"
+                                    class="dashboard-camera-stream"
+                                    data-dashboard-camera-stream
+                                >
 
-                                    <div class="placeholder-text">
-                                        Stream Endpoint Ready
-                                    </div>
-
-                                    <div class="placeholder-text">
-                                        請進入 Monitor Wall 查看即時影像
+                                <div class="dashboard-stream-overlay" data-dashboard-stream-overlay>
+                                    <div>
+                                        <div class="camera-code">{{ camera.camera_code }}</div>
+                                        <div class="placeholder-text">Loading live stream...</div>
                                     </div>
                                 </div>
+
+                                {% if camera.id in recent_event_camera_ids %}
+                                    <div class="event-camera-badge">
+                                        事件攝影機
+                                    </div>
+                                {% endif %}
                             </div>
 
                             <div class="camera-info">
@@ -507,7 +725,7 @@
                         </div>
                     {% empty %}
                         <div class="empty-state">
-                            尚未建立啟用中的攝影機資料。
+                            目前尚無事件相關攝影機。請先透過 AI Event Trigger 建立事件。
                         </div>
                     {% endfor %}
                 </div>
@@ -518,13 +736,18 @@
                     <div class="section-header">
                         <div>
                             <h2>近期 AI 事件</h2>
-                            <p>Recent AI Events</p>
+                            <p>Recent AI Events｜點擊事件可定位相關攝影機</p>
                         </div>
                     </div>
 
                     <div class="event-list">
                         {% for event in recent_events %}
-                            <div class="event-item">
+                            <div
+                                class="event-item clickable-event-item"
+                                {% if event.camera %}
+                                    data-event-camera-id="{{ event.camera.id }}"
+                                {% endif %}
+                            >
                                 <h3 class="event-type">
                                     {% if event.get_event_type_display %}
                                         {{ event.get_event_type_display }}
@@ -565,6 +788,118 @@
                 </section>
             </aside>
         </main>
+
+        <section class="broadcast-section">
+            <div class="section-header">
+                <div>
+                    <h2>近期廣播任務</h2>
+                    <p>BroadcastLog｜AI Event 觸發後建立的 IP Speaker / PAO 廣播任務</p>
+                </div>
+            </div>
+
+            <div class="broadcast-note-box">
+                目前階段僅建立 BroadcastLog，尚未實際呼叫 IP Speaker 播放音檔。
+                Pending 代表系統已依 BroadcastRule 建立廣播任務，等待後續播放服務整合。
+            </div>
+
+            <div class="broadcast-table-wrapper">
+                <table class="broadcast-table">
+                    <thead>
+                        <tr>
+                            <th>時間</th>
+                            <th>事件</th>
+                            <th>規則</th>
+                            <th>Speaker</th>
+                            <th>SIP URI</th>
+                            <th>音檔</th>
+                            <th>狀態</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in recent_broadcast_logs %}
+                            <tr>
+                                <td>
+                                    <div class="broadcast-main-text">
+                                        {{ log.created_at|date:"Y-m-d H:i:s" }}
+                                    </div>
+                                </td>
+
+                                <td>
+                                    {% if log.event %}
+                                        <div class="broadcast-main-text">
+                                            {% if log.event.get_event_type_display %}
+                                                {{ log.event.get_event_type_display }}
+                                            {% else %}
+                                                {{ log.event.event_type }}
+                                            {% endif %}
+                                        </div>
+
+                                        {% if log.event.camera %}
+                                            <div class="broadcast-sub-text">
+                                                {{ log.event.camera.camera_code }} - {{ log.event.camera.name }}
+                                            </div>
+                                        {% endif %}
+                                    {% else %}
+                                        <div class="broadcast-main-text">無事件</div>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if log.rule %}
+                                        <div class="broadcast-main-text">{{ log.rule.rule_code }}</div>
+                                        <div class="broadcast-sub-text">{{ log.rule.name }}</div>
+                                    {% else %}
+                                        <div class="broadcast-main-text">無規則</div>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if log.speaker %}
+                                        <div class="broadcast-main-text">{{ log.speaker.speaker_code }}</div>
+                                        <div class="broadcast-sub-text">{{ log.speaker.name }}</div>
+                                    {% else %}
+                                        <div class="broadcast-main-text">無 Speaker</div>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if log.speaker %}
+                                        <div class="broadcast-main-text">{{ log.speaker.resolved_sip_uri }}</div>
+                                    {% else %}
+                                        <div class="broadcast-main-text">-</div>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if log.audio_file %}
+                                        <div class="broadcast-main-text">{{ log.audio_file.audio_code }}</div>
+                                        <div class="broadcast-sub-text">{{ log.audio_file.name }}</div>
+                                    {% else %}
+                                        <div class="broadcast-main-text">無音檔</div>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    <span class="broadcast-status broadcast-status-{{ log.status }}">
+                                        {% if log.get_status_display %}
+                                            {{ log.get_status_display }}
+                                        {% else %}
+                                            {{ log.status }}
+                                        {% endif %}
+                                    </span>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="7" class="empty-table-message">
+                                    尚未建立廣播任務。可透過 POST /api/events/trigger/ 建立測試事件。
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
 
         <section class="bottom-grid">
             <section class="table-section">
@@ -644,18 +979,24 @@
             const cameraGrid = document.getElementById("cameraGrid");
             const buttons = document.querySelectorAll(".grid-mode-btn");
             const cameraCards = document.querySelectorAll("[data-camera-card]");
+            const dashboardStreams = document.querySelectorAll("[data-dashboard-camera-stream]");
+            const eventItems = document.querySelectorAll("[data-event-camera-id]");
+
+            let currentGridSize = "4";
 
             if (!cameraGrid || buttons.length === 0) {
                 return;
             }
 
             function setGridMode(gridSize) {
+                currentGridSize = gridSize;
                 const maxVisible = parseInt(gridSize, 10);
+                const orderedCameraCards = cameraGrid.querySelectorAll("[data-camera-card]");
 
                 cameraGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
                 cameraGrid.classList.add("grid-" + gridSize);
 
-                cameraCards.forEach(function (card, index) {
+                orderedCameraCards.forEach(function (card, index) {
                     if (index < maxVisible) {
                         card.style.display = "";
                     } else {
@@ -671,6 +1012,101 @@
                     }
                 });
             }
+
+            function focusEventCamera(cameraId) {
+                const targetCard = document.querySelector(`[data-camera-id="${cameraId}"]`);
+
+                cameraCards.forEach(function (card) {
+                    card.classList.remove("selected-event-camera-card");
+                });
+
+                if (!targetCard || !cameraGrid) {
+                    return;
+                }
+
+                cameraGrid.prepend(targetCard);
+                targetCard.classList.add("selected-event-camera-card");
+
+                setGridMode(currentGridSize);
+
+                targetCard.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                });
+            }
+
+            eventItems.forEach(function (item) {
+                item.addEventListener("click", function () {
+                    const cameraId = item.dataset.eventCameraId;
+
+                    eventItems.forEach(function (eventItem) {
+                        eventItem.classList.remove("selected-ai-event");
+                    });
+
+                    item.classList.add("selected-ai-event");
+
+                    if (cameraId) {
+                        focusEventCamera(cameraId);
+                    }
+                });
+            });
+
+            dashboardStreams.forEach(function (stream) {
+                stream.addEventListener("load", function () {
+                    const card = stream.closest("[data-camera-card]");
+
+                    if (!card) {
+                        return;
+                    }
+
+                    const overlay = card.querySelector("[data-dashboard-stream-overlay]");
+
+                    if (overlay) {
+                        overlay.classList.add("hidden");
+                    }
+                });
+
+                stream.addEventListener("error", function () {
+                    const card = stream.closest("[data-camera-card]");
+
+                    if (!card) {
+                        return;
+                    }
+
+                    const overlay = card.querySelector("[data-dashboard-stream-overlay]");
+
+                    if (overlay) {
+                        overlay.classList.remove("hidden");
+                        overlay.innerHTML = `
+                            <div>
+                                <div class="camera-code">${stream.alt || "CAMERA"}</div>
+                                <div class="placeholder-text">Stream unavailable</div>
+                            </div>
+                        `;
+                    }
+                });
+
+                setTimeout(function () {
+                    const card = stream.closest("[data-camera-card]");
+
+                    if (!card) {
+                        return;
+                    }
+
+                    const overlay = card.querySelector("[data-dashboard-stream-overlay]");
+
+                    if (!overlay || overlay.classList.contains("hidden")) {
+                        return;
+                    }
+
+                    overlay.innerHTML = `
+                        <div>
+                            <div class="camera-code">${stream.alt || "CAMERA"}</div>
+                            <div class="placeholder-text">Still loading live stream...</div>
+                        </div>
+                    `;
+                }, 15000);
+            });
 
             buttons.forEach(function (button) {
                 button.addEventListener("click", function () {
