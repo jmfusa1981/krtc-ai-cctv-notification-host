@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>KRTC AI CCTV 監控牆</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <style>
         * {
@@ -24,8 +25,8 @@
         }
 
         .monitor-toolbar {
-            height: 64px;
-            padding: 0 20px;
+            min-height: 64px;
+            padding: 10px 20px;
             background: #0f172a;
             border-bottom: 1px solid #1e293b;
             display: flex;
@@ -50,6 +51,23 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .operator-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 0 12px;
+            border-radius: 8px;
+            background: #1e293b;
+            color: #cbd5e1;
+            border: 1px solid #334155;
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
         }
 
         .grid-mode-buttons {
@@ -74,7 +92,8 @@
             border-color: #2563eb;
         }
 
-        .back-dashboard-link {
+        .back-dashboard-link,
+        .logout-button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -87,10 +106,17 @@
             font-size: 13px;
             font-weight: 700;
             border: 1px solid #f8fafc;
+            cursor: pointer;
+            white-space: nowrap;
         }
 
-        .back-dashboard-link:hover {
+        .back-dashboard-link:hover,
+        .logout-button:hover {
             background: #e2e8f0;
+        }
+
+        .logout-form {
+            margin: 0;
         }
 
         .monitor-content {
@@ -202,24 +228,6 @@
             color: #fca5a5;
         }
 
-        .stream-placeholder {
-            text-align: center;
-            color: #94a3b8;
-        }
-
-        .camera-code {
-            font-size: 26px;
-            font-weight: 800;
-            letter-spacing: 0.08em;
-            color: #e5e7eb;
-        }
-
-        .placeholder-text {
-            margin-top: 8px;
-            font-size: 13px;
-            color: #64748b;
-        }
-
         .monitor-camera-info {
             height: 42px;
             padding: 0 12px;
@@ -282,6 +290,11 @@
             color: #fecaca;
         }
 
+        .status-unknown {
+            background: #334155;
+            color: #cbd5e1;
+        }
+
         .empty-state {
             height: 100%;
             border: 1px dashed #334155;
@@ -291,6 +304,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            text-align: center;
+            padding: 24px;
         }
 
         @media (max-width: 900px) {
@@ -303,12 +318,12 @@
 
             .monitor-actions {
                 width: 100%;
-                justify-content: space-between;
+                justify-content: flex-start;
                 flex-wrap: wrap;
             }
 
             .monitor-grid {
-                height: calc(100vh - 142px);
+                height: calc(100vh - 168px);
             }
 
             .monitor-grid.grid-9,
@@ -323,6 +338,15 @@
             .monitor-grid.grid-16 {
                 grid-template-columns: repeat(1, minmax(0, 1fr));
             }
+
+            .monitor-grid {
+                height: auto;
+                min-height: calc(100vh - 180px);
+            }
+
+            .monitor-camera-card {
+                min-height: 240px;
+            }
         }
     </style>
 </head>
@@ -336,6 +360,10 @@
             </div>
 
             <div class="monitor-actions">
+                <div class="operator-badge">
+                    操作員：{{ request.user.username }}
+                </div>
+
                 <div class="grid-mode-buttons">
                     <button type="button" class="grid-mode-btn" data-grid="1">1</button>
                     <button type="button" class="grid-mode-btn active" data-grid="4">4</button>
@@ -343,9 +371,16 @@
                     <button type="button" class="grid-mode-btn" data-grid="16">16</button>
                 </div>
 
-                <a href="{% url 'dashboard_home' %}" class="back-dashboard-link">
+                <a href="{% url 'dashboard:home' %}" class="back-dashboard-link">
                     返回 Dashboard
                 </a>
+
+                <form method="post" action="{% url 'logout' %}" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="logout-button">
+                        登出
+                    </button>
+                </form>
             </div>
         </header>
 
@@ -358,38 +393,38 @@
                         data-camera-code="{{ camera.camera_code }}"
                     >
                         <div class="monitor-camera-screen">
-                            {% if camera.rtsp_url %}
-                                <img
-                                    src="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
-                                    alt="{{ camera.camera_code }}"
-                                    class="camera-stream"
-                                    data-camera-stream
-                                >
+                            <img
+                                src="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
+                                alt="{{ camera.camera_code }}"
+                                class="camera-stream"
+                                data-camera-stream
+                            >
 
-                                <div class="stream-overlay" data-stream-overlay>
-                                    <div>
-                                        <div class="stream-overlay-title">{{ camera.camera_code }}</div>
-                                        <div class="stream-overlay-message">Loading stream...</div>
-                                    </div>
+                            <div class="stream-overlay" data-stream-overlay>
+                                <div>
+                                    <div class="stream-overlay-title">{{ camera.camera_code }}</div>
+                                    <div class="stream-overlay-message">Loading stream...</div>
                                 </div>
-                            {% else %}
-                                <div class="stream-overlay stream-overlay-error">
-                                    <div>
-                                        <div class="stream-overlay-title">{{ camera.camera_code }}</div>
-                                        <div class="stream-overlay-message">No stream URL</div>
-                                    </div>
-                                </div>
-                            {% endif %}
+                            </div>
                         </div>
 
                         <div class="monitor-camera-info">
                             <div class="monitor-camera-name">
                                 <h3>{{ camera.camera_code }}｜{{ camera.name }}</h3>
-                                <p>{{ camera.area }}</p>
+
+                                {% if camera.area %}
+                                    <p>{{ camera.area }}</p>
+                                {% else %}
+                                    <p>未設定區域</p>
+                                {% endif %}
                             </div>
 
-                            <span class="camera-status status-{{ camera.status }}">
-                                {{ camera.get_status_display }}
+                            <span class="camera-status status-{{ camera.status|default:'unknown' }}">
+                                {% if camera.get_status_display %}
+                                    {{ camera.get_status_display }}
+                                {% else %}
+                                    Unknown
+                                {% endif %}
                             </span>
                         </div>
                     </article>
@@ -438,6 +473,7 @@
 
             function markStreamLoaded(imageElement) {
                 const card = imageElement.closest("[data-monitor-camera-card]");
+
                 if (!card) {
                     return;
                 }
@@ -454,6 +490,7 @@
 
             function markStreamError(imageElement) {
                 const card = imageElement.closest("[data-monitor-camera-card]");
+
                 if (!card) {
                     return;
                 }
@@ -487,12 +524,26 @@
 
                 setTimeout(function () {
                     const card = stream.closest("[data-monitor-camera-card]");
-                    if (!card || card.classList.contains("stream-loaded")) {
+
+                    if (!card) {
                         return;
                     }
 
-                    markStreamError(stream);
-                }, 8000);
+                    if (card.classList.contains("stream-loaded") || card.classList.contains("stream-error")) {
+                        return;
+                    }
+
+                    const overlay = card.querySelector("[data-stream-overlay]");
+
+                    if (overlay) {
+                        overlay.innerHTML = `
+                            <div>
+                                <div class="stream-overlay-title">${card.dataset.cameraCode || "CAMERA"}</div>
+                                <div class="stream-overlay-message">Still loading stream...</div>
+                            </div>
+                        `;
+                    }
+                }, 15000);
             });
 
             buttons.forEach(function (button) {

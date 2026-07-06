@@ -1,9 +1,11 @@
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
 from apps.cameras.models import Camera
 from apps.events.models import Event, CrowdFlowSetting, CrowdFlowRecord
 
 
+@login_required(login_url="/login/")
 def dashboard_home(request):
     """
     KRTC AI CCTV 通報主機 Dashboard
@@ -13,6 +15,7 @@ def dashboard_home(request):
     2. 顯示近期 AI 事件
     3. 顯示人流統計設定
     4. 顯示近期人流統計紀錄
+    5. 顯示目前登入的操作員資訊
     """
 
     cameras = Camera.objects.filter(is_active=True).order_by("camera_code")
@@ -24,6 +27,7 @@ def dashboard_home(request):
     crowd_flow_records = CrowdFlowRecord.objects.all().order_by("-created_at")[:10]
 
     context = {
+        "page_title": "KRTC AI CCTV 通報主機 Dashboard",
         "cameras": cameras,
         "recent_events": recent_events,
         "crowd_flow_settings": crowd_flow_settings,
@@ -33,6 +37,7 @@ def dashboard_home(request):
     return render(request, "dashboard/index.html", context)
 
 
+@login_required(login_url="/login/")
 def monitor_wall(request):
     """
     KRTC AI CCTV 純影像監控牆
@@ -41,11 +46,13 @@ def monitor_wall(request):
     1. 只顯示啟用中的攝影機
     2. 支援 1 / 4 / 9 / 16 分割畫面
     3. 提供返回 Dashboard 的操作
+    4. 顯示目前登入的操作員資訊
     """
 
     cameras = Camera.objects.filter(is_active=True).order_by("camera_code")
 
     context = {
+        "page_title": "KRTC AI CCTV Monitor Wall",
         "cameras": cameras,
     }
 

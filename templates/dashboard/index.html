@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>KRTC AI CCTV 通報主機 Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <style>
         * {
@@ -27,7 +28,7 @@
 
         .dashboard-header-row {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
             gap: 16px;
         }
@@ -43,7 +44,30 @@
             color: #64748b;
         }
 
-        .monitor-wall-link {
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 10px;
+            background: #ffffff;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            font-size: 14px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .monitor-wall-link,
+        .logout-button {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -57,10 +81,16 @@
             font-size: 14px;
             border: 1px solid #0f172a;
             white-space: nowrap;
+            cursor: pointer;
         }
 
-        .monitor-wall-link:hover {
+        .monitor-wall-link:hover,
+        .logout-button:hover {
             background: #1e293b;
+        }
+
+        .logout-form {
+            margin: 0;
         }
 
         .summary-grid {
@@ -188,6 +218,7 @@
         .stream-placeholder {
             color: #cbd5e1;
             text-align: center;
+            padding: 16px;
         }
 
         .camera-code {
@@ -249,6 +280,11 @@
         .status-error {
             background: #fee2e2;
             color: #7f1d1d;
+        }
+
+        .status-unknown {
+            background: #e2e8f0;
+            color: #475569;
         }
 
         .camera-description {
@@ -338,6 +374,10 @@
                 align-items: flex-start;
             }
 
+            .header-actions {
+                justify-content: flex-start;
+            }
+
             .summary-grid {
                 grid-template-columns: 1fr;
             }
@@ -365,9 +405,22 @@
                     <p>需求版本 v2.0｜AI 事件通報、攝影機監控、人流統計、IP Speaker 廣播規則預留</p>
                 </div>
 
-                <a href="{% url 'dashboard_monitor' %}" class="monitor-wall-link">
-                    進入監控牆
-                </a>
+                <div class="header-actions">
+                    <div class="user-badge">
+                        操作員：{{ request.user.username }}
+                    </div>
+
+                    <a href="{% url 'dashboard:monitor' %}" class="monitor-wall-link">
+                        進入監控牆
+                    </a>
+
+                    <form method="post" action="{% url 'logout' %}" class="logout-form">
+                        {% csrf_token %}
+                        <button type="submit" class="logout-button">
+                            登出
+                        </button>
+                    </form>
+                </div>
             </div>
         </header>
 
@@ -398,7 +451,7 @@
                 <div class="section-header">
                     <div>
                         <h2>攝影機即時監控</h2>
-                        <p>Camera Monitoring Grid｜RTSP / MJPEG 串流導入位置</p>
+                        <p>Camera Monitoring Grid｜此區為 Dashboard 預覽，正式即時影像請進入 Monitor Wall</p>
                     </div>
 
                     <div class="grid-mode-buttons">
@@ -417,11 +470,11 @@
                                     <div class="camera-code">{{ camera.camera_code }}</div>
 
                                     <div class="placeholder-text">
-                                        {% if camera.rtsp_url %}
-                                            RTSP Ready
-                                        {% else %}
-                                            No Stream URL
-                                        {% endif %}
+                                        Stream Endpoint Ready
+                                    </div>
+
+                                    <div class="placeholder-text">
+                                        請進入 Monitor Wall 查看即時影像
                                     </div>
                                 </div>
                             </div>
@@ -429,11 +482,20 @@
                             <div class="camera-info">
                                 <div>
                                     <h3>{{ camera.name }}</h3>
-                                    <p>{{ camera.area }}</p>
+
+                                    {% if camera.area %}
+                                        <p>{{ camera.area }}</p>
+                                    {% else %}
+                                        <p>未設定區域</p>
+                                    {% endif %}
                                 </div>
 
-                                <span class="camera-status status-{{ camera.status }}">
-                                    {{ camera.get_status_display }}
+                                <span class="camera-status status-{{ camera.status|default:'unknown' }}">
+                                    {% if camera.get_status_display %}
+                                        {{ camera.get_status_display }}
+                                    {% else %}
+                                        Unknown
+                                    {% endif %}
                                 </span>
                             </div>
 
@@ -463,7 +525,13 @@
                     <div class="event-list">
                         {% for event in recent_events %}
                             <div class="event-item">
-                                <h3 class="event-type">{{ event.event_type }}</h3>
+                                <h3 class="event-type">
+                                    {% if event.get_event_type_display %}
+                                        {{ event.get_event_type_display }}
+                                    {% else %}
+                                        {{ event.event_type }}
+                                    {% endif %}
+                                </h3>
 
                                 {% if event.camera %}
                                     <p class="event-meta">
@@ -473,8 +541,20 @@
                                     <p class="event-meta">攝影機：未指定</p>
                                 {% endif %}
 
-                                <p>狀態：{{ event.status }}</p>
-                                <p>時間：{{ event.created_at }}</p>
+                                <p>
+                                    狀態：
+                                    {% if event.get_status_display %}
+                                        {{ event.get_status_display }}
+                                    {% else %}
+                                        {{ event.status }}
+                                    {% endif %}
+                                </p>
+
+                                {% if event.confidence %}
+                                    <p>信心分數：{{ event.confidence }}</p>
+                                {% endif %}
+
+                                <p>時間：{{ event.created_at|date:"Y-m-d H:i:s" }}</p>
                             </div>
                         {% empty %}
                             <div class="empty-state">
@@ -502,6 +582,8 @@
 
                             {% if setting.camera %}
                                 <p>攝影機：{{ setting.camera.camera_code }} - {{ setting.camera.name }}</p>
+                            {% else %}
+                                <p>攝影機：未指定</p>
                             {% endif %}
 
                             <p>最小值：{{ setting.min_count }}｜最大值：{{ setting.max_count }}</p>
@@ -545,7 +627,7 @@
                                 <p>狀態：正常</p>
                             {% endif %}
 
-                            <p>時間：{{ record.created_at }}</p>
+                            <p>時間：{{ record.created_at|date:"Y-m-d H:i:s" }}</p>
                         </div>
                     {% empty %}
                         <div class="empty-state">
