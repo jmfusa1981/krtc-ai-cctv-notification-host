@@ -8,9 +8,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const cameraTreeToggle = document.getElementById("cameraTreeToggle");
     const cameraSearchInput = document.getElementById("cameraSearchInput");
     const cameraTreeItems = document.querySelectorAll("[data-camera-tree-item]");
+    const previousCameraGroup = document.getElementById("previousCameraGroup");
+    const nextCameraGroup = document.getElementById("nextCameraGroup");
+    const cameraGroupStatus = document.getElementById("cameraGroupStatus");
     const MAX_SLOT_COUNT = 16;
     let monitorSlots = [];
     let selectedSlot = null;
+    let currentGridSize = 4;
+    let currentGroupIndex = 0;
 
     if (!monitorGrid || buttons.length === 0) {
         return;
@@ -160,6 +165,7 @@ document.addEventListener("DOMContentLoaded", function () {
         syncSlotState(selectedSlot);
         selectSlot(sourceSlot);
         updateTreeAssignments();
+        renderCurrentCameraGroup();
     }
 
     function bindSlotSelection() {
@@ -277,14 +283,60 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    function setGridMode(gridSize) {
-        const maxVisible = parseInt(gridSize, 10);
-
-        monitorGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
-        monitorGrid.classList.add("grid-" + gridSize);
+    function getOccupiedSlotExtent() {
+        let highestOccupiedIndex = -1;
 
         monitorSlots.forEach(function (slot) {
-            slot.hidden = Number(slot.dataset.slotIndex) >= maxVisible;
+            if (slot.querySelector("[data-monitor-camera-card]")) {
+                highestOccupiedIndex = Math.max(
+                    highestOccupiedIndex,
+                    Number(slot.dataset.slotIndex)
+                );
+            }
+        });
+
+        return Math.max(cameraCards.length, highestOccupiedIndex + 1, 1);
+    }
+
+    function getTotalCameraGroups() {
+        return Math.max(
+            1,
+            Math.ceil(getOccupiedSlotExtent() / currentGridSize)
+        );
+    }
+
+    function updateCameraGroupControls() {
+        const totalGroups = getTotalCameraGroups();
+
+        if (currentGroupIndex >= totalGroups) {
+            currentGroupIndex = totalGroups - 1;
+        }
+
+        if (cameraGroupStatus) {
+            cameraGroupStatus.textContent = `${currentGroupIndex + 1} / ${totalGroups}`;
+        }
+
+        if (previousCameraGroup) {
+            previousCameraGroup.disabled = currentGroupIndex <= 0;
+        }
+
+        if (nextCameraGroup) {
+            nextCameraGroup.disabled = currentGroupIndex >= totalGroups - 1;
+        }
+    }
+
+    function renderCurrentCameraGroup() {
+        const groupStart = currentGroupIndex * currentGridSize;
+        const groupEnd = groupStart + currentGridSize;
+
+        monitorSlots.forEach(function (slot) {
+            const slotIndex = Number(slot.dataset.slotIndex);
+            const isVisible = slotIndex >= groupStart && slotIndex < groupEnd;
+
+            slot.hidden = !isVisible;
+            slot.style.order = isVisible
+                ? String(slotIndex - groupStart)
+                : String(slotIndex);
         });
 
         if (!selectedSlot || selectedSlot.hidden) {
@@ -293,6 +345,41 @@ document.addEventListener("DOMContentLoaded", function () {
             });
             selectSlot(firstVisibleSlot);
         }
+
+        updateCameraGroupControls();
+    }
+
+    function bindCameraGroupNavigation() {
+        if (previousCameraGroup) {
+            previousCameraGroup.addEventListener("click", function () {
+                if (currentGroupIndex <= 0) {
+                    return;
+                }
+
+                currentGroupIndex -= 1;
+                renderCurrentCameraGroup();
+            });
+        }
+
+        if (nextCameraGroup) {
+            nextCameraGroup.addEventListener("click", function () {
+                if (currentGroupIndex >= getTotalCameraGroups() - 1) {
+                    return;
+                }
+
+                currentGroupIndex += 1;
+                renderCurrentCameraGroup();
+            });
+        }
+    }
+
+    function setGridMode(gridSize) {
+        currentGridSize = parseInt(gridSize, 10);
+        currentGroupIndex = 0;
+
+        monitorGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
+        monitorGrid.classList.add("grid-" + gridSize);
+        renderCurrentCameraGroup();
 
         buttons.forEach(function (btn) {
             if (btn.dataset.grid === gridSize) {
@@ -474,6 +561,7 @@ document.addEventListener("DOMContentLoaded", function () {
     bindSlotSelection();
     bindCameraTree();
     bindCameraDragAndDrop();
+    bindCameraGroupNavigation();
     updateTreeAssignments();
 
     cameraStreams.forEach(function (stream) {
