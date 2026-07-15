@@ -3,9 +3,43 @@ document.addEventListener("DOMContentLoaded", function () {
     const buttons = document.querySelectorAll(".grid-mode-btn");
     const cameraCards = document.querySelectorAll("[data-monitor-camera-card]");
     const cameraStreams = document.querySelectorAll("[data-camera-stream]");
+    const MAX_SLOT_COUNT = 16;
+    let monitorSlots = [];
 
     if (!monitorGrid || buttons.length === 0) {
         return;
+    }
+
+    function createEmptySlot(slotIndex) {
+        const slotNumber = String(slotIndex + 1).padStart(2, "0");
+        const slot = document.createElement("div");
+
+        slot.className = "monitor-slot";
+        slot.dataset.monitorSlot = "";
+        slot.dataset.slotIndex = String(slotIndex);
+        slot.innerHTML = `
+            <span class="monitor-slot-label">SLOT ${slotNumber}</span>
+            <div class="monitor-slot-empty">
+                <div>
+                    <strong>\u5c1a\u672a\u914d\u7f6e\u651d\u5f71\u6a5f</strong>
+                    <span>Camera slot ${slotNumber}</span>
+                </div>
+            </div>
+        `;
+
+        return slot;
+    }
+
+    function prepareMonitorSlots() {
+        monitorSlots = Array.from(
+            monitorGrid.querySelectorAll("[data-monitor-slot]")
+        );
+
+        for (let index = monitorSlots.length; index < MAX_SLOT_COUNT; index += 1) {
+            const slot = createEmptySlot(index);
+            monitorGrid.appendChild(slot);
+            monitorSlots.push(slot);
+        }
     }
 
     function setGridMode(gridSize) {
@@ -14,12 +48,8 @@ document.addEventListener("DOMContentLoaded", function () {
         monitorGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
         monitorGrid.classList.add("grid-" + gridSize);
 
-        cameraCards.forEach(function (card, index) {
-            if (index < maxVisible) {
-                card.style.display = "";
-            } else {
-                card.style.display = "none";
-            }
+        monitorSlots.forEach(function (slot, index) {
+            slot.hidden = index >= maxVisible;
         });
 
         buttons.forEach(function (btn) {
@@ -193,6 +223,8 @@ document.addEventListener("DOMContentLoaded", function () {
             );
         }
     }
+
+    prepareMonitorSlots();
 
     cameraStreams.forEach(function (stream) {
         stream.addEventListener("load", function () {

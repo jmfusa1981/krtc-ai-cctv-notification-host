@@ -45,6 +45,15 @@
         <main class="monitor-content">
             <section class="monitor-grid grid-4" id="monitorGrid">
                 {% for camera in cameras %}
+                    <div
+                        class="monitor-slot is-occupied"
+                        data-monitor-slot
+                        data-slot-index="{{ forloop.counter0 }}"
+                    >
+                        <span class="monitor-slot-label">
+                            SLOT {{ forloop.counter|stringformat:"02d" }}
+                        </span>
+
                     <article
                         class="monitor-camera-card stream-loading"
                         data-monitor-camera-card
@@ -91,9 +100,6 @@
                             </span>
                         </div>
                     </article>
-                {% empty %}
-                    <div class="empty-state">
-                        尚未建立啟用中的攝影機資料。
                     </div>
                 {% endfor %}
             </section>
