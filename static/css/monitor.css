@@ -213,6 +213,10 @@ body {
     display: none;
 }
 
+.camera-tree-item.is-dragging {
+    opacity: 0.46;
+}
+
 .camera-tree-item:hover {
     border-color: #334155;
     background: #172033;
@@ -287,6 +291,19 @@ body {
 .monitor-content.sidebar-collapsed .camera-sidebar {
     visibility: hidden;
     border: 0;
+}
+
+.monitor-slot.is-drag-over {
+    border-color: #22d3ee;
+    box-shadow:
+        0 0 0 2px rgba(34, 211, 238, 0.44),
+        inset 0 0 36px rgba(8, 145, 178, 0.12);
+}
+
+.monitor-slot.is-drag-over .monitor-slot-label {
+    opacity: 1;
+    border-color: #22d3ee;
+    color: #cffafe;
 }
 
 .monitor-slot.is-selected {

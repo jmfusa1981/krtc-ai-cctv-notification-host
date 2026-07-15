@@ -175,6 +175,79 @@ document.addEventListener("DOMContentLoaded", function () {
         selectSlot(firstVisibleSlot);
     }
 
+    function clearDragOverStates() {
+        monitorSlots.forEach(function (slot) {
+            slot.classList.remove("is-drag-over");
+        });
+    }
+
+    function bindCameraDragAndDrop() {
+        cameraTreeItems.forEach(function (item) {
+            item.addEventListener("dragstart", function (event) {
+                const cameraId = item.dataset.cameraId;
+
+                if (!cameraId || !event.dataTransfer) {
+                    event.preventDefault();
+                    return;
+                }
+
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", cameraId);
+                item.classList.add("is-dragging");
+            });
+
+            item.addEventListener("dragend", function () {
+                item.classList.remove("is-dragging");
+                clearDragOverStates();
+            });
+        });
+
+        monitorSlots.forEach(function (slot) {
+            slot.addEventListener("dragenter", function (event) {
+                event.preventDefault();
+                clearDragOverStates();
+                slot.classList.add("is-drag-over");
+            });
+
+            slot.addEventListener("dragover", function (event) {
+                event.preventDefault();
+
+                if (event.dataTransfer) {
+                    event.dataTransfer.dropEffect = "move";
+                }
+
+                slot.classList.add("is-drag-over");
+            });
+
+            slot.addEventListener("dragleave", function (event) {
+                const nextElement = event.relatedTarget;
+
+                if (nextElement instanceof Node && slot.contains(nextElement)) {
+                    return;
+                }
+
+                slot.classList.remove("is-drag-over");
+            });
+
+            slot.addEventListener("drop", function (event) {
+                event.preventDefault();
+
+                const cameraId = event.dataTransfer
+                    ? event.dataTransfer.getData("text/plain")
+                    : "";
+
+                clearDragOverStates();
+
+                if (!cameraId) {
+                    return;
+                }
+
+                selectSlot(slot);
+                moveCameraToSelectedSlot(cameraId);
+            });
+        });
+    }
+
     function bindCameraTree() {
         cameraTreeItems.forEach(function (item) {
             item.addEventListener("click", function () {
@@ -400,6 +473,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     bindSlotSelection();
     bindCameraTree();
+    bindCameraDragAndDrop();
     updateTreeAssignments();
 
     cameraStreams.forEach(function (stream) {
@@ -454,4 +528,3 @@ document.addEventListener("DOMContentLoaded", function () {
 
     setGridMode("4");
 });
-
