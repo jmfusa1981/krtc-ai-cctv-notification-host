@@ -62,6 +62,53 @@ body {
     white-space: nowrap;
 }
 
+.carousel-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.carousel-controls button,
+.carousel-controls select {
+    height: 34px;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    background: #1e293b;
+    color: #e2e8f0;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.carousel-controls button {
+    padding: 0 11px;
+    cursor: pointer;
+}
+
+.carousel-controls button.is-running {
+    border-color: #22c55e;
+    background: #14532d;
+    color: #dcfce7;
+}
+
+.carousel-controls button:disabled {
+    cursor: not-allowed;
+    opacity: 0.36;
+}
+
+.carousel-controls select {
+    padding: 0 8px;
+    cursor: pointer;
+    outline: none;
+}
+
+.carousel-controls span {
+    min-width: 52px;
+    color: #64748b;
+    font-size: 10px;
+    white-space: nowrap;
+}
+
 .camera-group-navigation {
     display: inline-flex;
     align-items: center;

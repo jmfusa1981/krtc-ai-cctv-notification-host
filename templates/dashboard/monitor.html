@@ -32,6 +32,17 @@
                     Camera Tree
                 </button>
 
+                <div class="carousel-controls" aria-label="攝影機分組輪播">
+                    <button type="button" id="carouselToggle" disabled>開始輪播</button>
+                    <select id="carouselInterval" aria-label="輪播間隔">
+                        <option value="5">5 秒</option>
+                        <option value="10" selected>10 秒</option>
+                        <option value="15">15 秒</option>
+                        <option value="30">30 秒</option>
+                    </select>
+                    <span id="carouselStatus">輪播待命</span>
+                </div>
+
                 <div class="camera-group-navigation" aria-label="攝影機分組切換">
                     <button type="button" id="previousCameraGroup" title="上一組">‹</button>
                     <span id="cameraGroupStatus">1 / 1</span>

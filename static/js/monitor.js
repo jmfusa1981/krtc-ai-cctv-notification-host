@@ -11,11 +11,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const previousCameraGroup = document.getElementById("previousCameraGroup");
     const nextCameraGroup = document.getElementById("nextCameraGroup");
     const cameraGroupStatus = document.getElementById("cameraGroupStatus");
+    const carouselToggle = document.getElementById("carouselToggle");
+    const carouselInterval = document.getElementById("carouselInterval");
+    const carouselStatus = document.getElementById("carouselStatus");
     const MAX_SLOT_COUNT = 16;
     let monitorSlots = [];
     let selectedSlot = null;
     let currentGridSize = 4;
     let currentGroupIndex = 0;
+    let carouselTimer = null;
+    let isCarouselRunning = false;
 
     if (!monitorGrid || buttons.length === 0) {
         return;
@@ -283,6 +288,107 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    function getCarouselIntervalMilliseconds() {
+        const seconds = carouselInterval
+            ? parseInt(carouselInterval.value, 10)
+            : 10;
+
+        return Math.max(1, seconds) * 1000;
+    }
+
+    function updateCarouselUi() {
+        const totalGroups = getTotalCameraGroups();
+        const canRun = totalGroups > 1;
+
+        if (carouselToggle) {
+            carouselToggle.disabled = !canRun;
+            carouselToggle.classList.toggle("is-running", isCarouselRunning);
+            carouselToggle.textContent = isCarouselRunning
+                ? "\u505c\u6b62\u8f2a\u64ad"
+                : "\u958b\u59cb\u8f2a\u64ad";
+        }
+
+        if (carouselInterval) {
+            carouselInterval.disabled = !canRun;
+        }
+
+        if (carouselStatus) {
+            carouselStatus.textContent = isCarouselRunning
+                ? `${Math.round(getCarouselIntervalMilliseconds() / 1000)} \u79d2\u8f2a\u64ad\u4e2d`
+                : (canRun ? "\u8f2a\u64ad\u5f85\u547d" : "\u50c5\u4e00\u7d44");
+        }
+    }
+
+    function clearCarouselTimer() {
+        if (carouselTimer !== null) {
+            window.clearInterval(carouselTimer);
+            carouselTimer = null;
+        }
+    }
+
+    function stopCarousel() {
+        clearCarouselTimer();
+        isCarouselRunning = false;
+        updateCarouselUi();
+    }
+
+    function scheduleCarousel() {
+        clearCarouselTimer();
+
+        if (!isCarouselRunning || getTotalCameraGroups() <= 1) {
+            return;
+        }
+
+        carouselTimer = window.setInterval(function () {
+            const totalGroups = getTotalCameraGroups();
+
+            if (totalGroups <= 1) {
+                stopCarousel();
+                return;
+            }
+
+            currentGroupIndex = (currentGroupIndex + 1) % totalGroups;
+            renderCurrentCameraGroup();
+        }, getCarouselIntervalMilliseconds());
+    }
+
+    function startCarousel() {
+        if (getTotalCameraGroups() <= 1) {
+            stopCarousel();
+            return;
+        }
+
+        isCarouselRunning = true;
+        updateCarouselUi();
+        scheduleCarousel();
+    }
+
+    function bindCarouselControls() {
+        if (carouselToggle) {
+            carouselToggle.addEventListener("click", function () {
+                if (isCarouselRunning) {
+                    stopCarousel();
+                } else {
+                    startCarousel();
+                }
+            });
+        }
+
+        if (carouselInterval) {
+            carouselInterval.addEventListener("change", function () {
+                updateCarouselUi();
+
+                if (isCarouselRunning) {
+                    scheduleCarousel();
+                }
+            });
+        }
+
+        window.addEventListener("beforeunload", function () {
+            clearCarouselTimer();
+        });
+    }
+
     function getOccupiedSlotExtent() {
         let highestOccupiedIndex = -1;
 
@@ -323,6 +429,12 @@ document.addEventListener("DOMContentLoaded", function () {
         if (nextCameraGroup) {
             nextCameraGroup.disabled = currentGroupIndex >= totalGroups - 1;
         }
+
+        if (totalGroups <= 1 && isCarouselRunning) {
+            stopCarousel();
+        } else {
+            updateCarouselUi();
+        }
     }
 
     function renderCurrentCameraGroup() {
@@ -358,6 +470,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 currentGroupIndex -= 1;
                 renderCurrentCameraGroup();
+
+                if (isCarouselRunning) {
+                    scheduleCarousel();
+                }
             });
         }
 
@@ -369,11 +485,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
                 currentGroupIndex += 1;
                 renderCurrentCameraGroup();
+
+                if (isCarouselRunning) {
+                    scheduleCarousel();
+                }
             });
         }
     }
 
     function setGridMode(gridSize) {
+        if (isCarouselRunning) {
+            stopCarousel();
+        }
+
         currentGridSize = parseInt(gridSize, 10);
         currentGroupIndex = 0;
 
@@ -562,6 +686,7 @@ document.addEventListener("DOMContentLoaded", function () {
     bindCameraTree();
     bindCameraDragAndDrop();
     bindCameraGroupNavigation();
+    bindCarouselControls();
     updateTreeAssignments();
 
     cameraStreams.forEach(function (stream) {
