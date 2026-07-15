@@ -3,8 +3,14 @@ document.addEventListener("DOMContentLoaded", function () {
     const buttons = document.querySelectorAll(".grid-mode-btn");
     const cameraCards = document.querySelectorAll("[data-monitor-camera-card]");
     const cameraStreams = document.querySelectorAll("[data-camera-stream]");
+    const monitorContent = document.getElementById("monitorContent");
+    const cameraSidebar = document.getElementById("cameraSidebar");
+    const cameraTreeToggle = document.getElementById("cameraTreeToggle");
+    const cameraSearchInput = document.getElementById("cameraSearchInput");
+    const cameraTreeItems = document.querySelectorAll("[data-camera-tree-item]");
     const MAX_SLOT_COUNT = 16;
     let monitorSlots = [];
+    let selectedSlot = null;
 
     if (!monitorGrid || buttons.length === 0) {
         return;
@@ -42,15 +48,178 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    function ensureEmptyPlaceholder(slot) {
+        let placeholder = slot.querySelector(".monitor-slot-empty");
+
+        if (!placeholder) {
+            const slotNumber = String(Number(slot.dataset.slotIndex) + 1).padStart(2, "0");
+            placeholder = document.createElement("div");
+            placeholder.className = "monitor-slot-empty";
+            placeholder.innerHTML = `
+                <div>
+                    <strong>\u5c1a\u672a\u914d\u7f6e\u651d\u5f71\u6a5f</strong>
+                    <span>Camera slot ${slotNumber}</span>
+                </div>
+            `;
+            slot.appendChild(placeholder);
+        }
+
+        return placeholder;
+    }
+
+    function applySlotPosition(slot) {
+        const slotIndex = Number(slot.dataset.slotIndex);
+        const slotNumber = String(slotIndex + 1).padStart(2, "0");
+        const label = slot.querySelector(".monitor-slot-label");
+        const emptySlotCaption = slot.querySelector(".monitor-slot-empty span");
+
+        slot.style.order = String(slotIndex);
+
+        if (label) {
+            label.textContent = `SLOT ${slotNumber}`;
+        }
+
+        if (emptySlotCaption) {
+            emptySlotCaption.textContent = `Camera slot ${slotNumber}`;
+        }
+    }
+
+    function syncSlotState(slot) {
+        const card = slot.querySelector("[data-monitor-camera-card]");
+        const placeholder = ensureEmptyPlaceholder(slot);
+
+        slot.classList.toggle("is-occupied", Boolean(card));
+        placeholder.hidden = Boolean(card);
+    }
+
+    function selectSlot(slot) {
+        if (!slot || slot.hidden) {
+            return;
+        }
+
+        monitorSlots.forEach(function (item) {
+            item.classList.remove("is-selected");
+        });
+
+        selectedSlot = slot;
+        selectedSlot.classList.add("is-selected");
+    }
+
+    function updateTreeAssignments() {
+        cameraTreeItems.forEach(function (item) {
+            const cameraId = item.dataset.cameraId;
+            const assignment = item.querySelector("[data-camera-assignment]");
+            const card = Array.from(cameraCards).find(function (candidate) {
+                return String(candidate.dataset.cameraId) === String(cameraId);
+            });
+            const slot = card ? card.closest("[data-monitor-slot]") : null;
+
+            item.classList.toggle("is-assigned", Boolean(slot));
+
+            if (assignment) {
+                assignment.textContent = slot
+                    ? `SLOT ${String(Number(slot.dataset.slotIndex) + 1).padStart(2, "0")}`
+                    : "\u5c1a\u672a\u914d\u7f6e";
+            }
+        });
+    }
+
+    function moveCameraToSelectedSlot(cameraId) {
+        if (!selectedSlot) {
+            const firstVisibleSlot = monitorSlots.find(function (slot) {
+                return !slot.hidden;
+            });
+            selectSlot(firstVisibleSlot);
+        }
+
+        const cameraCard = Array.from(cameraCards).find(function (card) {
+            return String(card.dataset.cameraId) === String(cameraId);
+        });
+
+        if (!cameraCard || !selectedSlot) {
+            return;
+        }
+
+        const sourceSlot = cameraCard.closest("[data-monitor-slot]");
+
+        if (!sourceSlot || sourceSlot === selectedSlot) {
+            updateTreeAssignments();
+            return;
+        }
+
+        const sourceIndex = sourceSlot.dataset.slotIndex;
+        const targetIndex = selectedSlot.dataset.slotIndex;
+
+        sourceSlot.dataset.slotIndex = targetIndex;
+        selectedSlot.dataset.slotIndex = sourceIndex;
+
+        applySlotPosition(sourceSlot);
+        applySlotPosition(selectedSlot);
+
+        syncSlotState(sourceSlot);
+        syncSlotState(selectedSlot);
+        selectSlot(sourceSlot);
+        updateTreeAssignments();
+    }
+
+    function bindSlotSelection() {
+        monitorSlots.forEach(function (slot) {
+            slot.addEventListener("click", function () {
+                selectSlot(slot);
+            });
+        });
+
+        const firstVisibleSlot = monitorSlots.find(function (slot) {
+            return !slot.hidden;
+        });
+        selectSlot(firstVisibleSlot);
+    }
+
+    function bindCameraTree() {
+        cameraTreeItems.forEach(function (item) {
+            item.addEventListener("click", function () {
+                moveCameraToSelectedSlot(item.dataset.cameraId);
+            });
+        });
+
+        if (cameraSearchInput) {
+            cameraSearchInput.addEventListener("input", function () {
+                const keyword = cameraSearchInput.value.trim().toLocaleLowerCase();
+
+                cameraTreeItems.forEach(function (item) {
+                    const searchText = (item.dataset.cameraSearch || "").toLocaleLowerCase();
+                    item.hidden = Boolean(keyword) && !searchText.includes(keyword);
+                });
+            });
+        }
+
+        if (cameraTreeToggle && monitorContent) {
+            cameraTreeToggle.classList.add("active");
+
+            cameraTreeToggle.addEventListener("click", function () {
+                const isCollapsed = monitorContent.classList.toggle("sidebar-collapsed");
+                cameraTreeToggle.classList.toggle("active", !isCollapsed);
+                cameraTreeToggle.setAttribute("aria-expanded", String(!isCollapsed));
+            });
+        }
+    }
+
     function setGridMode(gridSize) {
         const maxVisible = parseInt(gridSize, 10);
 
         monitorGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
         monitorGrid.classList.add("grid-" + gridSize);
 
-        monitorSlots.forEach(function (slot, index) {
-            slot.hidden = index >= maxVisible;
+        monitorSlots.forEach(function (slot) {
+            slot.hidden = Number(slot.dataset.slotIndex) >= maxVisible;
         });
+
+        if (!selectedSlot || selectedSlot.hidden) {
+            const firstVisibleSlot = monitorSlots.find(function (slot) {
+                return !slot.hidden;
+            });
+            selectSlot(firstVisibleSlot);
+        }
 
         buttons.forEach(function (btn) {
             if (btn.dataset.grid === gridSize) {
@@ -225,6 +394,13 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     prepareMonitorSlots();
+    monitorSlots.forEach(function (slot) {
+        applySlotPosition(slot);
+        syncSlotState(slot);
+    });
+    bindSlotSelection();
+    bindCameraTree();
+    updateTreeAssignments();
 
     cameraStreams.forEach(function (stream) {
         stream.addEventListener("load", function () {
@@ -278,3 +454,4 @@ document.addEventListener("DOMContentLoaded", function () {
 
     setGridMode("4");
 });
+

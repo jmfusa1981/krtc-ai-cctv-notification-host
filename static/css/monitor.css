@@ -113,8 +113,191 @@ body {
 
 .monitor-content {
     flex: 1;
-    padding: 14px;
     min-height: 0;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 10px;
+    padding: 14px;
+}
+
+.camera-tree-toggle {
+    min-height: 34px;
+    padding: 0 12px;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    background: #1e293b;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.camera-tree-toggle.active {
+    border-color: #2563eb;
+    background: #1d4ed8;
+    color: #ffffff;
+}
+
+.camera-sidebar {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+    background: #0f172a;
+}
+
+.camera-sidebar-header {
+    padding: 14px;
+    border-bottom: 1px solid #1e293b;
+}
+
+.camera-sidebar-header h2 {
+    margin: 0;
+    color: #f8fafc;
+    font-size: 16px;
+}
+
+.camera-sidebar-header p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 11px;
+}
+
+.camera-search {
+    padding: 10px;
+    border-bottom: 1px solid #1e293b;
+}
+
+.camera-search input {
+    width: 100%;
+    height: 36px;
+    padding: 0 11px;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    outline: none;
+    background: #020617;
+    color: #e2e8f0;
+    font: inherit;
+    font-size: 12px;
+}
+
+.camera-search input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+.camera-tree-list {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.camera-tree-item {
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.camera-tree-item[hidden] {
+    display: none;
+}
+
+.camera-tree-item:hover {
+    border-color: #334155;
+    background: #172033;
+}
+
+.camera-tree-item.is-assigned {
+    border-color: rgba(37, 99, 235, 0.52);
+    background: rgba(30, 58, 138, 0.2);
+}
+
+.camera-tree-status {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    margin-top: 4px;
+    border-radius: 50%;
+    background: #64748b;
+}
+
+.camera-tree-status.status-online {
+    background: #22c55e;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.camera-tree-status.status-offline,
+.camera-tree-status.status-error {
+    background: #ef4444;
+}
+
+.camera-tree-copy {
+    min-width: 0;
+    display: block;
+}
+
+.camera-tree-copy strong,
+.camera-tree-copy span,
+.camera-tree-copy small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.camera-tree-copy strong {
+    color: #e2e8f0;
+    font-size: 12px;
+}
+
+.camera-tree-copy span {
+    margin-top: 4px;
+    color: #94a3b8;
+    font-size: 11px;
+}
+
+.camera-tree-copy small {
+    margin-top: 5px;
+    color: #60a5fa;
+    font-size: 10px;
+}
+
+.camera-tree-empty {
+    padding: 24px 12px;
+    color: #64748b;
+    font-size: 12px;
+    text-align: center;
+}
+
+.monitor-content.sidebar-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.monitor-content.sidebar-collapsed .camera-sidebar {
+    visibility: hidden;
+    border: 0;
+}
+
+.monitor-slot.is-selected {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.32);
+}
+
+.monitor-slot.is-selected .monitor-slot-label {
+    opacity: 1;
+    border-color: #3b82f6;
+    color: #dbeafe;
 }
 
 .monitor-grid {

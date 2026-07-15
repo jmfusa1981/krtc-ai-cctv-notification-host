@@ -22,6 +22,16 @@
                     操作員：{{ request.user.username }}
                 </div>
 
+                <button
+                    type="button"
+                    class="camera-tree-toggle"
+                    id="cameraTreeToggle"
+                    aria-controls="cameraSidebar"
+                    aria-expanded="true"
+                >
+                    Camera Tree
+                </button>
+
                 <div class="grid-mode-buttons">
                     <button type="button" class="grid-mode-btn" data-grid="1">1</button>
                     <button type="button" class="grid-mode-btn active" data-grid="4">4</button>
@@ -42,7 +52,46 @@
             </div>
         </header>
 
-        <main class="monitor-content">
+        <main class="monitor-content" id="monitorContent">
+            <aside class="camera-sidebar" id="cameraSidebar">
+                <div class="camera-sidebar-header">
+                    <div>
+                        <h2>Camera Tree</h2>
+                        <p>{{ cameras|length }} 台啟用中</p>
+                    </div>
+                </div>
+
+                <div class="camera-search">
+                    <input
+                        type="search"
+                        id="cameraSearchInput"
+                        placeholder="搜尋攝影機、區域"
+                        autocomplete="off"
+                    >
+                </div>
+
+                <div class="camera-tree-list" id="cameraTreeList">
+                    {% for camera in cameras %}
+                        <button
+                            type="button"
+                            class="camera-tree-item"
+                            data-camera-tree-item
+                            data-camera-id="{{ camera.id }}"
+                            data-camera-search="{{ camera.camera_code }} {{ camera.name }} {{ camera.area }}"
+                        >
+                            <span class="camera-tree-status status-{{ camera.status|default:'unknown' }}"></span>
+                            <span class="camera-tree-copy">
+                                <strong>{{ camera.camera_code }}｜{{ camera.name }}</strong>
+                                <span>{{ camera.area|default:"未設定區域" }}</span>
+                                <small data-camera-assignment>尚未配置</small>
+                            </span>
+                        </button>
+                    {% empty %}
+                        <div class="camera-tree-empty">目前沒有啟用中的攝影機</div>
+                    {% endfor %}
+                </div>
+            </aside>
+
             <section class="monitor-grid grid-4" id="monitorGrid">
                 {% for camera in cameras %}
                     <div
@@ -57,6 +106,7 @@
                     <article
                         class="monitor-camera-card stream-loading"
                         data-monitor-camera-card
+                        data-camera-id="{{ camera.id }}"
                         data-camera-code="{{ camera.camera_code }}"
                         data-check-url="{% url 'cameras:camera_stream_check' camera.id %}"
                     >
