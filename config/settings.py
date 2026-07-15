@@ -160,6 +160,38 @@ REST_FRAMEWORK = {
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
 
+
+# Login / Logout
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/login/"
+
+
+# Step 20 IP Speaker playback settings
+#
+# Available modes:
+# 1. "simulation"
+#    - Does not call the real IP Speaker.
+#    - Used for Dashboard / BroadcastLog workflow testing.
+#
+# 2. "microsip_winsound"
+#    - Uses Windows SIP URI handler to trigger MicroSIP.
+#    - Uses Python winsound to play local wav audio file.
+#    - Requires MicroSIP audio input to be configured as Stereo Mix or CABLE Output.
+#
+# Recommended:
+# Keep "simulation" first.
+# After BroadcastLog workflow is confirmed, change to "microsip_winsound" for real speaker testing.
+#BROADCAST_PLAYBACK_MODE = "simulation"
+BROADCAST_PLAYBACK_MODE = "microsip_winsound"
+
+BROADCAST_PLAY_AFTER_DIAL_DELAY_SECONDS = 1
+BROADCAST_HANGUP_AFTER_AUDIO_MARGIN_SECONDS = 2
+
+BROADCAST_MICROSIP_PATHS = [
+    r"C:\Users\user\Desktop\MicroSIP.lnk",
+    r"C:\Users\user\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\MicroSIP\MicroSIP.lnk",
+    r"C:\Users\user\AppData\Local\MicroSIP\MicroSIP.exe",
+    r"C:\Program Files\MicroSIP\microsip.exe",
+    r"C:\Program Files (x86)\MicroSIP\microsip.exe",
+]

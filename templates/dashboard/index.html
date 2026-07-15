@@ -428,6 +428,52 @@
             margin-top: 20px;
         }
 
+        .broadcast-action-area {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+
+        .process-broadcast-button {
+            min-height: 36px;
+            padding: 0 14px;
+            border-radius: 10px;
+            border: 1px solid #dc2626;
+            background: #dc2626;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .process-broadcast-button:hover {
+            background: #b91c1c;
+            border-color: #b91c1c;
+        }
+
+        .process-broadcast-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.65;
+        }
+
+        .process-broadcast-status {
+            font-size: 12px;
+            color: #64748b;
+            text-align: right;
+            max-width: 360px;
+            line-height: 1.5;
+        }
+
+        .process-broadcast-status.success {
+            color: #166534;
+        }
+
+        .process-broadcast-status.error {
+            color: #dc2626;
+        }
+
         .broadcast-table-wrapper {
             width: 100%;
             overflow-x: auto;
@@ -573,6 +619,14 @@
             .section-header {
                 flex-direction: column;
                 align-items: flex-start;
+            }
+
+            .broadcast-action-area {
+                align-items: flex-start;
+            }
+
+            .process-broadcast-status {
+                text-align: left;
             }
 
             .camera-grid.grid-4,
@@ -809,6 +863,15 @@
                     <h2>近期廣播任務</h2>
                     <p>BroadcastLog｜AI Event 觸發後建立的 IP Speaker / PAO 廣播任務</p>
                 </div>
+
+                <div class="broadcast-action-area">
+                    <button type="button" id="processPendingBroadcastButton" class="process-broadcast-button">
+                        處理待播放任務
+                    </button>
+                    <div id="processBroadcastStatus" class="process-broadcast-status">
+                        尚未執行播放處理
+                    </div>
+                </div>
             </div>
 
             <div class="broadcast-note-box">
@@ -999,8 +1062,11 @@
             const recentEventsCount = document.getElementById("recentEventsCount");
             const pendingBroadcastLogsCount = document.getElementById("pendingBroadcastLogsCount");
             const dashboardPollingStatus = document.getElementById("dashboardPollingStatus");
+            const processPendingBroadcastButton = document.getElementById("processPendingBroadcastButton");
+            const processBroadcastStatus = document.getElementById("processBroadcastStatus");
 
             const liveStateApiUrl = "{% url 'dashboard:dashboard_live_state_api' %}";
+            const processPendingBroadcastApiUrl = "{% url 'notifications:process_pending_broadcast_logs_api' %}";
 
             let currentGridSize = "4";
             let lastLatestEventId = null;
@@ -1043,6 +1109,23 @@
                     dashboardPollingStatus.classList.add("error");
                 } else {
                     dashboardPollingStatus.classList.remove("error");
+                }
+            }
+
+            function setProcessBroadcastStatus(message, statusType) {
+                if (!processBroadcastStatus) {
+                    return;
+                }
+
+                processBroadcastStatus.textContent = message;
+                processBroadcastStatus.classList.remove("success", "error");
+
+                if (statusType === "success") {
+                    processBroadcastStatus.classList.add("success");
+                }
+
+                if (statusType === "error") {
+                    processBroadcastStatus.classList.add("error");
                 }
             }
 
@@ -1465,6 +1548,59 @@
                 }
             }
 
+            async function processPendingBroadcastLogs() {
+                if (!processPendingBroadcastButton) {
+                    return;
+                }
+
+                processPendingBroadcastButton.disabled = true;
+                processPendingBroadcastButton.textContent = "處理中...";
+                setProcessBroadcastStatus("正在處理 pending 廣播任務...", "");
+
+                try {
+                    const response = await fetch(processPendingBroadcastApiUrl, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        body: JSON.stringify({
+                            limit: 10
+                        })
+                    });
+
+                    if (!response.ok) {
+                        setProcessBroadcastStatus(`處理失敗：HTTP ${response.status}`, "error");
+                        return;
+                    }
+
+                    const data = await response.json();
+
+                    if (!data.success) {
+                        setProcessBroadcastStatus(
+                            data.message || "處理失敗：API 回傳 success=false",
+                            "error"
+                        );
+                        return;
+                    }
+
+                    setProcessBroadcastStatus(
+                        `處理完成：${data.processed_count} 筆，成功 ${data.success_count} 筆，失敗 ${data.failed_count} 筆，剩餘 pending ${data.pending_count} 筆`,
+                        "success"
+                    );
+
+                    await fetchDashboardLiveState();
+
+                } catch (error) {
+                    console.error("Failed to process pending broadcast logs:", error);
+                    setProcessBroadcastStatus("處理失敗：請檢查 API 或 console", "error");
+
+                } finally {
+                    processPendingBroadcastButton.disabled = false;
+                    processPendingBroadcastButton.textContent = "處理待播放任務";
+                }
+            }
+
             async function fetchDashboardLiveState() {
                 try {
                     const response = await fetch(liveStateApiUrl, {
@@ -1522,6 +1658,12 @@
                     setGridMode(button.dataset.grid);
                 });
             });
+
+            if (processPendingBroadcastButton) {
+                processPendingBroadcastButton.addEventListener("click", function () {
+                    processPendingBroadcastLogs();
+                });
+            }
 
             bindEventItemClickHandlers();
             bindStreamHandlers();
