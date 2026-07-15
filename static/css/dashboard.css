@@ -274,46 +274,14 @@ body {
     color: #6b7280;
 }
 
-.grid-mode-buttons {
-    display: flex;
-    gap: 8px;
-}
-
-.grid-mode-btn {
-    min-width: 36px;
-    height: 32px;
-    border: 1px solid #cbd5e1;
-    background: #f8fafc;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.grid-mode-btn.active {
-    background: #1d4ed8;
-    color: #ffffff;
-    border-color: #1d4ed8;
-}
 
 .camera-grid {
     display: grid;
     gap: 14px;
 }
 
-.camera-grid.grid-1 {
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-}
-
-.camera-grid.grid-4 {
+.dashboard-event-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.camera-grid.grid-9 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.camera-grid.grid-16 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .camera-card {
@@ -710,9 +678,6 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .camera-grid.grid-16 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
 }
 
 @media (max-width: 768px) {
@@ -769,9 +734,7 @@ body {
         text-align: left;
     }
 
-    .camera-grid.grid-4,
-    .camera-grid.grid-9,
-    .camera-grid.grid-16 {
+    .dashboard-event-grid {
         grid-template-columns: 1fr;
     }
 }

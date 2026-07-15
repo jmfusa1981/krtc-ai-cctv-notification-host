@@ -1,6 +1,5 @@
 document.addEventListener("DOMContentLoaded", function () {
     const cameraGrid = document.getElementById("cameraGrid");
-    const gridButtons = document.querySelectorAll(".grid-mode-btn");
     const eventList = document.getElementById("eventList");
     const broadcastLogTableBody = document.getElementById("broadcastLogTableBody");
     const eventCameraCount = document.getElementById("eventCameraCount");
@@ -17,12 +16,11 @@ document.addEventListener("DOMContentLoaded", function () {
     const liveStateApiUrl = document.body.dataset.dashboardLiveStateUrl;
     const processPendingBroadcastApiUrl = document.body.dataset.processPendingBroadcastUrl;
 
-    let currentGridSize = "4";
     let lastLatestEventId = null;
     let lastSelectedCameraId = null;
     let lastSelectedEventId = null;
 
-    if (!cameraGrid || gridButtons.length === 0) {
+    if (!cameraGrid) {
         return;
     }
 
@@ -78,32 +76,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    function setGridMode(gridSize) {
-        currentGridSize = gridSize;
-
-        const maxVisible = parseInt(gridSize, 10);
-        const orderedCameraCards = cameraGrid.querySelectorAll("[data-camera-card]");
-
-        cameraGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
-        cameraGrid.classList.add("grid-" + gridSize);
-
-        orderedCameraCards.forEach(function (card, index) {
-            if (index < maxVisible) {
-                card.style.display = "";
-            } else {
-                card.style.display = "none";
-            }
-        });
-
-        gridButtons.forEach(function (btn) {
-            if (btn.dataset.grid === gridSize) {
-                btn.classList.add("active");
-            } else {
-                btn.classList.remove("active");
-            }
-        });
-    }
-
     function focusEventCamera(cameraId) {
         if (!cameraId) {
             return;
@@ -124,8 +96,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         cameraGrid.prepend(targetCard);
         targetCard.classList.add("selected-event-camera-card");
-
-        setGridMode(currentGridSize);
 
         targetCard.scrollIntoView({
             behavior: "smooth",
@@ -314,7 +284,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         bindStreamHandlers();
-        setGridMode(currentGridSize);
     }
 
     function renderEventList(events) {
@@ -643,12 +612,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    gridButtons.forEach(function (button) {
-        button.addEventListener("click", function () {
-            setGridMode(button.dataset.grid);
-        });
-    });
-
     if (processPendingBroadcastButton) {
         processPendingBroadcastButton.addEventListener("click", function () {
             processPendingBroadcastLogs();
@@ -657,7 +620,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
     bindEventItemClickHandlers();
     bindStreamHandlers();
-    setGridMode("4");
 
     fetchDashboardLiveState();
 

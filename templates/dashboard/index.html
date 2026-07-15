@@ -136,16 +136,9 @@
                         <h2>事件攝影機即時監控</h2>
                         <p>Event Camera Live Preview｜點擊右側 AI 事件後，對應 Camera 會以紅框標示</p>
                     </div>
-
-                    <div class="grid-mode-buttons">
-                        <button type="button" class="grid-mode-btn" data-grid="1">1</button>
-                        <button type="button" class="grid-mode-btn active" data-grid="4">4</button>
-                        <button type="button" class="grid-mode-btn" data-grid="9">9</button>
-                        <button type="button" class="grid-mode-btn" data-grid="16">16</button>
-                    </div>
                 </div>
 
-                <div class="camera-grid grid-4" id="cameraGrid">
+                <div class="camera-grid dashboard-event-grid" id="cameraGrid">
                     {% for camera in cameras %}
                         <div
                             class="camera-card {% if camera.id in recent_event_camera_ids %}event-camera-card{% endif %}"
