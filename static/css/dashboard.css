@@ -1,0 +1,979 @@
+
+Today 4:26 PM
+
+Pasted text(1).txt
+Document
+Get-Content apps\dashboard\views.py
+
+
+index(1).html
+File
+以上
+
+按了 F12.....
+
+你已經成功打開 DevTools，而且下方的「主控台」就是 Console。目前還沒重新載入 Dashboard，所以尚未顯示錯誤。
+
+請這樣操作：
+
+保持 DevTools 開啟。
+
+用滑鼠點一下左側的 Dashboard 網頁。
+
+按 Ctrl + R 重新整理。
+
+等待 5～10 秒，讓 polling 執行一至兩次。
+
+查看下方「主控台」是否出現紅色訊息。
+
+如果下方區域太小，可以將「主控台」上方的水平分隔線往上拖。
+
+也可以先按右上角「歡迎」分頁旁的 X 關閉歡迎頁，畫面會更清楚。
+
+預期可能看到：
+
+Failed to fetch dashboard live state:
+後面會接真正的 JavaScript 錯誤。請將整段紅色內容截圖給我。如果仍然完全沒有訊息，也請截圖當時的 Dashboard 與 Console。
+
+
+這樣?
+
+差一點。你目前下半部選到的是「問題」，不是我們要看的 Console；而且要確認瀏覽器主頁仍停在 Dashboard，而不是剛才的 JSON API 頁面。
+
+請照以下操作：
+
+確認網址列是：
+
+http://127.0.0.1:8000/dashboard/
+在目前 DevTools 上半部，點選有終端機圖示的「主控台」。你截圖最上方的「主控台」其實已經選對了。
+
+下方「問題」面板可以按右側 X 關閉，避免混淆。
+
+點一下 Dashboard 頁面後按 Ctrl + R。
+
+等待至少 10 秒。
+
+接著看兩個地方：
+
+Dashboard 左上角現在顯示「已更新」還是「更新失敗」？
+
+上方主控台有沒有出現紅色訊息？
+
+如果 Dashboard 已變成：
+
+Dashboard polling：已更新 2026-07-15 ...
+就表示 polling 其實正常，先前可能只是頁面切換或伺服器重啟時的暫時失敗。
+
+請直接告訴我目前左上角顯示「已更新」或「更新失敗」即可；若仍失敗，再截上方主控台。
+
+
+
+確認了，現在 polling 已正常運作：
+
+Dashboard polling：已更新 2026-07-15 18:02:07
+Console 也沒有錯誤。先前的「更新失敗」只是伺服器或頁面切換期間的暫時狀態，不需要修改 polling 程式。
+
+目前重構前基準正式成立：
+
+Dashboard 正常
+
+polling 正常
+
+事件清單正常
+
+事件攝影機串流正常
+
+BroadcastLog 資料正常
+
+Monitor Wall 可開啟，但串流未顯示，列為後續待修
+
+下一步：先拆 Dashboard CSS
+第一個修改只做一件事：
+
+將 index.html 的內嵌 CSS 移到 static/css/dashboard.css
+不改畫面、不改 HTML 結構、不碰 JavaScript。這是風險最低的拆分點。
+
+在開始前，請先停止 runserver：
+
+Ctrl + C
+接著請在 VS Code 開啟：
+
+C:\Users\user\krtc_notification_host_v2\templates\dashboard\index.html
+確認檔案最上方前約 15 行是否有：
+
+{% load static %}
+請把 index.html 最前面的 20 行貼給我，可在 PowerShell 執行：
+
+Get-Content templates\dashboard\index.html -TotalCount 20
+確認 {% load static %} 與 <style> 位置後，我再提供精確的 CSS 拆分操作，避免手動剪錯範圍。
+
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>KRTC AI CCTV 通報主機 Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, "Microsoft JhengHei", sans-serif;
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+
+        .dashboard-layout {
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .dashboard-header {
+            margin-bottom: 24px;
+        }
+
+        .dashboard-header-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .dashboard-header h1 {
+            margin: 0;
+            font-size: 28px;
+            color: #0f172a;
+        }
+
+        .dashboard-header p {
+            margin: 8px 0 0;
+            color: #64748b;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 40px;
+            padding: 0 14px;
+            border-radius: 10px;
+            background: #ffffff;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            font-size: 14px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .monitor-wall-link,
+        .logout-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 40px;
+            padding: 0 16px;
+            border-radius: 10px;
+            background: #0f172a;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 14px;
+            border: 1px solid #0f172a;
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .monitor-wall-link:hover,
+        .logout-button:hover {
+            background: #1e293b;
+        }
+
+        .logout-form {
+            margin: 0;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .summary-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+        }
+
+        .summary-card h3 {
+            margin: 0;
+            font-size: 14px;
+            color: #64748b;
+        }
+
+確認了，目前沒有 {% load static %}，CSS 全部內嵌於 <style> 中。
+
+Step 7A：只拆出 Dashboard CSS
+1. 建立 CSS 檔案
+在 VS Code 左側檔案總管找到：
+
+static
+└─ css
+在 css 上按右鍵 →「新增檔案」，命名：
+
+dashboard.css
+2. 搬移 CSS
+回到：
+
+templates/dashboard/index.html
+找到開頭：
+
+<style>
+再搜尋結尾：
+
+</style>
+將 <style> 與 </style> 中間的全部 CSS：
+
+* {
+    box-sizing: border-box;
+}
+
+/* 中間所有 CSS */
+
+.polling-status.error {
+    ...
+}
+剪下並貼到：
+
+static/css/dashboard.css
+注意：
+
+dashboard.css 不要保留 <style> 或 </style>
+
+只放純 CSS
+
+不要修改任何 CSS 內容
+
+3. 修改 index.html 開頭
+在第一行前加入：
+
+{% load static %}
+然後用 stylesheet link 取代原本整個 <style>...</style>：
+
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+完成後，index.html 開頭應該是：
+
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>KRTC AI CCTV 通報主機 Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+</head>
+接著應直接進入：
+
+<body>
+4. 儲存並檢查
+儲存兩個檔案後執行：
+
+python manage.py check
+git status
+git diff --stat
+預期 Git 顯示：
+
+modified: templates/dashboard/index.html
+untracked: static/css/dashboard.css
+先不要 commit，也先不要拆 JavaScript。請把 git status 與 git diff --stat 貼給我，我會先確認 CSS 搬移的行數是否合理，再啟動頁面測試。
+
+
+請給我修改後的完,整程式碼
+
+Worked for 1m 8s
+已完成兩個完整檔案，只拆分 CSS，HTML 結構、polling、事件紅框、串流及 BroadcastLog JavaScript 均未改動。
+
+請下載：
+
+index.html
+
+dashboard.css
+
+放置位置：
+
+krtc_notification_host_v2/
+├─ templates/
+│  └─ dashboard/
+│     └─ index.html          ← 覆蓋原檔
+└─ static/
+   └─ css/
+      └─ dashboard.css       ← 新增檔案
+替換後執行：
+
+python manage.py check
+git status
+git diff --stat
+python manage.py runserver
+再開啟：
+
+http://127.0.0.1:8000/dashboard/
+請按 Ctrl + F5 強制重新整理，確認：
+
+畫面樣式與原本一致
+
+polling 顯示「已更新」
+
+事件攝影機仍顯示
+
+點擊事件仍會出現對應紅框
+
+先不要 commit，也不要拆 JavaScript。請把 git status、git diff --stat 和測試結果貼給我。
+
+
+
+dashboard.css
+
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, "Microsoft JhengHei", sans-serif;
+    background: #f1f5f9;
+    color: #0f172a;
+}
+
+.dashboard-layout {
+    min-height: 100vh;
+    padding: 24px;
+}
+
+.dashboard-header {
+    margin-bottom: 24px;
+}
+
+.dashboard-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.dashboard-header h1 {
+    margin: 0;
+    font-size: 28px;
+    color: #0f172a;
+}
+
+.dashboard-header p {
+    margin: 8px 0 0;
+    color: #64748b;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.user-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.monitor-wall-link,
+.logout-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 16px;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #ffffff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 14px;
+    border: 1px solid #0f172a;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.monitor-wall-link:hover,
+.logout-button:hover {
+    background: #1e293b;
+}
+
+.logout-form {
+    margin: 0;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.summary-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.summary-card h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #64748b;
+}
+
+.summary-card .number {
+    margin-top: 10px;
+    font-size: 30px;
+    font-weight: 700;
+    color: #1d4ed8;
+}
+
+.summary-card .note {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.main-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+.monitor-section,
+.side-section,
+.table-section,
+.broadcast-section {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 20px;
+    color: #111827;
+}
+
+.section-header p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.grid-mode-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.grid-mode-btn {
+    min-width: 36px;
+    height: 32px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.grid-mode-btn.active {
+    background: #1d4ed8;
+    color: #ffffff;
+    border-color: #1d4ed8;
+}
+
+.camera-grid {
+    display: grid;
+    gap: 14px;
+}
+
+.camera-grid.grid-1 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.camera-grid.grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.camera-grid.grid-9 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.camera-grid.grid-16 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.camera-card {
+    background: #f8fafc;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.camera-card.event-camera-card {
+    border-color: #e2e8f0;
+    box-shadow: none;
+}
+
+.camera-card.selected-event-camera-card {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35), 0 10px 28px rgba(127, 29, 29, 0.22);
+}
+
+.camera-card.selected-event-camera-card .camera-screen {
+    outline: 3px solid #dc2626;
+    outline-offset: -3px;
+}
+
+.camera-screen {
+    aspect-ratio: 16 / 9;
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.dashboard-camera-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #020617;
+}
+
+.dashboard-stream-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: rgba(2, 6, 23, 0.86);
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 16px;
+}
+
+.dashboard-stream-overlay.hidden {
+    display: none;
+}
+
+.camera-code {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.placeholder-text {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+.event-camera-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 3;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    box-shadow: 0 4px 12px rgba(127, 29, 29, 0.4);
+}
+
+.camera-info {
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.camera-info h3 {
+    margin: 0;
+    font-size: 15px;
+    color: #0f172a;
+}
+
+.camera-info p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.camera-status {
+    flex-shrink: 0;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.status-online {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-offline {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-maintenance {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-error {
+    background: #fee2e2;
+    color: #7f1d1d;
+}
+
+.status-unknown {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.camera-description {
+    padding: 0 14px 14px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.side-section {
+    margin-bottom: 20px;
+}
+
+.event-list,
+.flow-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.event-item,
+.flow-item {
+    padding: 12px;
+    border-radius: 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.event-item h3,
+.flow-item h3 {
+    margin: 0;
+    font-size: 14px;
+}
+
+.event-item p,
+.flow-item p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.event-type {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.event-meta {
+    color: #64748b;
+}
+
+.clickable-event-item {
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.clickable-event-item:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
+.clickable-event-item.selected-ai-event {
+    border-color: #dc2626;
+    background: #fef2f2;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.16);
+}
+
+.empty-state {
+    padding: 24px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    color: #64748b;
+    background: #f8fafc;
+}
+
+.bottom-grid {
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.broadcast-section {
+    margin-top: 20px;
+}
+
+.broadcast-action-area {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.process-broadcast-button {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid #dc2626;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.process-broadcast-button:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
+
+.process-broadcast-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.process-broadcast-status {
+    font-size: 12px;
+    color: #64748b;
+    text-align: right;
+    max-width: 360px;
+    line-height: 1.5;
+}
+
+.process-broadcast-status.success {
+    color: #166534;
+}
+
+.process-broadcast-status.error {
+    color: #dc2626;
+}
+
+.broadcast-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+}
+
+.broadcast-table {
+    width: 100%;
+    min-width: 980px;
+    border-collapse: collapse;
+}
+
+.broadcast-table th,
+.broadcast-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+    font-size: 13px;
+    vertical-align: top;
+}
+
+.broadcast-table th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.broadcast-table tr:last-child td {
+    border-bottom: none;
+}
+
+.broadcast-main-text {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.broadcast-sub-text {
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.broadcast-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.broadcast-status-pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.broadcast-status-playing {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.broadcast-status-success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.broadcast-status-failed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.broadcast-status-skipped {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.broadcast-note-box {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.empty-table-message {
+    text-align: center;
+    color: #64748b;
+    padding: 24px;
+}
+
+.polling-status {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.polling-status.error {
+    color: #dc2626;
+}
+
+@media (max-width: 1200px) {
+    .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .main-grid,
+    .bottom-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .camera-grid.grid-16 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-layout {
+        padding: 16px;
+    }
+
+    .dashboard-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .header-actions {
+        justify-content: flex-start;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .broadcast-action-area {
+        align-items: flex-start;
+    }
+
+    .process-broadcast-status {
+        text-align: left;
+    }
+
+    .camera-grid.grid-4,
+    .camera-grid.grid-9,
+    .camera-grid.grid-16 {
+        grid-template-columns: 1fr;
+    }
+}
