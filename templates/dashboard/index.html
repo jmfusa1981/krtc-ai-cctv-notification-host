@@ -43,53 +43,89 @@
             </div>
         </header>
 
-        <section class="summary-grid">
-            <div class="summary-card">
-                <h3>事件相關攝影機</h3>
-                <div class="number" id="eventCameraCount">{{ cameras|length }}</div>
-                <div class="note">近期 AI Event 相關 Camera 數量</div>
+        <section class="status-banner" id="eventStatusBanner" aria-label="系統事件狀態">
+            <div class="status-banner-main">
+                <div class="status-banner-heading">
+                    <div class="status-kicker">
+                        <span class="system-live-dot" aria-hidden="true"></span>
+                        通報主機運作中
+                    </div>
+
+                    {% with latest_event=recent_events.0 %}
+                        {% if latest_event %}
+                            <h2 id="latestEventType">
+                                {% if latest_event.get_event_type_display %}
+                                    {{ latest_event.get_event_type_display }}
+                                {% else %}
+                                    {{ latest_event.event_type }}
+                                {% endif %}
+                            </h2>
+                            <p id="latestEventCamera">
+                                {% if latest_event.camera %}
+                                    {{ latest_event.camera.camera_code }}｜{{ latest_event.camera.name }}
+                                {% else %}
+                                    未指定攝影機
+                                {% endif %}
+                            </p>
+                            <time id="latestEventTime">{{ latest_event.created_at|date:"Y-m-d H:i:s" }}</time>
+                        {% else %}
+                            <h2 id="latestEventType">目前無事件</h2>
+                            <p id="latestEventCamera">系統正在等待 AI 推論事件</p>
+                            <time id="latestEventTime">--</time>
+                        {% endif %}
+                    {% endwith %}
+                </div>
+
+                <div class="alert-state-group" aria-label="PAO 聲光提示狀態">
+                    <div class="alert-state alert-state-ready">
+                        <span class="alert-state-icon" aria-hidden="true">●</span>
+                        聲音提示待命
+                    </div>
+                    <div class="alert-state alert-state-ready">
+                        <span class="alert-state-icon alert-state-icon-red" aria-hidden="true">●</span>
+                        警示燈待命
+                    </div>
+                </div>
             </div>
 
-            <div class="summary-card">
-                <h3>近期事件</h3>
-                <div class="number" id="recentEventsCount">{{ recent_events|length }}</div>
-                <div class="note">最近 10 筆 AI Event</div>
-            </div>
+            <div class="status-metrics">
+                <div class="status-metric">
+                    <span class="status-metric-label">事件攝影機</span>
+                    <strong id="eventCameraCount">{{ cameras|length }}</strong>
+                    <span class="status-metric-unit">台</span>
+                </div>
 
-            <div class="summary-card">
-                <h3>人流設定</h3>
-                <div class="number">{{ crowd_flow_settings|length }}</div>
-                <div class="note">啟用中的人流規則</div>
-            </div>
+                <div class="status-metric">
+                    <span class="status-metric-label">近期事件</span>
+                    <strong id="recentEventsCount">{{ recent_events|length }}</strong>
+                    <span class="status-metric-unit">筆</span>
+                </div>
 
-            <div class="summary-card">
-                <h3>人流紀錄</h3>
-                <div class="number">{{ crowd_flow_records|length }}</div>
-                <div class="note">最近 10 筆人流紀錄</div>
-            </div>
+                <div class="status-metric status-metric-warning" id="pendingBroadcastMetric">
+                    <span class="status-metric-label">待播放任務</span>
+                    <strong id="pendingBroadcastLogsCount">{{ pending_broadcast_logs }}</strong>
+                    <span class="status-metric-unit">筆</span>
+                </div>
 
-            <div class="summary-card">
-                <h3>啟用 Speaker</h3>
-                <div class="number">{{ active_speakers }}</div>
-                <div class="note">IP Speaker / PAO 設備</div>
-            </div>
+                <div class="status-metric">
+                    <span class="status-metric-label">人流狀態</span>
+                    <strong class="status-metric-text">
+                        {% if crowd_flow_records.0.is_abnormal %}異常{% else %}正常{% endif %}
+                    </strong>
+                    <span class="status-metric-unit">{{ crowd_flow_records|length }} 筆紀錄</span>
+                </div>
 
-            <div class="summary-card">
-                <h3>廣播規則</h3>
-                <div class="number">{{ active_broadcast_rules }}</div>
-                <div class="note">啟用中的 BroadcastRule</div>
-            </div>
+                <div class="status-metric">
+                    <span class="status-metric-label">Speaker</span>
+                    <strong>{{ active_speakers }}</strong>
+                    <span class="status-metric-unit">台啟用</span>
+                </div>
 
-            <div class="summary-card">
-                <h3>待播放任務</h3>
-                <div class="number" id="pendingBroadcastLogsCount">{{ pending_broadcast_logs }}</div>
-                <div class="note">BroadcastLog pending</div>
-            </div>
-
-            <div class="summary-card">
-                <h3>啟用音檔</h3>
-                <div class="number">{{ active_audio_files }}</div>
-                <div class="note">可用預錄廣播音檔</div>
+                <div class="status-metric">
+                    <span class="status-metric-label">廣播資源</span>
+                    <strong>{{ active_broadcast_rules }}</strong>
+                    <span class="status-metric-unit">規則／{{ active_audio_files }} 音檔</span>
+                </div>
             </div>
         </section>
 
@@ -429,4 +465,3 @@
     <script src="{% static 'js/dashboard.js' %}"></script>
 </body>
 </html>
-

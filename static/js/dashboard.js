@@ -6,6 +6,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const eventCameraCount = document.getElementById("eventCameraCount");
     const recentEventsCount = document.getElementById("recentEventsCount");
     const pendingBroadcastLogsCount = document.getElementById("pendingBroadcastLogsCount");
+    const pendingBroadcastMetric = document.getElementById("pendingBroadcastMetric");
+    const latestEventType = document.getElementById("latestEventType");
+    const latestEventCamera = document.getElementById("latestEventCamera");
+    const latestEventTime = document.getElementById("latestEventTime");
     const dashboardPollingStatus = document.getElementById("dashboardPollingStatus");
     const processPendingBroadcastButton = document.getElementById("processPendingBroadcastButton");
     const processBroadcastStatus = document.getElementById("processBroadcastStatus");
@@ -475,21 +479,62 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function updateSummary(data) {
-        if (eventCameraCount && data.cameras) {
-            eventCameraCount.textContent = String(data.cameras.length);
+        const cameras = data.cameras || [];
+        const events = data.events || [];
+        const latestEvent = events[0] || null;
+        const pendingCount =
+            data.pending_broadcast_count ??
+            data.pending_broadcast_logs ??
+            0;
+
+        if (eventCameraCount) {
+            eventCameraCount.textContent = String(cameras.length);
         }
 
-        if (recentEventsCount && data.events) {
-            recentEventsCount.textContent = String(data.events.length);
+        if (recentEventsCount) {
+            recentEventsCount.textContent = String(events.length);
         }
 
         if (pendingBroadcastLogsCount) {
-            const pendingCount =
-                data.pending_broadcast_count ??
-                data.pending_broadcast_logs ??
-                0;
-
             pendingBroadcastLogsCount.textContent = String(pendingCount);
+        }
+
+        if (pendingBroadcastMetric) {
+            pendingBroadcastMetric.classList.toggle("is-clear", Number(pendingCount) === 0);
+        }
+
+        if (latestEvent) {
+            if (latestEventType) {
+                latestEventType.textContent = normalizeText(
+                    latestEvent.event_type_display,
+                    latestEvent.event_type || "\u672a\u77e5\u4e8b\u4ef6"
+                );
+            }
+
+            if (latestEventCamera) {
+                const cameraCode = normalizeText(latestEvent.camera_code, "");
+                const cameraName = normalizeText(latestEvent.camera_name, "");
+                latestEventCamera.textContent =
+                    cameraCode || cameraName
+                        ? `${cameraCode}\uff5c${cameraName}`
+                        : "\u672a\u6307\u5b9a\u651d\u5f71\u6a5f";
+            }
+
+            if (latestEventTime) {
+                latestEventTime.textContent = normalizeText(latestEvent.created_at, "--");
+            }
+        } else {
+            if (latestEventType) {
+                latestEventType.textContent = "\u76ee\u524d\u7121\u4e8b\u4ef6";
+            }
+
+            if (latestEventCamera) {
+                latestEventCamera.textContent = "\u7cfb\u7d71\u6b63\u5728\u7b49\u5f85 AI \u63a8\u8ad6\u4e8b\u4ef6";
+            }
+
+            if (latestEventTime) {
+                latestEventTime.textContent = "--";
+            }
         }
     }
 
@@ -620,5 +665,3 @@ document.addEventListener("DOMContentLoaded", function () {
         fetchDashboardLiveState();
     }, 5000);
 });
-
-

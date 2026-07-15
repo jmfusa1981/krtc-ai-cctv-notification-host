@@ -1,353 +1,3 @@
-
-Today 4:26 PM
-
-Pasted text(1).txt
-Document
-Get-Content apps\dashboard\views.py
-
-
-index(1).html
-File
-以上
-
-按了 F12.....
-
-你已經成功打開 DevTools，而且下方的「主控台」就是 Console。目前還沒重新載入 Dashboard，所以尚未顯示錯誤。
-
-請這樣操作：
-
-保持 DevTools 開啟。
-
-用滑鼠點一下左側的 Dashboard 網頁。
-
-按 Ctrl + R 重新整理。
-
-等待 5～10 秒，讓 polling 執行一至兩次。
-
-查看下方「主控台」是否出現紅色訊息。
-
-如果下方區域太小，可以將「主控台」上方的水平分隔線往上拖。
-
-也可以先按右上角「歡迎」分頁旁的 X 關閉歡迎頁，畫面會更清楚。
-
-預期可能看到：
-
-Failed to fetch dashboard live state:
-後面會接真正的 JavaScript 錯誤。請將整段紅色內容截圖給我。如果仍然完全沒有訊息，也請截圖當時的 Dashboard 與 Console。
-
-
-這樣?
-
-差一點。你目前下半部選到的是「問題」，不是我們要看的 Console；而且要確認瀏覽器主頁仍停在 Dashboard，而不是剛才的 JSON API 頁面。
-
-請照以下操作：
-
-確認網址列是：
-
-http://127.0.0.1:8000/dashboard/
-在目前 DevTools 上半部，點選有終端機圖示的「主控台」。你截圖最上方的「主控台」其實已經選對了。
-
-下方「問題」面板可以按右側 X 關閉，避免混淆。
-
-點一下 Dashboard 頁面後按 Ctrl + R。
-
-等待至少 10 秒。
-
-接著看兩個地方：
-
-Dashboard 左上角現在顯示「已更新」還是「更新失敗」？
-
-上方主控台有沒有出現紅色訊息？
-
-如果 Dashboard 已變成：
-
-Dashboard polling：已更新 2026-07-15 ...
-就表示 polling 其實正常，先前可能只是頁面切換或伺服器重啟時的暫時失敗。
-
-請直接告訴我目前左上角顯示「已更新」或「更新失敗」即可；若仍失敗，再截上方主控台。
-
-
-
-確認了，現在 polling 已正常運作：
-
-Dashboard polling：已更新 2026-07-15 18:02:07
-Console 也沒有錯誤。先前的「更新失敗」只是伺服器或頁面切換期間的暫時狀態，不需要修改 polling 程式。
-
-目前重構前基準正式成立：
-
-Dashboard 正常
-
-polling 正常
-
-事件清單正常
-
-事件攝影機串流正常
-
-BroadcastLog 資料正常
-
-Monitor Wall 可開啟，但串流未顯示，列為後續待修
-
-下一步：先拆 Dashboard CSS
-第一個修改只做一件事：
-
-將 index.html 的內嵌 CSS 移到 static/css/dashboard.css
-不改畫面、不改 HTML 結構、不碰 JavaScript。這是風險最低的拆分點。
-
-在開始前，請先停止 runserver：
-
-Ctrl + C
-接著請在 VS Code 開啟：
-
-C:\Users\user\krtc_notification_host_v2\templates\dashboard\index.html
-確認檔案最上方前約 15 行是否有：
-
-{% load static %}
-請把 index.html 最前面的 20 行貼給我，可在 PowerShell 執行：
-
-Get-Content templates\dashboard\index.html -TotalCount 20
-確認 {% load static %} 與 <style> 位置後，我再提供精確的 CSS 拆分操作，避免手動剪錯範圍。
-
-
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <title>KRTC AI CCTV 通報主機 Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            font-family: Arial, "Microsoft JhengHei", sans-serif;
-            background: #f1f5f9;
-            color: #0f172a;
-        }
-
-        .dashboard-layout {
-            min-height: 100vh;
-            padding: 24px;
-        }
-
-        .dashboard-header {
-            margin-bottom: 24px;
-        }
-
-        .dashboard-header-row {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 16px;
-        }
-
-        .dashboard-header h1 {
-            margin: 0;
-            font-size: 28px;
-            color: #0f172a;
-        }
-
-        .dashboard-header p {
-            margin: 8px 0 0;
-            color: #64748b;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-        }
-
-        .user-badge {
-            display: inline-flex;
-            align-items: center;
-            min-height: 40px;
-            padding: 0 14px;
-            border-radius: 10px;
-            background: #ffffff;
-            color: #334155;
-            border: 1px solid #cbd5e1;
-            font-size: 14px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-
-        .monitor-wall-link,
-        .logout-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 40px;
-            padding: 0 16px;
-            border-radius: 10px;
-            background: #0f172a;
-            color: #ffffff;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 14px;
-            border: 1px solid #0f172a;
-            white-space: nowrap;
-            cursor: pointer;
-        }
-
-        .monitor-wall-link:hover,
-        .logout-button:hover {
-            background: #1e293b;
-        }
-
-        .logout-form {
-            margin: 0;
-        }
-
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .summary-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            padding: 18px;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-        }
-
-        .summary-card h3 {
-            margin: 0;
-            font-size: 14px;
-            color: #64748b;
-        }
-
-確認了，目前沒有 {% load static %}，CSS 全部內嵌於 <style> 中。
-
-Step 7A：只拆出 Dashboard CSS
-1. 建立 CSS 檔案
-在 VS Code 左側檔案總管找到：
-
-static
-└─ css
-在 css 上按右鍵 →「新增檔案」，命名：
-
-dashboard.css
-2. 搬移 CSS
-回到：
-
-templates/dashboard/index.html
-找到開頭：
-
-<style>
-再搜尋結尾：
-
-</style>
-將 <style> 與 </style> 中間的全部 CSS：
-
-* {
-    box-sizing: border-box;
-}
-
-/* 中間所有 CSS */
-
-.polling-status.error {
-    ...
-}
-剪下並貼到：
-
-static/css/dashboard.css
-注意：
-
-dashboard.css 不要保留 <style> 或 </style>
-
-只放純 CSS
-
-不要修改任何 CSS 內容
-
-3. 修改 index.html 開頭
-在第一行前加入：
-
-{% load static %}
-然後用 stylesheet link 取代原本整個 <style>...</style>：
-
-<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
-完成後，index.html 開頭應該是：
-
-{% load static %}
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <title>KRTC AI CCTV 通報主機 Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
-</head>
-接著應直接進入：
-
-<body>
-4. 儲存並檢查
-儲存兩個檔案後執行：
-
-python manage.py check
-git status
-git diff --stat
-預期 Git 顯示：
-
-modified: templates/dashboard/index.html
-untracked: static/css/dashboard.css
-先不要 commit，也先不要拆 JavaScript。請把 git status 與 git diff --stat 貼給我，我會先確認 CSS 搬移的行數是否合理，再啟動頁面測試。
-
-
-請給我修改後的完,整程式碼
-
-Worked for 1m 8s
-已完成兩個完整檔案，只拆分 CSS，HTML 結構、polling、事件紅框、串流及 BroadcastLog JavaScript 均未改動。
-
-請下載：
-
-index.html
-
-dashboard.css
-
-放置位置：
-
-krtc_notification_host_v2/
-├─ templates/
-│  └─ dashboard/
-│     └─ index.html          ← 覆蓋原檔
-└─ static/
-   └─ css/
-      └─ dashboard.css       ← 新增檔案
-替換後執行：
-
-python manage.py check
-git status
-git diff --stat
-python manage.py runserver
-再開啟：
-
-http://127.0.0.1:8000/dashboard/
-請按 Ctrl + F5 強制重新整理，確認：
-
-畫面樣式與原本一致
-
-polling 顯示「已更新」
-
-事件攝影機仍顯示
-
-點擊事件仍會出現對應紅框
-
-先不要 commit，也不要拆 JavaScript。請把 git status、git diff --stat 和測試結果貼給我。
-
-
-
-dashboard.css
-
-
 * {
     box-sizing: border-box;
 }
@@ -435,38 +85,155 @@ body {
     margin: 0;
 }
 
-.summary-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
+.status-banner {
     margin-bottom: 24px;
+    overflow: hidden;
+    color: #ffffff;
+    background:
+        radial-gradient(circle at 88% 20%, rgba(59, 130, 246, 0.22), transparent 32%),
+        linear-gradient(135deg, #0f172a 0%, #172554 100%);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 18px;
+    box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18);
 }
 
-.summary-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+.status-banner-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    min-height: 126px;
+    padding: 22px 24px;
 }
 
-.summary-card h3 {
-    margin: 0;
-    font-size: 14px;
-    color: #64748b;
+.status-banner-heading {
+    min-width: 0;
 }
 
-.summary-card .number {
-    margin-top: 10px;
-    font-size: 30px;
+.status-kicker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #bfdbfe;
+    font-size: 13px;
     font-weight: 700;
-    color: #1d4ed8;
+    letter-spacing: 0.04em;
 }
 
-.summary-card .note {
+.system-live-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.16);
+}
+
+.status-banner-heading h2 {
+    margin: 0;
+    overflow: hidden;
+    color: #ffffff;
+    font-size: 28px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-banner-heading p {
+    margin: 8px 0 0;
+    overflow: hidden;
+    color: #cbd5e1;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-banner-heading time {
+    display: block;
     margin-top: 6px;
+    color: #93c5fd;
     font-size: 12px;
+}
+
+.alert-state-group {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.alert-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 12px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.44);
+    color: #e2e8f0;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.alert-state-icon {
+    color: #facc15;
+    text-shadow: 0 0 10px rgba(250, 204, 21, 0.8);
+}
+
+.alert-state-icon-red {
+    color: #f87171;
+    text-shadow: 0 0 10px rgba(248, 113, 113, 0.8);
+}
+
+.status-metrics {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(15, 23, 42, 0.28);
+}
+
+.status-metric {
+    min-width: 0;
+    padding: 15px 18px;
+    border-right: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.status-metric:last-child {
+    border-right: 0;
+}
+
+.status-metric-label {
+    display: block;
+    margin-bottom: 6px;
     color: #94a3b8;
+    font-size: 12px;
+}
+
+.status-metric strong {
+    color: #ffffff;
+    font-size: 24px;
+    line-height: 1;
+}
+
+.status-metric .status-metric-text {
+    font-size: 17px;
+}
+
+.status-metric-unit {
+    margin-left: 4px;
+    color: #bfdbfe;
+    font-size: 11px;
+}
+
+.status-metric-warning strong {
+    color: #fbbf24;
+}
+
+.status-metric-warning.is-clear strong {
+    color: #86efac;
 }
 
 .main-grid {
@@ -926,8 +693,16 @@ body {
 }
 
 @media (max-width: 1200px) {
-    .summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .status-metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .status-metric:nth-child(3) {
+        border-right: 0;
+    }
+
+    .status-metric:nth-child(-n + 3) {
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
     }
 
     .main-grid,
@@ -954,8 +729,31 @@ body {
         justify-content: flex-start;
     }
 
-    .summary-grid {
-        grid-template-columns: 1fr;
+    .status-banner-main {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .alert-state-group {
+        justify-content: flex-start;
+    }
+
+    .status-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .status-metric,
+    .status-metric:nth-child(3) {
+        border-right: 1px solid rgba(148, 163, 184, 0.18);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    }
+
+    .status-metric:nth-child(even) {
+        border-right: 0;
+    }
+
+    .status-metric:nth-last-child(-n + 2) {
+        border-bottom: 0;
     }
 
     .section-header {
