@@ -284,3 +284,60 @@ def serialize_event_action_result(event):
         "camera_code": getattr(camera, "camera_code", "") if camera else "",
         "updated_at": event.updated_at.isoformat() if hasattr(event, "updated_at") else None,
     }
+
+
+@login_required
+@require_POST
+def close_event_api(request, event_id):
+    """Close a confirmed event without deleting its history."""
+
+    if not can_process_events(request.user):
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "You do not have permission to close events.",
+            },
+            status=403,
+        )
+
+    event = get_object_or_404(
+        Event.objects.select_related("camera"),
+        pk=event_id,
+    )
+
+    if event.status == "closed":
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Event is already closed.",
+                "changed": False,
+                "event": serialize_event_action_result(event),
+            }
+        )
+
+    if event.status not in {"confirmed", "processing"}:
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "Only confirmed or processing events can be closed.",
+                "event": serialize_event_action_result(event),
+            },
+            status=409,
+        )
+
+    event.status = "closed"
+    update_fields = ["status"]
+
+    if hasattr(event, "updated_at"):
+        update_fields.append("updated_at")
+
+    event.save(update_fields=update_fields)
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Event closed successfully.",
+            "changed": True,
+            "event": serialize_event_action_result(event),
+        }
+    )

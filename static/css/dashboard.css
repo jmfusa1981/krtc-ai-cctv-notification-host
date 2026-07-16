@@ -527,6 +527,36 @@ body {
     opacity: 1;
 }
 
+.close-event-button {
+    min-height: 34px;
+    padding: 0 14px;
+    border: 1px solid #dc2626;
+    border-radius: 9px;
+    background: #dc2626;
+    color: #ffffff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.close-event-button:hover:not(:disabled) {
+    background: #b91c1c;
+}
+
+.close-event-button:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.close-event-button.is-closed {
+    border-color: #64748b;
+    background: #e2e8f0;
+    color: #334155;
+    cursor: default;
+    opacity: 1;
+}
+
 .event-action-message {
     font-size: 12px;
     font-weight: 700;

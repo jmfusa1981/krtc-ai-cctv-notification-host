@@ -181,6 +181,15 @@ document.addEventListener("DOMContentLoaded", function () {
                     >
                         \u5df2\u78ba\u8a8d
                     </button>
+                    <button
+                        type="button"
+                        class="close-event-button"
+                        data-close-event
+                        data-event-id="${escapeHtml(eventId)}"
+                    >
+                        \u89e3\u9664\u4e8b\u4ef6
+                    </button>
+                    <span class="event-action-message" data-event-action-message></span>
                 </div>
             `;
         }
@@ -256,6 +265,86 @@ document.addEventListener("DOMContentLoaded", function () {
                 event.preventDefault();
                 event.stopPropagation();
                 confirmEvent(button);
+            });
+        });
+    }
+
+    async function closeEvent(button) {
+        const eventId = button.dataset.eventId;
+        const actions = button.closest(".event-actions");
+        const message = actions
+            ? actions.querySelector("[data-event-action-message]")
+            : null;
+
+        if (!eventId || button.disabled) {
+            return;
+        }
+
+        const shouldClose = window.confirm(
+            "\u78ba\u5b9a\u8981\u89e3\u9664\u9019\u7b46\u4e8b\u4ef6\uff1f\u89e3\u9664\u5f8c\u72c0\u614b\u5c07\u8b8a\u66f4\u70ba Closed\u3002"
+        );
+
+        if (!shouldClose) {
+            return;
+        }
+
+        button.disabled = true;
+        button.textContent = "\u89e3\u9664\u4e2d...";
+
+        if (message) {
+            message.textContent = "";
+            message.classList.remove("success", "error");
+        }
+
+        try {
+            const response = await fetch(
+                `${confirmEventUrlPrefix}${encodeURIComponent(eventId)}/close/`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": getCookie("csrftoken")
+                    }
+                }
+            );
+            const data = await response.json().catch(function () {
+                return {};
+            });
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || `HTTP ${response.status}`);
+            }
+
+            button.textContent = "\u5df2\u89e3\u9664";
+            button.classList.add("is-closed");
+
+            if (message) {
+                message.textContent = "\u4e8b\u4ef6\u5df2\u89e3\u9664";
+                message.classList.add("success");
+            }
+
+            await fetchDashboardLiveState();
+        } catch (error) {
+            console.error("Failed to close event:", error);
+            button.disabled = false;
+            button.textContent = "\u89e3\u9664\u4e8b\u4ef6";
+
+            if (message) {
+                message.textContent = `\u89e3\u9664\u5931\u6557\uff1a${error.message}`;
+                message.classList.add("error");
+            }
+        }
+    }
+
+    function bindCloseEventHandlers() {
+        const closeButtons = document.querySelectorAll("[data-close-event]");
+
+        closeButtons.forEach(function (button) {
+            button.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                closeEvent(button);
             });
         });
     }
@@ -490,6 +579,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         bindEventItemClickHandlers();
         bindConfirmEventHandlers();
+        bindCloseEventHandlers();
     }
 
     function renderBroadcastLogs(logs) {
@@ -756,6 +846,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     bindEventItemClickHandlers();
     bindConfirmEventHandlers();
+    bindCloseEventHandlers();
     bindStreamHandlers();
 
     fetchDashboardLiveState();

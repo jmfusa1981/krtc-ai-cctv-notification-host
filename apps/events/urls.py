@@ -12,4 +12,9 @@ urlpatterns = [
         views.confirm_event_api,
         name="confirm_event_api",
     ),
+    path(
+        "<int:event_id>/close/",
+        views.close_event_api,
+        name="close_event_api",
+    ),
 ]
