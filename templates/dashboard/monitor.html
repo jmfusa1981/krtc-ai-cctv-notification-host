@@ -32,6 +32,22 @@
                     Camera Tree
                 </button>
 
+                <div class="layout-controls" aria-label="監看版面配置">
+                    <input
+                        type="text"
+                        id="layoutNameInput"
+                        placeholder="Layout 名稱"
+                        maxlength="40"
+                    >
+                    <button type="button" id="saveLayoutButton">儲存</button>
+                    <select id="savedLayoutSelect" aria-label="已儲存 Layout">
+                        <option value="">選擇 Layout</option>
+                    </select>
+                    <button type="button" id="loadLayoutButton" disabled>載入</button>
+                    <button type="button" id="deleteLayoutButton" disabled>刪除</button>
+                    <span id="layoutStatus" aria-live="polite"></span>
+                </div>
+
                 <div class="carousel-controls" aria-label="攝影機分組輪播">
                     <button type="button" id="carouselToggle" disabled>開始輪播</button>
                     <select id="carouselInterval" aria-label="輪播間隔">
