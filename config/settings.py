@@ -182,8 +182,8 @@ LOGOUT_REDIRECT_URL = "/login/"
 # Recommended:
 # Keep "simulation" first.
 # After BroadcastLog workflow is confirmed, change to "microsip_winsound" for real speaker testing.
-#BROADCAST_PLAYBACK_MODE = "simulation"
-BROADCAST_PLAYBACK_MODE = "microsip_winsound"
+BROADCAST_PLAYBACK_MODE = "simulation"
+#BROADCAST_PLAYBACK_MODE = "microsip_winsound"
 
 BROADCAST_PLAY_AFTER_DIAL_DELAY_SECONDS = 1
 BROADCAST_HANGUP_AFTER_AUDIO_MARGIN_SECONDS = 2

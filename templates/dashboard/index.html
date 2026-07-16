@@ -13,6 +13,7 @@
     data-dashboard-live-state-url="{% url 'dashboard:dashboard_live_state_api' %}"
     data-process-pending-broadcast-url="{% url 'notifications:process_pending_broadcast_logs_api' %}"
     data-confirm-event-url-prefix="/api/events/"
+    data-manual-broadcast-url-prefix="/api/notifications/broadcast/event/"
     data-can-process-events="{{ can_process_events|yesno:'true,false' }}"
 >
     <div class="dashboard-layout">
@@ -44,6 +45,27 @@
                 </div>
             </div>
         </header>
+
+        <aside
+            class="dashboard-action-toast"
+            id="dashboardActionToast"
+            role="status"
+            aria-live="polite"
+            hidden
+        >
+            <div class="dashboard-action-toast-copy">
+                <strong id="dashboardActionToastTitle">系統通知</strong>
+                <span id="dashboardActionToastMessage"></span>
+            </div>
+            <div class="dashboard-action-toast-actions">
+                <a href="#broadcastLogTableBody" id="dashboardActionToastLink" hidden>
+                    查看廣播紀錄
+                </a>
+                <button type="button" id="dashboardActionToastClose" aria-label="關閉通知">
+                    ×
+                </button>
+            </div>
+        </aside>
 
         <section class="status-banner" id="eventStatusBanner" aria-label="系統事件狀態">
             <div class="status-banner-main">
@@ -263,6 +285,14 @@
                                             >
                                                 確認事件
                                             </button>
+                                            <button
+                                                type="button"
+                                                class="manual-broadcast-button"
+                                                data-manual-broadcast
+                                                data-event-id="{{ event.id }}"
+                                            >
+                                                手動廣播
+                                            </button>
                                         {% elif event.status == "confirmed" %}
                                             <button
                                                 type="button"
@@ -278,6 +308,14 @@
                                                 data-event-id="{{ event.id }}"
                                             >
                                                 解除事件
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="manual-broadcast-button"
+                                                data-manual-broadcast
+                                                data-event-id="{{ event.id }}"
+                                            >
+                                                手動廣播
                                             </button>
                                         {% endif %}
                                         <span class="event-action-message" data-event-action-message></span>

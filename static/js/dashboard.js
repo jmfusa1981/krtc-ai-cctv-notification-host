@@ -12,15 +12,22 @@ document.addEventListener("DOMContentLoaded", function () {
     const dashboardPollingStatus = document.getElementById("dashboardPollingStatus");
     const processPendingBroadcastButton = document.getElementById("processPendingBroadcastButton");
     const processBroadcastStatus = document.getElementById("processBroadcastStatus");
+    const dashboardActionToast = document.getElementById("dashboardActionToast");
+    const dashboardActionToastTitle = document.getElementById("dashboardActionToastTitle");
+    const dashboardActionToastMessage = document.getElementById("dashboardActionToastMessage");
+    const dashboardActionToastLink = document.getElementById("dashboardActionToastLink");
+    const dashboardActionToastClose = document.getElementById("dashboardActionToastClose");
 
     const liveStateApiUrl = document.body.dataset.dashboardLiveStateUrl;
     const processPendingBroadcastApiUrl = document.body.dataset.processPendingBroadcastUrl;
     const confirmEventUrlPrefix = document.body.dataset.confirmEventUrlPrefix || "/api/events/";
+    const manualBroadcastUrlPrefix = document.body.dataset.manualBroadcastUrlPrefix || "/api/notifications/broadcast/event/";
     const canProcessEvents = document.body.dataset.canProcessEvents === "true";
 
     let lastLatestEventId = null;
     let lastSelectedCameraId = null;
     let lastSelectedEventId = null;
+    let dashboardActionToastTimer = null;
 
     if (!cameraGrid) {
         return;
@@ -45,6 +52,58 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         return value;
+    }
+
+    function wait(milliseconds) {
+        return new Promise(function (resolve) {
+            window.setTimeout(resolve, milliseconds);
+        });
+    }
+
+    function hideDashboardActionToast() {
+        if (dashboardActionToastTimer !== null) {
+            window.clearTimeout(dashboardActionToastTimer);
+            dashboardActionToastTimer = null;
+        }
+
+        if (dashboardActionToast) {
+            dashboardActionToast.hidden = true;
+        }
+    }
+
+    function showDashboardActionToast(title, message, type, options) {
+        if (!dashboardActionToast) {
+            return;
+        }
+
+        const settings = options || {};
+        const duration = Number(settings.duration || 6000);
+
+        dashboardActionToast.classList.remove("is-pending", "is-success", "is-error");
+        dashboardActionToast.classList.add(`is-${type || "pending"}`);
+        dashboardActionToast.hidden = false;
+
+        if (dashboardActionToastTitle) {
+            dashboardActionToastTitle.textContent = title;
+        }
+
+        if (dashboardActionToastMessage) {
+            dashboardActionToastMessage.textContent = message;
+        }
+
+        if (dashboardActionToastLink) {
+            dashboardActionToastLink.hidden = !settings.showBroadcastLink;
+        }
+
+        if (dashboardActionToastTimer !== null) {
+            window.clearTimeout(dashboardActionToastTimer);
+        }
+
+        if (duration > 0) {
+            dashboardActionToastTimer = window.setTimeout(function () {
+                hideDashboardActionToast();
+            }, duration);
+        }
     }
 
     function getCookie(name) {
@@ -166,6 +225,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     >
                         \u78ba\u8a8d\u4e8b\u4ef6
                     </button>
+                    <button
+                        type="button"
+                        class="manual-broadcast-button"
+                        data-manual-broadcast
+                        data-event-id="${escapeHtml(eventId)}"
+                    >
+                        \u624b\u52d5\u5ee3\u64ad
+                    </button>
                     <span class="event-action-message" data-event-action-message></span>
                 </div>
             `;
@@ -188,6 +255,14 @@ document.addEventListener("DOMContentLoaded", function () {
                         data-event-id="${escapeHtml(eventId)}"
                     >
                         \u89e3\u9664\u4e8b\u4ef6
+                    </button>
+                    <button
+                        type="button"
+                        class="manual-broadcast-button"
+                        data-manual-broadcast
+                        data-event-id="${escapeHtml(eventId)}"
+                    >
+                        \u624b\u52d5\u5ee3\u64ad
                     </button>
                     <span class="event-action-message" data-event-action-message></span>
                 </div>
@@ -345,6 +420,116 @@ document.addEventListener("DOMContentLoaded", function () {
                 event.preventDefault();
                 event.stopPropagation();
                 closeEvent(button);
+            });
+        });
+    }
+
+    async function manualEventBroadcast(button) {
+        const eventId = button.dataset.eventId;
+        const actions = button.closest(".event-actions");
+        const message = actions
+            ? actions.querySelector("[data-event-action-message]")
+            : null;
+
+        if (!eventId || button.disabled) {
+            return;
+        }
+
+        const shouldBroadcast = window.confirm(
+            "\u78ba\u5b9a\u8981\u5c0d\u9019\u7b46\u4e8b\u4ef6\u57f7\u884c\u624b\u52d5\u5ee3\u64ad\uff1f"
+        );
+
+        if (!shouldBroadcast) {
+            return;
+        }
+
+        button.disabled = true;
+        button.textContent = "\u5ee3\u64ad\u8655\u7406\u4e2d...";
+        const requestStartedAt = Date.now();
+
+        showDashboardActionToast(
+            "\u624b\u52d5\u5ee3\u64ad\u8655\u7406\u4e2d",
+            `Event ${eventId} \u6b63\u5728\u5efa\u7acb\u8207\u8655\u7406\u5ee3\u64ad\u4efb\u52d9...`,
+            "pending",
+            {duration: 0}
+        );
+
+        if (message) {
+            message.textContent = "";
+            message.classList.remove("success", "error");
+        }
+
+        try {
+            const response = await fetch(
+                `${manualBroadcastUrlPrefix}${encodeURIComponent(eventId)}/manual/`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": getCookie("csrftoken")
+                    }
+                }
+            );
+            const data = await response.json().catch(function () {
+                return {};
+            });
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || `HTTP ${response.status}`);
+            }
+
+            const elapsed = Date.now() - requestStartedAt;
+
+            if (elapsed < 800) {
+                await wait(800 - elapsed);
+            }
+
+            button.textContent = "\u5ee3\u64ad\u6210\u529f";
+            button.classList.add("is-success");
+
+            if (message) {
+                const speakerCode = data.speaker_code || "Speaker";
+                const audioCode = data.audio_code || "Audio";
+                message.textContent = `\u5df2\u5b8c\u6210\uff1a${speakerCode} / ${audioCode}`;
+                message.classList.add("success");
+            }
+
+            showDashboardActionToast(
+                "\u624b\u52d5\u5ee3\u64ad\u5b8c\u6210",
+                `Log ${data.broadcast_log_id} \uff5c ${data.speaker_code || "Speaker"} \uff5c ${data.audio_code || "Audio"} \uff5c ${data.status_display || data.status || "Success"}`,
+                "success",
+                {duration: 7000, showBroadcastLink: true}
+            );
+
+            await fetchDashboardLiveState();
+        } catch (error) {
+            console.error("Failed to broadcast event:", error);
+            button.disabled = false;
+            button.textContent = "\u624b\u52d5\u5ee3\u64ad";
+
+            if (message) {
+                message.textContent = `\u5ee3\u64ad\u5931\u6557\uff1a${error.message}`;
+                message.classList.add("error");
+            }
+
+            showDashboardActionToast(
+                "\u624b\u52d5\u5ee3\u64ad\u5931\u6557",
+                error.message,
+                "error",
+                {duration: 9000}
+            );
+        }
+    }
+
+    function bindManualBroadcastHandlers() {
+        const broadcastButtons = document.querySelectorAll("[data-manual-broadcast]");
+
+        broadcastButtons.forEach(function (button) {
+            button.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                manualEventBroadcast(button);
             });
         });
     }
@@ -580,6 +765,7 @@ document.addEventListener("DOMContentLoaded", function () {
         bindEventItemClickHandlers();
         bindConfirmEventHandlers();
         bindCloseEventHandlers();
+        bindManualBroadcastHandlers();
     }
 
     function renderBroadcastLogs(logs) {
@@ -844,9 +1030,16 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    if (dashboardActionToastClose) {
+        dashboardActionToastClose.addEventListener("click", function () {
+            hideDashboardActionToast();
+        });
+    }
+
     bindEventItemClickHandlers();
     bindConfirmEventHandlers();
     bindCloseEventHandlers();
+    bindManualBroadcastHandlers();
     bindStreamHandlers();
 
     fetchDashboardLiveState();

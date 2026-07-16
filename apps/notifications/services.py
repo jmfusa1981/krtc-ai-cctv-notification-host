@@ -236,7 +236,10 @@ def build_request_payload(playback_mode, speaker, audio_file, broadcast_log):
         except NotImplementedError:
             audio_file_path = audio_file.file.name
 
+    existing_payload = broadcast_log.request_payload or {}
+
     return {
+        **existing_payload,
         "mode": playback_mode,
         "broadcast_log_id": broadcast_log.id,
 
