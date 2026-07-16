@@ -12,6 +12,8 @@
 <body
     data-dashboard-live-state-url="{% url 'dashboard:dashboard_live_state_api' %}"
     data-process-pending-broadcast-url="{% url 'notifications:process_pending_broadcast_logs_api' %}"
+    data-confirm-event-url-prefix="/api/events/"
+    data-can-process-events="{{ can_process_events|yesno:'true,false' }}"
 >
     <div class="dashboard-layout">
         <header class="dashboard-header">
@@ -235,7 +237,7 @@
                                     <p class="event-meta">攝影機：未指定</p>
                                 {% endif %}
 
-                                <p>
+                                <p class="event-status" data-event-status>
                                     狀態：
                                     {% if event.get_status_display %}
                                         {{ event.get_status_display }}
@@ -249,6 +251,30 @@
                                 {% endif %}
 
                                 <p>時間：{{ event.created_at|date:"Y-m-d H:i:s" }}</p>
+
+                                {% if can_process_events %}
+                                    <div class="event-actions">
+                                        {% if event.status == "new" or event.status == "processing" %}
+                                            <button
+                                                type="button"
+                                                class="confirm-event-button"
+                                                data-confirm-event
+                                                data-event-id="{{ event.id }}"
+                                            >
+                                                確認事件
+                                            </button>
+                                        {% elif event.status == "confirmed" %}
+                                            <button
+                                                type="button"
+                                                class="confirm-event-button is-confirmed"
+                                                disabled
+                                            >
+                                                已確認
+                                            </button>
+                                        {% endif %}
+                                        <span class="event-action-message" data-event-action-message></span>
+                                    </div>
+                                {% endif %}
                             </div>
                         {% empty %}
                             <div class="empty-state">

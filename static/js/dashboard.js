@@ -15,6 +15,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const liveStateApiUrl = document.body.dataset.dashboardLiveStateUrl;
     const processPendingBroadcastApiUrl = document.body.dataset.processPendingBroadcastUrl;
+    const confirmEventUrlPrefix = document.body.dataset.confirmEventUrlPrefix || "/api/events/";
+    const canProcessEvents = document.body.dataset.canProcessEvents === "true";
 
     let lastLatestEventId = null;
     let lastSelectedCameraId = null;
@@ -43,6 +45,27 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         return value;
+    }
+
+    function getCookie(name) {
+        const cookies = document.cookie ? document.cookie.split(";") : [];
+
+        for (const cookie of cookies) {
+            const trimmedCookie = cookie.trim();
+            const separatorIndex = trimmedCookie.indexOf("=");
+            const cookieName = separatorIndex >= 0
+                ? trimmedCookie.slice(0, separatorIndex)
+                : trimmedCookie;
+
+            if (cookieName === name) {
+                const cookieValue = separatorIndex >= 0
+                    ? trimmedCookie.slice(separatorIndex + 1)
+                    : "";
+                return decodeURIComponent(cookieValue);
+            }
+        }
+
+        return "";
     }
 
     function setPollingStatus(message, isError) {
@@ -123,6 +146,116 @@ document.addEventListener("DOMContentLoaded", function () {
                 if (cameraId) {
                     focusEventCamera(cameraId);
                 }
+            });
+        });
+    }
+
+    function buildConfirmEventButton(eventId, eventStatus) {
+        if (!canProcessEvents) {
+            return "";
+        }
+
+        if (eventStatus === "new" || eventStatus === "processing") {
+            return `
+                <div class="event-actions">
+                    <button
+                        type="button"
+                        class="confirm-event-button"
+                        data-confirm-event
+                        data-event-id="${escapeHtml(eventId)}"
+                    >
+                        \u78ba\u8a8d\u4e8b\u4ef6
+                    </button>
+                    <span class="event-action-message" data-event-action-message></span>
+                </div>
+            `;
+        }
+
+        if (eventStatus === "confirmed") {
+            return `
+                <div class="event-actions">
+                    <button
+                        type="button"
+                        class="confirm-event-button is-confirmed"
+                        disabled
+                    >
+                        \u5df2\u78ba\u8a8d
+                    </button>
+                </div>
+            `;
+        }
+
+        return "";
+    }
+
+    async function confirmEvent(button) {
+        const eventId = button.dataset.eventId;
+        const actions = button.closest(".event-actions");
+        const message = actions
+            ? actions.querySelector("[data-event-action-message]")
+            : null;
+
+        if (!eventId || button.disabled) {
+            return;
+        }
+
+        button.disabled = true;
+        button.textContent = "\u78ba\u8a8d\u4e2d...";
+
+        if (message) {
+            message.textContent = "";
+            message.classList.remove("success", "error");
+        }
+
+        try {
+            const response = await fetch(
+                `${confirmEventUrlPrefix}${encodeURIComponent(eventId)}/confirm/`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": getCookie("csrftoken")
+                    }
+                }
+            );
+            const data = await response.json().catch(function () {
+                return {};
+            });
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || `HTTP ${response.status}`);
+            }
+
+            button.textContent = "\u5df2\u78ba\u8a8d";
+            button.classList.add("is-confirmed");
+
+            if (message) {
+                message.textContent = "\u4e8b\u4ef6\u5df2\u78ba\u8a8d";
+                message.classList.add("success");
+            }
+
+            await fetchDashboardLiveState();
+        } catch (error) {
+            console.error("Failed to confirm event:", error);
+            button.disabled = false;
+            button.textContent = "\u78ba\u8a8d\u4e8b\u4ef6";
+
+            if (message) {
+                message.textContent = `\u78ba\u8a8d\u5931\u6557\uff1a${error.message}`;
+                message.classList.add("error");
+            }
+        }
+    }
+
+    function bindConfirmEventHandlers() {
+        const confirmButtons = document.querySelectorAll("[data-confirm-event]");
+
+        confirmButtons.forEach(function (button) {
+            button.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                confirmEvent(button);
             });
         });
     }
@@ -312,6 +445,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const cameraId = event.camera_id;
             const eventType = normalizeText(event.event_type_display, event.event_type || "\u672a\u77e5\u4e8b\u4ef6");
             const status = normalizeText(event.status_display, event.status || "unknown");
+            const statusCode = normalizeText(event.status, "unknown");
             const cameraCode = normalizeText(event.camera_code, "");
             const cameraName = normalizeText(event.camera_name, "");
             const createdAt = normalizeText(event.created_at, "");
@@ -337,13 +471,14 @@ document.addEventListener("DOMContentLoaded", function () {
             item.innerHTML = `
                 <h3 class="event-type">${escapeHtml(eventType)}</h3>
                 <p class="event-meta">${cameraText}</p>
-                <p>\u72c0\u614b\uff1a${escapeHtml(status)}</p>
+                <p class="event-status" data-event-status>\u72c0\u614b\uff1a${escapeHtml(status)}</p>
                 ${
                     confidence !== null && confidence !== undefined && confidence !== ""
                         ? `<p>\u4fe1\u5fc3\u5206\u6578\uff1a${escapeHtml(confidence)}</p>`
                         : ""
                 }
                 <p>\u6642\u9593\uff1a${escapeHtml(createdAt)}</p>
+                ${buildConfirmEventButton(eventId, statusCode)}
             `;
 
             eventList.appendChild(item);
@@ -354,6 +489,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         bindEventItemClickHandlers();
+        bindConfirmEventHandlers();
     }
 
     function renderBroadcastLogs(logs) {
@@ -619,6 +755,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     bindEventItemClickHandlers();
+    bindConfirmEventHandlers();
     bindStreamHandlers();
 
     fetchDashboardLiveState();

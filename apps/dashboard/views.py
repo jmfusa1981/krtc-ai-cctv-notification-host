@@ -4,6 +4,8 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 
+from apps.accounts.permissions import can_process_events
+
 
 def get_model_or_none(app_label, model_name):
     """
@@ -54,6 +56,7 @@ def dashboard_home(request):
         "active_broadcast_rules": get_active_count(BroadcastRule),
         "pending_broadcast_logs": get_pending_broadcast_log_count(),
         "recent_broadcast_logs": get_recent_broadcast_logs(),
+        "can_process_events": can_process_events(request.user),
     }
 
     return render(request, "dashboard/index.html", context)
@@ -111,6 +114,7 @@ def dashboard_live_state_api(request):
         "server_time": timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M:%S"),
         "highlighted_camera_id": highlighted_camera_id,
         "pending_broadcast_count": get_pending_broadcast_log_count(),
+        "can_process_events": can_process_events(request.user),
         "cameras": [
             serialize_camera(camera)
             for camera in cameras

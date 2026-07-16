@@ -1,10 +1,13 @@
 import json
 
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from apps.accounts.permissions import can_process_events
 from apps.cameras.models import Camera
 from apps.events.models import Event
 from apps.notifications.models import BroadcastLog, BroadcastRule
@@ -209,3 +212,75 @@ def find_broadcast_rules(event_type, camera):
         "priority",
         "rule_code",
     )
+
+@login_required
+@require_POST
+def confirm_event_api(request, event_id):
+    """Confirm an event without deleting its history."""
+
+    if not can_process_events(request.user):
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "You do not have permission to confirm events.",
+            },
+            status=403,
+        )
+
+    event = get_object_or_404(
+        Event.objects.select_related("camera"),
+        pk=event_id,
+    )
+
+    if event.status in {"dismissed", "closed"}:
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "Dismissed or closed events cannot be confirmed.",
+                "event": serialize_event_action_result(event),
+            },
+            status=409,
+        )
+
+    if event.status not in {"new", "processing", "confirmed"}:
+        return JsonResponse(
+            {
+                "success": False,
+                "message": f"Unsupported event status: {event.status}",
+                "event": serialize_event_action_result(event),
+            },
+            status=409,
+        )
+
+    changed = event.status != "confirmed"
+
+    if changed:
+        event.status = "confirmed"
+        update_fields = ["status"]
+
+        if hasattr(event, "updated_at"):
+            update_fields.append("updated_at")
+
+        event.save(update_fields=update_fields)
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": "Event confirmed successfully.",
+            "changed": changed,
+            "event": serialize_event_action_result(event),
+        }
+    )
+
+
+def serialize_event_action_result(event):
+    camera = getattr(event, "camera", None)
+
+    return {
+        "id": event.id,
+        "status": event.status,
+        "status_display": event.get_status_display(),
+        "camera_id": getattr(event, "camera_id", None),
+        "camera_code": getattr(camera, "camera_code", "") if camera else "",
+        "updated_at": event.updated_at.isoformat() if hasattr(event, "updated_at") else None,
+    }
