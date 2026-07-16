@@ -21,6 +21,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const deleteLayoutButton = document.getElementById("deleteLayoutButton");
     const layoutStatus = document.getElementById("layoutStatus");
     const LAYOUT_STORAGE_KEY = "krtc.monitor.layouts.v1";
+    const liveStateUrl = document.body.dataset.liveStateUrl;
+    const monitorEventAlert = document.getElementById("monitorEventAlert");
+    const monitorEventType = document.getElementById("monitorEventType");
+    const monitorEventCamera = document.getElementById("monitorEventCamera");
+    const monitorEventTime = document.getElementById("monitorEventTime");
+    const dismissMonitorEventAlert = document.getElementById("dismissMonitorEventAlert");
     const MAX_SLOT_COUNT = 16;
     let monitorSlots = [];
     let selectedSlot = null;
@@ -28,6 +34,9 @@ document.addEventListener("DOMContentLoaded", function () {
     let currentGroupIndex = 0;
     let carouselTimer = null;
     let isCarouselRunning = false;
+    let lastObservedEventId = null;
+    let eventPollingTimer = null;
+    let eventHighlightTimer = null;
 
     if (!monitorGrid || buttons.length === 0) {
         return;
@@ -293,6 +302,175 @@ document.addEventListener("DOMContentLoaded", function () {
                 cameraTreeToggle.setAttribute("aria-expanded", String(!isCollapsed));
             });
         }
+    }
+
+    function clearEventHighlights() {
+        monitorSlots.forEach(function (slot) {
+            slot.classList.remove("has-event-alert");
+        });
+
+        cameraCards.forEach(function (card) {
+            card.classList.remove("has-event-alert");
+        });
+
+        cameraTreeItems.forEach(function (item) {
+            item.classList.remove("has-event-alert");
+        });
+
+        if (eventHighlightTimer !== null) {
+            window.clearTimeout(eventHighlightTimer);
+            eventHighlightTimer = null;
+        }
+    }
+
+    function cameraMatchesEvent(element, cameraId, cameraCode) {
+        const elementCameraId = String(element.dataset.cameraId || "");
+        const elementCameraCode = String(element.dataset.cameraCode || "").toUpperCase();
+        const eventCameraId = String(cameraId || "");
+        const eventCameraCode = String(cameraCode || "").toUpperCase();
+
+        return (
+            (eventCameraId && elementCameraId === eventCameraId) ||
+            (eventCameraCode && elementCameraCode === eventCameraCode)
+        );
+    }
+
+    function focusMonitorEventCamera(cameraId, cameraCode) {
+        clearEventHighlights();
+
+        const cameraCard = Array.from(cameraCards).find(function (card) {
+            return cameraMatchesEvent(card, cameraId, cameraCode);
+        });
+        const cameraTreeItem = Array.from(cameraTreeItems).find(function (item) {
+            return cameraMatchesEvent(item, cameraId, cameraCode);
+        });
+
+        if (cameraCard) {
+            const slot = cameraCard.closest("[data-monitor-slot]");
+
+            if (slot) {
+                const slotIndex = Number(slot.dataset.slotIndex);
+                currentGroupIndex = Math.floor(slotIndex / currentGridSize);
+                renderCurrentCameraGroup();
+                selectSlot(slot);
+                slot.classList.add("has-event-alert");
+            }
+
+            cameraCard.classList.add("has-event-alert");
+        }
+
+        if (cameraTreeItem) {
+            cameraTreeItem.classList.add("has-event-alert");
+        }
+
+    }
+
+    function showMonitorEventAlert(event) {
+        if (!event || !monitorEventAlert) {
+            return;
+        }
+
+        const eventType =
+            event.event_type_display ||
+            event.event_type ||
+            "\u672a\u77e5\u4e8b\u4ef6";
+        const cameraCode = event.camera_code || "";
+        const cameraName = event.camera_name || "";
+        const cameraText =
+            cameraCode || cameraName
+                ? `${cameraCode}\uff5c${cameraName}`
+                : "\u672a\u6307\u5b9a\u651d\u5f71\u6a5f";
+
+        if (monitorEventType) {
+            monitorEventType.textContent = eventType;
+        }
+
+        if (monitorEventCamera) {
+            monitorEventCamera.textContent = cameraText;
+        }
+
+        if (monitorEventTime) {
+            monitorEventTime.textContent = event.created_at || "--";
+        }
+
+        monitorEventAlert.hidden = false;
+
+        if (event.camera_id || cameraCode) {
+            focusMonitorEventCamera(event.camera_id, cameraCode);
+        }
+    }
+
+    function hideMonitorEventAlert() {
+        if (monitorEventAlert) {
+            monitorEventAlert.hidden = true;
+        }
+
+        clearEventHighlights();
+    }
+
+    async function pollMonitorEvents() {
+        if (!liveStateUrl) {
+            return;
+        }
+
+        try {
+            const response = await fetch(liveStateUrl, {
+                method: "GET",
+                cache: "no-store",
+                headers: {
+                    "Accept": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Monitor event polling HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            const events = Array.isArray(data.events) ? data.events : [];
+            const latestEvent = events[0] || null;
+
+            if (!latestEvent || latestEvent.id === undefined || latestEvent.id === null) {
+                return;
+            }
+
+            if (lastObservedEventId === null) {
+                lastObservedEventId = String(latestEvent.id);
+                return;
+            }
+
+            if (String(latestEvent.id) !== String(lastObservedEventId)) {
+                lastObservedEventId = String(latestEvent.id);
+                showMonitorEventAlert(latestEvent);
+            }
+        } catch (error) {
+            console.error("Failed to poll monitor events:", error);
+        }
+    }
+
+    function bindMonitorEventNotifications() {
+        if (dismissMonitorEventAlert) {
+            dismissMonitorEventAlert.addEventListener("click", function () {
+                hideMonitorEventAlert();
+            });
+        }
+
+        pollMonitorEvents();
+
+        eventPollingTimer = window.setInterval(function () {
+            pollMonitorEvents();
+        }, 5000);
+
+        window.addEventListener("beforeunload", function () {
+            if (eventPollingTimer !== null) {
+                window.clearInterval(eventPollingTimer);
+            }
+
+            if (eventHighlightTimer !== null) {
+                window.clearTimeout(eventHighlightTimer);
+            }
+        });
     }
 
     function setLayoutStatus(message) {
@@ -998,6 +1176,7 @@ document.addEventListener("DOMContentLoaded", function () {
     bindCameraGroupNavigation();
     bindCarouselControls();
     bindLayoutControls();
+    bindMonitorEventNotifications();
     updateTreeAssignments();
 
     cameraStreams.forEach(function (stream) {

@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="{% static 'css/monitor.css' %}">
 </head>
 
-<body>
+<body data-live-state-url="{% url 'dashboard:dashboard_live_state_api' %}">
     <div class="monitor-wall-layout">
         <header class="monitor-toolbar">
             <div class="monitor-title">
@@ -85,6 +85,20 @@
             </div>
         </header>
 
+        <section class="monitor-event-alert" id="monitorEventAlert" hidden aria-live="assertive">
+            <div class="monitor-event-alert-indicator" aria-hidden="true"></div>
+            <div class="monitor-event-alert-copy">
+                <span>NEW AI EVENT</span>
+                <strong id="monitorEventType">偵測到新事件</strong>
+                <p id="monitorEventCamera">等待事件資料</p>
+                <time id="monitorEventTime">--</time>
+            </div>
+            <div class="monitor-event-alert-actions">
+                <a href="{% url 'dashboard:home' %}">前往 Dashboard</a>
+                <button type="button" id="dismissMonitorEventAlert" aria-label="關閉事件提示">×</button>
+            </div>
+        </section>
+
         <main class="monitor-content" id="monitorContent">
             <aside class="camera-sidebar" id="cameraSidebar">
                 <div class="camera-sidebar-header">
@@ -111,6 +125,7 @@
                             draggable="true"
                             data-camera-tree-item
                             data-camera-id="{{ camera.id }}"
+                            data-camera-code="{{ camera.camera_code }}"
                             data-camera-search="{{ camera.camera_code }} {{ camera.name }} {{ camera.area }}"
                         >
                             <span class="camera-tree-status status-{{ camera.status|default:'unknown' }}"></span>
