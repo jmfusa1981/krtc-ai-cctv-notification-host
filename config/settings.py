@@ -216,6 +216,7 @@ PJSIP_PORT_STEP = int(os.getenv("PJSIP_PORT_STEP", "2"))
 PJSIP_LOG_DIR = BASE_DIR / "logs" / "pjsip"
 PJSIP_LOG_LEVEL = int(os.getenv("PJSIP_LOG_LEVEL", "5"))
 PJSIP_APP_LOG_LEVEL = int(os.getenv("PJSIP_APP_LOG_LEVEL", "4"))
+PJSIP_EXTRA_WAIT_SECONDS = float(os.getenv("PJSIP_EXTRA_WAIT_SECONDS", "8"))
 PJSIP_DISABLED_CODECS = [
     "speex/16000",
     "speex/8000",

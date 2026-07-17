@@ -2,6 +2,7 @@ import ipaddress
 import re
 import socket
 import subprocess
+import time
 import wave
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,17 @@ class PjsipPlaybackPlan:
 
     def command_text(self) -> str:
         return subprocess.list2cmdline(list(self.command))
+
+
+@dataclass(frozen=True)
+class PjsipPlaybackResult:
+    success: bool
+    message: str
+    log_path: Path
+    confirmed: bool
+    media_active: bool
+    disconnected: bool
+    return_code: int | None
 
 
 def build_pjsip_playback_plan(
@@ -119,6 +131,107 @@ def build_pjsip_playback_plan(
         local_rtp_port=local_rtp_port,
         audio_duration_seconds=duration_seconds,
         command=tuple(command),
+    )
+
+
+def execute_pjsip_playback_plan(plan, extra_wait_seconds=8.0):
+    """Execute one pre-built plan and verify SIP/media success in its log."""
+
+    plan.log_path.parent.mkdir(parents=True, exist_ok=True)
+    plan.log_path.write_text("", encoding="utf-8")
+    timeout = plan.audio_duration_seconds + max(2.0, float(extra_wait_seconds))
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    try:
+        process = subprocess.Popen(
+            list(plan.command),
+            cwd=str(plan.executable_path.parent),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            creationflags=creation_flags,
+        )
+    except OSError as exc:
+        raise PjsipPreflightError(f"Failed to start PJSUA: {exc}") from exc
+
+    deadline = time.monotonic() + timeout
+    confirmed = False
+    media_active = False
+    disconnected = False
+
+    try:
+        while time.monotonic() < deadline:
+            log_text = _read_log(plan.log_path)
+            confirmed = confirmed or "Call 0 state changed to CONFIRMED" in log_text
+            media_active = media_active or (
+                "status is Active" in log_text and "PCMU" in log_text
+            )
+            disconnected = disconnected or (
+                "Call 0 is DISCONNECTED [reason=200 (OK)]" in log_text
+            )
+
+            failure = _find_call_failure(log_text)
+            if failure:
+                _stop_process(process)
+                return PjsipPlaybackResult(
+                    success=False,
+                    message=failure,
+                    log_path=plan.log_path,
+                    confirmed=confirmed,
+                    media_active=media_active,
+                    disconnected=disconnected,
+                    return_code=process.poll(),
+                )
+
+            if confirmed and media_active and disconnected:
+                _stop_process(process)
+                return PjsipPlaybackResult(
+                    success=True,
+                    message="PJSIP call confirmed, PCMU media active, and call disconnected normally.",
+                    log_path=plan.log_path,
+                    confirmed=True,
+                    media_active=True,
+                    disconnected=True,
+                    return_code=process.poll(),
+                )
+
+            if process.poll() is not None:
+                break
+
+            time.sleep(0.2)
+    finally:
+        if process.poll() is None:
+            _stop_process(process)
+
+    log_text = _read_log(plan.log_path)
+    confirmed = confirmed or "Call 0 state changed to CONFIRMED" in log_text
+    media_active = media_active or (
+        "status is Active" in log_text and "PCMU" in log_text
+    )
+    disconnected = disconnected or (
+        "Call 0 is DISCONNECTED [reason=200 (OK)]" in log_text
+    )
+    failure = _find_call_failure(log_text)
+
+    if failure:
+        message = failure
+    elif process.returncode is not None and process.returncode != 0:
+        message = f"PJSUA exited with code {process.returncode}."
+    else:
+        message = (
+            "PJSIP playback verification timed out or required success markers "
+            "were not found."
+        )
+
+    return PjsipPlaybackResult(
+        success=False,
+        message=message,
+        log_path=plan.log_path,
+        confirmed=confirmed,
+        media_active=media_active,
+        disconnected=disconnected,
+        return_code=process.returncode,
     )
 
 
@@ -212,3 +325,43 @@ def _assert_udp_port_available(local_ip, port, label):
     finally:
         udp_socket.close()
 
+
+def _read_log(log_path):
+    try:
+        return log_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def _find_call_failure(log_text):
+    checks = (
+        ("WSAEADDRINUSE", "PJSIP local SIP or RTP port is already in use."),
+        ("Address already in use", "PJSIP local SIP or RTP port is already in use."),
+        ("bind() error", "PJSIP could not bind the configured local port."),
+        ("Response msg 404/INVITE", "Speaker returned SIP 404 Not Found."),
+        ("Response msg 408/INVITE", "Speaker call timed out with SIP 408."),
+        ("Response msg 480/INVITE", "Speaker is temporarily unavailable (SIP 480)."),
+        ("Response msg 486/INVITE", "Speaker is busy (SIP 486)."),
+        ("Response msg 503/INVITE", "Speaker service is unavailable (SIP 503)."),
+    )
+    for marker, message in checks:
+        if marker in log_text:
+            return message
+    return None
+
+
+def _stop_process(process):
+    if process.poll() is not None:
+        return
+    try:
+        if process.stdin:
+            process.stdin.write("h\nq\n")
+            process.stdin.flush()
+        process.wait(timeout=4)
+    except (OSError, subprocess.TimeoutExpired):
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
