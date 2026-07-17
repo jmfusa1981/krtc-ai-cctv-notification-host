@@ -195,3 +195,34 @@ BROADCAST_MICROSIP_PATHS = [
     r"C:\Program Files\MicroSIP\microsip.exe",
     r"C:\Program Files (x86)\MicroSIP\microsip.exe",
 ]
+
+
+# Step 19.5 PJSIP / PJSUA playback settings
+#
+# The executable and its OpenSSL DLL dependencies are installed outside Git:
+#   C:\krtc-tools\pjsip\pjsua.exe
+#
+# Step 19.5A only uses these values for the pjsip_preflight dry-run command.
+# BROADCAST_PLAYBACK_MODE remains "simulation" and no Speaker is called.
+PJSIP_EXECUTABLE_PATH = os.getenv(
+    "PJSIP_EXECUTABLE_PATH",
+    r"C:\krtc-tools\pjsip\pjsua.exe",
+)
+PJSIP_LOCAL_IP = os.getenv("PJSIP_LOCAL_IP", "")
+PJSIP_ADVERTISE_IP = os.getenv("PJSIP_ADVERTISE_IP", PJSIP_LOCAL_IP)
+PJSIP_LOCAL_SIP_PORT_BASE = int(os.getenv("PJSIP_LOCAL_SIP_PORT_BASE", "64882"))
+PJSIP_LOCAL_RTP_PORT_BASE = int(os.getenv("PJSIP_LOCAL_RTP_PORT_BASE", "4004"))
+PJSIP_PORT_STEP = int(os.getenv("PJSIP_PORT_STEP", "2"))
+PJSIP_LOG_DIR = BASE_DIR / "logs" / "pjsip"
+PJSIP_LOG_LEVEL = int(os.getenv("PJSIP_LOG_LEVEL", "5"))
+PJSIP_APP_LOG_LEVEL = int(os.getenv("PJSIP_APP_LOG_LEVEL", "4"))
+PJSIP_DISABLED_CODECS = [
+    "speex/16000",
+    "speex/8000",
+    "speex/32000",
+    "GSM/8000",
+    "iLBC/8000",
+    "G722/8000",
+    "G7221/16000",
+    "G7221/32000",
+]
