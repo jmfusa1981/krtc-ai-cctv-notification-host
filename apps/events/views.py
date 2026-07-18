@@ -1,6 +1,8 @@
 import json
+import logging
 
 from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -11,6 +13,14 @@ from apps.accounts.permissions import can_process_events
 from apps.cameras.models import Camera
 from apps.events.models import Event
 from apps.notifications.models import BroadcastLog, BroadcastRule
+from apps.notifications.services import (
+    get_broadcast_playback_mode,
+    mark_broadcast_failed,
+    process_single_broadcast_log,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -25,10 +35,8 @@ def ai_event_trigger_api(request):
     3. 建立 Event
     4. 依 event_type + camera 查找 BroadcastRule
     5. 建立 BroadcastLog
-    6. 回傳事件與廣播任務建立結果
-
-    注意：
-    本階段只建立 BroadcastLog，不實際播放 IP Speaker。
+    6. 依目前 playback mode 自動執行廣播
+    7. 回傳事件與廣播結果
     """
 
     try:
@@ -77,48 +85,120 @@ def ai_event_trigger_api(request):
             status=404,
         )
 
-    event = create_event_safely(
-        camera=camera,
-        event_type=event_type,
-        confidence=confidence,
-        payload=payload,
-    )
+    with transaction.atomic():
+        event = create_event_safely(
+            camera=camera,
+            event_type=event_type,
+            confidence=confidence,
+            payload=payload,
+        )
 
-    matched_rules = find_broadcast_rules(
-        event_type=event_type,
-        camera=camera,
+    matched_rules = list(
+        find_broadcast_rules(
+            event_type=event_type,
+            camera=camera,
+        )
     )
 
     broadcast_logs = []
 
     for rule in matched_rules:
-        broadcast_log = BroadcastLog.objects.create(
-            event=event,
-            rule=rule,
+        active_log = BroadcastLog.objects.filter(
             speaker=rule.speaker,
-            audio_file=rule.audio_file,
-            status=BroadcastLog.STATUS_PENDING,
-            request_payload={
-                "source": "ai_event_trigger_api",
-                "camera_code": camera.camera_code,
-                "event_type": event_type,
-                "confidence": confidence,
-                "location_note": location_note,
-                "message": message,
-                "speaker_code": rule.speaker.speaker_code,
-                "speaker_sip_uri": rule.speaker.resolved_sip_uri,
-                "audio_code": rule.audio_file.audio_code,
-                "audio_name": rule.audio_file.name,
-                "raw_payload": payload,
-            },
-            message="Broadcast task created. IP Speaker playback integration pending.",
-            requested_at=timezone.now(),
-        )
+            status__in=[
+                BroadcastLog.STATUS_PENDING,
+                BroadcastLog.STATUS_PLAYING,
+            ],
+        ).order_by("created_at").first()
 
+        if active_log is not None:
+            broadcast_logs.append(
+                serialize_busy_broadcast_result(rule, active_log)
+            )
+            continue
+
+        try:
+            with transaction.atomic():
+                broadcast_log = BroadcastLog.objects.create(
+                    event=event,
+                    rule=rule,
+                    speaker=rule.speaker,
+                    audio_file=rule.audio_file,
+                    status=BroadcastLog.STATUS_PENDING,
+                    request_payload={
+                        "source": "ai_event_trigger_api",
+                        "mode": get_broadcast_playback_mode(),
+                        "camera_code": camera.camera_code,
+                        "event_type": event_type,
+                        "confidence": confidence,
+                        "location_note": location_note,
+                        "message": message,
+                        "speaker_code": rule.speaker.speaker_code,
+                        "speaker_sip_uri": rule.speaker.resolved_sip_uri,
+                        "audio_code": rule.audio_file.audio_code,
+                        "audio_name": rule.audio_file.name,
+                        "raw_payload": payload,
+                    },
+                    message="Automatic broadcast task created.",
+                    requested_at=timezone.now(),
+                )
+        except IntegrityError:
+            active_log = BroadcastLog.objects.filter(
+                speaker=rule.speaker,
+                status__in=[
+                    BroadcastLog.STATUS_PENDING,
+                    BroadcastLog.STATUS_PLAYING,
+                ],
+            ).order_by("created_at").first()
+            broadcast_logs.append(
+                serialize_busy_broadcast_result(rule, active_log)
+            )
+            continue
+
+        try:
+            process_result = process_single_broadcast_log(broadcast_log)
+        except Exception as exc:  # Keep the event API usable and retain an audit log.
+            logger.exception(
+                "Automatic broadcast failed unexpectedly. log_id=%s",
+                broadcast_log.id,
+            )
+            broadcast_log.refresh_from_db()
+            if broadcast_log.status in {
+                BroadcastLog.STATUS_PENDING,
+                BroadcastLog.STATUS_PLAYING,
+            }:
+                process_result = mark_broadcast_failed(
+                    log=broadcast_log,
+                    message=f"Unexpected automatic broadcast error: {exc}",
+                    response_payload={
+                        "success": False,
+                        "mode": get_broadcast_playback_mode(),
+                        "reason": "unexpected_auto_broadcast_error",
+                        "error_type": type(exc).__name__,
+                    },
+                )
+            else:
+                process_result = {
+                    "broadcast_log_id": broadcast_log.id,
+                    "status": broadcast_log.status,
+                    "message": broadcast_log.message,
+                }
+
+        broadcast_log.refresh_from_db()
+        response_payload = broadcast_log.response_payload or {}
         broadcast_logs.append(
             {
                 "id": broadcast_log.id,
                 "status": broadcast_log.status,
+                "message": process_result.get(
+                    "message",
+                    broadcast_log.message,
+                ),
+                "mode": response_payload.get(
+                    "mode",
+                    get_broadcast_playback_mode(),
+                ),
+                "reason": response_payload.get("reason"),
                 "rule_code": rule.rule_code,
                 "speaker_code": rule.speaker.speaker_code,
                 "speaker_sip_uri": rule.speaker.resolved_sip_uri,
@@ -141,13 +221,34 @@ def ai_event_trigger_api(request):
                 "created_at": event.created_at.isoformat() if hasattr(event, "created_at") else None,
             },
             "broadcast": {
-                "matched_rule_count": matched_rules.count(),
-                "created_log_count": len(broadcast_logs),
+                "playback_mode": get_broadcast_playback_mode(),
+                "matched_rule_count": len(matched_rules),
+                "created_log_count": sum(
+                    1 for item in broadcast_logs if item.get("id") is not None
+                ),
                 "logs": broadcast_logs,
             },
         },
         status=201,
     )
+
+
+def serialize_busy_broadcast_result(rule, active_log):
+    """Return a stable API result when the target Speaker is already busy."""
+
+    return {
+        "id": None,
+        "status": BroadcastLog.STATUS_SKIPPED,
+        "message": "Speaker already has a pending or playing broadcast.",
+        "mode": get_broadcast_playback_mode(),
+        "reason": "speaker_busy",
+        "active_broadcast_log_id": active_log.id if active_log else None,
+        "rule_code": rule.rule_code,
+        "speaker_code": rule.speaker.speaker_code,
+        "speaker_sip_uri": rule.speaker.resolved_sip_uri,
+        "audio_code": rule.audio_file.audio_code,
+        "audio_name": rule.audio_file.name,
+    }
 
 
 def create_event_safely(camera, event_type, confidence, payload):
