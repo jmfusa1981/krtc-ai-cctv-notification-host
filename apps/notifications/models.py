@@ -270,20 +270,22 @@ class BroadcastRule(models.Model):
     決定要讓哪一台 Speaker 播放哪一個音檔。
     """
 
-    EVENT_FALL_DOWN = "fall_down"
-    EVENT_LUGGAGE_ROLLING = "luggage_rolling"
-    EVENT_LARGE_LUGGAGE_AREA = "large_luggage_area"
-    EVENT_WHEELCHAIR = "wheelchair"
-    EVENT_OVERSTAYED = "overstayed"
-    EVENT_CROWD_FLOW_ABNORMAL = "crowd_flow_abnormal"
+    EVENT_ESCALATOR_FALL = "escalator_fall"
+    EVENT_LUGGAGE_ROLL = "luggage_roll"
+    EVENT_LARGE_LUGGAGE_INTRUSION = "large_luggage_intrusion"
+    EVENT_WHEELCHAIR_DETECTED = "wheelchair_detected"
+    EVENT_PASSENGER_LOITERING = "passenger_loitering"
+    EVENT_CROWD_COUNT_ABNORMAL = "crowd_count_abnormal"
+    EVENT_OTHER = "other"
 
     EVENT_TYPE_CHOICES = [
-        (EVENT_FALL_DOWN, "電扶梯人員跌倒"),
-        (EVENT_LUGGAGE_ROLLING, "大行李箱滾落"),
-        (EVENT_LARGE_LUGGAGE_AREA, "大件行李進入設定畫面區域"),
-        (EVENT_WHEELCHAIR, "辨識輪椅"),
-        (EVENT_OVERSTAYED, "旅客逾時滯留"),
-        (EVENT_CROWD_FLOW_ABNORMAL, "人流統計異常"),
+        (EVENT_ESCALATOR_FALL, "電扶梯人員跌倒"),
+        (EVENT_LUGGAGE_ROLL, "大行李箱滾落"),
+        (EVENT_LARGE_LUGGAGE_INTRUSION, "大件行李進入設定畫面區域"),
+        (EVENT_WHEELCHAIR_DETECTED, "辨識輪椅"),
+        (EVENT_PASSENGER_LOITERING, "旅客逾時滯留"),
+        (EVENT_CROWD_COUNT_ABNORMAL, "人流統計異常"),
+        (EVENT_OTHER, "其他"),
     ]
 
     rule_code = models.CharField(

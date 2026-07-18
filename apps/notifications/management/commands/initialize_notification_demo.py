@@ -42,7 +42,7 @@ RULE_DEFINITIONS = (
     {
         "rule_code": "RULE-FALL-001",
         "name": "CAM-001 跌倒事件自動廣播",
-        "event_type": "fall_down",
+        "event_type": "escalator_fall",
         "camera_code": "CAM-001",
         "speaker_code": "SPK-001",
         "audio_code": "AUD-TEST-001",
@@ -54,7 +54,7 @@ RULE_DEFINITIONS = (
     {
         "rule_code": "RULE-FALL-002",
         "name": "CAM-002 跌倒事件自動廣播",
-        "event_type": "fall_down",
+        "event_type": "escalator_fall",
         "camera_code": "CAM-002",
         "speaker_code": "SPK-002",
         "audio_code": "AUD-TEST-001",
