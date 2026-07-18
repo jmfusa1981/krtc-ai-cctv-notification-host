@@ -23,6 +23,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const confirmEventUrlPrefix = document.body.dataset.confirmEventUrlPrefix || "/api/events/";
     const manualBroadcastUrlPrefix = document.body.dataset.manualBroadcastUrlPrefix || "/api/notifications/broadcast/event/";
     const canProcessEvents = document.body.dataset.canProcessEvents === "true";
+    const broadcastPlaybackModeLabel = document.body.dataset.broadcastPlaybackModeLabel || "模擬測試";
+    const broadcastPlaybackIsLive = document.body.dataset.broadcastPlaybackIsLive === "true";
 
     let lastLatestEventId = null;
     let lastSelectedCameraId = null;
@@ -209,7 +211,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    function buildConfirmEventButton(eventId, eventStatus) {
+    function buildConfirmEventButton(eventId, eventStatus, speakerCode, audioCode) {
         if (!canProcessEvents) {
             return "";
         }
@@ -230,6 +232,8 @@ document.addEventListener("DOMContentLoaded", function () {
                         class="manual-broadcast-button"
                         data-manual-broadcast
                         data-event-id="${escapeHtml(eventId)}"
+                        data-speaker-code="${escapeHtml(speakerCode)}"
+                        data-audio-code="${escapeHtml(audioCode)}"
                     >
                         \u624b\u52d5\u5ee3\u64ad
                     </button>
@@ -261,6 +265,8 @@ document.addEventListener("DOMContentLoaded", function () {
                         class="manual-broadcast-button"
                         data-manual-broadcast
                         data-event-id="${escapeHtml(eventId)}"
+                        data-speaker-code="${escapeHtml(speakerCode)}"
+                        data-audio-code="${escapeHtml(audioCode)}"
                     >
                         \u624b\u52d5\u5ee3\u64ad
                     </button>
@@ -426,6 +432,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     async function manualEventBroadcast(button) {
         const eventId = button.dataset.eventId;
+        const speakerCode = button.dataset.speakerCode || "依廣播規則自動選擇";
+        const audioCode = button.dataset.audioCode || "依廣播規則自動選擇";
         const actions = button.closest(".event-actions");
         const message = actions
             ? actions.querySelector("[data-event-action-message]")
@@ -435,8 +443,15 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
+        const modeWarning = broadcastPlaybackIsLive
+            ? `【${broadcastPlaybackModeLabel}】此操作會讓現場 IP Speaker 實際發聲。`
+            : `【${broadcastPlaybackModeLabel}】此操作不會呼叫實體 IP Speaker。`;
         const shouldBroadcast = window.confirm(
-            "\u78ba\u5b9a\u8981\u5c0d\u9019\u7b46\u4e8b\u4ef6\u57f7\u884c\u624b\u52d5\u5ee3\u64ad\uff1f"
+            `${modeWarning}\n\n` +
+            `事件：${eventId}\n` +
+            `Speaker：${speakerCode}\n` +
+            `音檔：${audioCode}\n\n` +
+            "確定要執行手動廣播？"
         );
 
         if (!shouldBroadcast) {
@@ -752,7 +767,12 @@ document.addEventListener("DOMContentLoaded", function () {
                         : ""
                 }
                 <p>\u6642\u9593\uff1a${escapeHtml(createdAt)}</p>
-                ${buildConfirmEventButton(eventId, statusCode)}
+                ${buildConfirmEventButton(
+                    eventId,
+                    statusCode,
+                    normalizeText(event.speaker_code, ""),
+                    normalizeText(event.audio_code, "")
+                )}
             `;
 
             eventList.appendChild(item);

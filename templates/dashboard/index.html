@@ -15,6 +15,9 @@
     data-confirm-event-url-prefix="/api/events/"
     data-manual-broadcast-url-prefix="/api/notifications/broadcast/event/"
     data-can-process-events="{{ can_process_events|yesno:'true,false' }}"
+    data-broadcast-playback-mode="{{ broadcast_playback_mode }}"
+    data-broadcast-playback-mode-label="{{ broadcast_playback_mode_label }}"
+    data-broadcast-playback-is-live="{{ broadcast_playback_mode_is_live|yesno:'true,false' }}"
 >
     <div class="dashboard-layout">
         <header class="dashboard-header">
@@ -28,6 +31,16 @@
                 </div>
 
                 <div class="header-actions">
+                    <div
+                        class="playback-mode-badge {% if broadcast_playback_mode_is_live %}is-live{% else %}is-simulation{% endif %}"
+                        id="broadcastPlaybackModeBadge"
+                        title="{% if broadcast_playback_mode_is_live %}手動廣播會讓現場 IP Speaker 發聲{% else %}目前不會呼叫實體 IP Speaker{% endif %}"
+                    >
+                        <span class="playback-mode-dot" aria-hidden="true"></span>
+                        <span>廣播模式</span>
+                        <strong id="broadcastPlaybackModeLabel">{{ broadcast_playback_mode_label }}</strong>
+                    </div>
+
                     <div class="user-badge">
                         操作員：{{ request.user.username }}
                     </div>
@@ -44,6 +57,12 @@
                     </form>
                 </div>
             </div>
+
+            {% if broadcast_playback_mode_is_live %}
+                <div class="live-playback-warning" role="alert">
+                    LIVE：手動廣播會讓現場 IP Speaker 實際發聲，請確認 Speaker 與音檔後再執行。
+                </div>
+            {% endif %}
         </header>
 
         <aside
@@ -290,6 +309,8 @@
                                                 class="manual-broadcast-button"
                                                 data-manual-broadcast
                                                 data-event-id="{{ event.id }}"
+                                                data-speaker-code="{{ event.dashboard_broadcast_rule.speaker.speaker_code|default:'' }}"
+                                                data-audio-code="{{ event.dashboard_broadcast_rule.audio_file.audio_code|default:'' }}"
                                             >
                                                 手動廣播
                                             </button>
@@ -314,6 +335,8 @@
                                                 class="manual-broadcast-button"
                                                 data-manual-broadcast
                                                 data-event-id="{{ event.id }}"
+                                                data-speaker-code="{{ event.dashboard_broadcast_rule.speaker.speaker_code|default:'' }}"
+                                                data-audio-code="{{ event.dashboard_broadcast_rule.audio_file.audio_code|default:'' }}"
                                             >
                                                 手動廣播
                                             </button>

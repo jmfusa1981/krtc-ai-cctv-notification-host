@@ -1,10 +1,16 @@
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 
 from apps.accounts.permissions import can_process_events
+from apps.notifications.services import (
+    PLAYBACK_MODE_PJSIP,
+    PLAYBACK_MODE_SIMULATION,
+    get_broadcast_playback_mode,
+)
 
 
 def get_model_or_none(app_label, model_name):
@@ -29,6 +35,18 @@ BroadcastRule = get_model_or_none("notifications", "BroadcastRule")
 BroadcastLog = get_model_or_none("notifications", "BroadcastLog")
 
 
+def get_playback_mode_display():
+    playback_mode = get_broadcast_playback_mode()
+
+    if playback_mode == PLAYBACK_MODE_PJSIP:
+        return playback_mode, "LIVE", True
+
+    if playback_mode == PLAYBACK_MODE_SIMULATION:
+        return playback_mode, "模擬測試", False
+
+    return playback_mode, playback_mode.upper(), False
+
+
 @login_required
 def dashboard_home(request):
     """
@@ -42,6 +60,9 @@ def dashboard_home(request):
     recent_events = get_recent_events()
     recent_event_camera_ids = get_recent_event_camera_ids(recent_events)
     cameras = get_event_related_cameras(recent_event_camera_ids)
+    playback_mode, playback_mode_label, playback_mode_is_live = (
+        get_playback_mode_display()
+    )
 
     context = {
         "cameras": cameras,
@@ -57,6 +78,9 @@ def dashboard_home(request):
         "pending_broadcast_logs": get_pending_broadcast_log_count(),
         "recent_broadcast_logs": get_recent_broadcast_logs(),
         "can_process_events": can_process_events(request.user),
+        "broadcast_playback_mode": playback_mode,
+        "broadcast_playback_mode_label": playback_mode_label,
+        "broadcast_playback_mode_is_live": playback_mode_is_live,
     }
 
     return render(request, "dashboard/index.html", context)
@@ -110,11 +134,18 @@ def dashboard_live_state_api(request):
     if latest_event is not None:
         highlighted_camera_id = getattr(latest_event, "camera_id", None)
 
+    playback_mode, playback_mode_label, playback_mode_is_live = (
+        get_playback_mode_display()
+    )
+
     data = {
         "server_time": timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M:%S"),
         "highlighted_camera_id": highlighted_camera_id,
         "pending_broadcast_count": get_pending_broadcast_log_count(),
         "can_process_events": can_process_events(request.user),
+        "broadcast_playback_mode": playback_mode,
+        "broadcast_playback_mode_label": playback_mode_label,
+        "broadcast_playback_mode_is_live": playback_mode_is_live,
         "cameras": [
             serialize_camera(camera)
             for camera in cameras
@@ -140,11 +171,43 @@ def get_recent_events():
     if Event is None:
         return []
 
-    return list(
+    events = list(
         Event.objects
         .select_related("camera")
         .order_by("-created_at")[:10]
     )
+
+    for event in events:
+        event.dashboard_broadcast_rule = get_matching_broadcast_rule(event)
+
+    return events
+
+
+def get_matching_broadcast_rule(event):
+    """Return the same highest-priority rule used by manual broadcasting."""
+
+    if BroadcastRule is None or getattr(event, "camera_id", None) is None:
+        return None
+
+    rules = list(
+        BroadcastRule.objects
+        .select_related("camera", "speaker", "audio_file")
+        .filter(
+            Q(camera=event.camera) | Q(camera__isnull=True),
+            event_type=event.event_type,
+            is_active=True,
+            speaker__is_active=True,
+            audio_file__is_active=True,
+        )
+    )
+    rules.sort(
+        key=lambda rule: (
+            0 if rule.camera_id == event.camera_id else 1,
+            rule.priority,
+            rule.rule_code,
+        )
+    )
+    return rules[0] if rules else None
 
 
 def get_recent_event_camera_ids(recent_events):
@@ -281,6 +344,9 @@ def serialize_event(event):
     """
 
     camera = getattr(event, "camera", None)
+    rule = getattr(event, "dashboard_broadcast_rule", None)
+    speaker = getattr(rule, "speaker", None) if rule else None
+    audio_file = getattr(rule, "audio_file", None) if rule else None
 
     return {
         "id": getattr(event, "id", None),
@@ -293,6 +359,11 @@ def serialize_event(event):
         "camera_code": getattr(camera, "camera_code", "") if camera else "",
         "camera_name": getattr(camera, "name", "") if camera else "",
         "created_at": format_datetime(getattr(event, "created_at", None)),
+        "broadcast_rule_code": getattr(rule, "rule_code", "") if rule else "",
+        "speaker_code": getattr(speaker, "speaker_code", "") if speaker else "",
+        "speaker_name": getattr(speaker, "name", "") if speaker else "",
+        "audio_code": getattr(audio_file, "audio_code", "") if audio_file else "",
+        "audio_name": getattr(audio_file, "name", "") if audio_file else "",
     }
 
 
