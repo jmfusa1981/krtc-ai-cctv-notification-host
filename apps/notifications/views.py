@@ -1,6 +1,7 @@
 import json
 
 from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -180,28 +181,96 @@ def manual_event_broadcast_api(request, event_id):
             status=409,
         )
 
+    if active_log is None:
+        speaker_busy_log = (
+            BroadcastLog.objects
+            .filter(
+                speaker=rule.speaker,
+                status__in=[
+                    BroadcastLog.STATUS_PENDING,
+                    BroadcastLog.STATUS_PLAYING,
+                ],
+            )
+            .order_by("created_at")
+            .first()
+        )
+
+        if speaker_busy_log:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "reason": "speaker_busy",
+                    "message": (
+                        f"Speaker {rule.speaker.speaker_code} is currently busy. "
+                        "Please wait for the active broadcast to finish."
+                    ),
+                    "speaker_code": rule.speaker.speaker_code,
+                    "active_broadcast_log_id": speaker_busy_log.id,
+                    "active_event_id": speaker_busy_log.event_id,
+                    "active_status": speaker_busy_log.status,
+                },
+                status=409,
+            )
+
     created = active_log is None
 
     if created:
-        active_log = BroadcastLog.objects.create(
-            event=event,
-            rule=rule,
-            speaker=rule.speaker,
-            audio_file=rule.audio_file,
-            status=BroadcastLog.STATUS_PENDING,
-            request_payload={
-                "source": "dashboard_manual_event_broadcast",
-                "requested_by_id": request.user.id,
-                "requested_by_username": request.user.get_username(),
-                "event_id": event.id,
-                "camera_code": event.camera.camera_code,
-                "rule_code": rule.rule_code,
-                "speaker_code": rule.speaker.speaker_code,
-                "audio_code": rule.audio_file.audio_code,
-            },
-            message="Manual event broadcast created from Dashboard.",
-            requested_at=timezone.now(),
-        )
+        try:
+            with transaction.atomic():
+                active_log = BroadcastLog.objects.create(
+                    event=event,
+                    rule=rule,
+                    speaker=rule.speaker,
+                    audio_file=rule.audio_file,
+                    status=BroadcastLog.STATUS_PENDING,
+                    request_payload={
+                        "source": "dashboard_manual_event_broadcast",
+                        "requested_by_id": request.user.id,
+                        "requested_by_username": request.user.get_username(),
+                        "event_id": event.id,
+                        "camera_code": event.camera.camera_code,
+                        "rule_code": rule.rule_code,
+                        "speaker_code": rule.speaker.speaker_code,
+                        "audio_code": rule.audio_file.audio_code,
+                    },
+                    message="Manual event broadcast created from Dashboard.",
+                    requested_at=timezone.now(),
+                )
+        except IntegrityError:
+            speaker_busy_log = (
+                BroadcastLog.objects
+                .filter(
+                    speaker=rule.speaker,
+                    status__in=[
+                        BroadcastLog.STATUS_PENDING,
+                        BroadcastLog.STATUS_PLAYING,
+                    ],
+                )
+                .order_by("created_at")
+                .first()
+            )
+
+            return JsonResponse(
+                {
+                    "success": False,
+                    "reason": "speaker_busy",
+                    "message": (
+                        f"Speaker {rule.speaker.speaker_code} became busy "
+                        "before this broadcast could start."
+                    ),
+                    "speaker_code": rule.speaker.speaker_code,
+                    "active_broadcast_log_id": (
+                        speaker_busy_log.id if speaker_busy_log else None
+                    ),
+                    "active_event_id": (
+                        speaker_busy_log.event_id if speaker_busy_log else None
+                    ),
+                    "active_status": (
+                        speaker_busy_log.status if speaker_busy_log else None
+                    ),
+                },
+                status=409,
+            )
 
     result = process_single_broadcast_log(active_log)
     active_log.refresh_from_db()

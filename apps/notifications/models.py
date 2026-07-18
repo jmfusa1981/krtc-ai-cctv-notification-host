@@ -487,6 +487,16 @@ class BroadcastLog(models.Model):
         verbose_name = "Broadcast Log"
         verbose_name_plural = "Broadcast Logs"
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["speaker"],
+                condition=models.Q(
+                    speaker__isnull=False,
+                    status__in=["pending", "playing"],
+                ),
+                name="uniq_active_broadcast_per_speaker",
+            ),
+        ]
 
     def __str__(self):
         speaker_code = self.speaker.speaker_code if self.speaker else "No Speaker"
