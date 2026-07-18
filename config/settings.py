@@ -174,16 +174,22 @@ LOGOUT_REDIRECT_URL = "/login/"
 #    - Does not call the real IP Speaker.
 #    - Used for Dashboard / BroadcastLog workflow testing.
 #
-# 2. "microsip_winsound"
+# 2. "pjsip"
+#    - Uses the validated PJSIP/PJSUA backend.
+#    - Calls the Speaker selected by BroadcastRule.
+#    - Plays the AudioFile selected by BroadcastRule.
+#
+# 3. "microsip_winsound" (legacy fallback)
 #    - Uses Windows SIP URI handler to trigger MicroSIP.
 #    - Uses Python winsound to play local wav audio file.
 #    - Requires MicroSIP audio input to be configured as Stereo Mix or CABLE Output.
 #
-# Recommended:
-# Keep "simulation" first.
-# After BroadcastLog workflow is confirmed, change to "microsip_winsound" for real speaker testing.
-BROADCAST_PLAYBACK_MODE = "simulation"
-#BROADCAST_PLAYBACK_MODE = "microsip_winsound"
+# Keep simulation as the safe default. Real PJSIP playback is enabled only
+# when BROADCAST_PLAYBACK_MODE=pjsip is explicitly set in the local .env.
+BROADCAST_PLAYBACK_MODE = os.getenv(
+    "BROADCAST_PLAYBACK_MODE",
+    "simulation",
+).strip().lower()
 
 BROADCAST_PLAY_AFTER_DIAL_DELAY_SECONDS = 1
 BROADCAST_HANGUP_AFTER_AUDIO_MARGIN_SECONDS = 2
@@ -202,8 +208,8 @@ BROADCAST_MICROSIP_PATHS = [
 # The executable and its OpenSSL DLL dependencies are installed outside Git:
 #   C:\krtc-tools\pjsip\pjsua.exe
 #
-# Step 19.5A only uses these values for the pjsip_preflight dry-run command.
-# BROADCAST_PLAYBACK_MODE remains "simulation" and no Speaker is called.
+# These settings are shared by the preflight command, the controlled playback
+# test command, and the Dashboard PJSIP playback adapter.
 PJSIP_EXECUTABLE_PATH = os.getenv(
     "PJSIP_EXECUTABLE_PATH",
     r"C:\krtc-tools\pjsip\pjsua.exe",

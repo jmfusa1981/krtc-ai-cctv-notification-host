@@ -13,6 +13,7 @@ from apps.events.models import Event
 
 from .models import BroadcastLog, BroadcastRule
 from .services import (
+    PLAYBACK_MODE_PJSIP,
     PLAYBACK_MODE_SIMULATION,
     get_broadcast_playback_mode,
     process_pending_broadcast_logs,
@@ -95,12 +96,18 @@ def manual_event_broadcast_api(request, event_id):
 
     playback_mode = get_broadcast_playback_mode()
 
-    if playback_mode != PLAYBACK_MODE_SIMULATION:
+    allowed_playback_modes = {
+        PLAYBACK_MODE_SIMULATION,
+        PLAYBACK_MODE_PJSIP,
+    }
+
+    if playback_mode not in allowed_playback_modes:
         return JsonResponse(
             {
                 "success": False,
-                "message": "Step 19.4A manual broadcast requires simulation mode.",
+                "message": "Dashboard manual broadcast does not support this playback mode.",
                 "playback_mode": playback_mode,
+                "allowed_playback_modes": sorted(allowed_playback_modes),
             },
             status=409,
         )

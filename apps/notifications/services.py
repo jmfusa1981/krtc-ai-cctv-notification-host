@@ -8,12 +8,18 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from .models import BroadcastLog
+from .backends.pjsip import (
+    PjsipPreflightError,
+    build_pjsip_playback_plan,
+    execute_pjsip_playback_plan,
+)
+from .models import BroadcastLog, SpeakerDevice
 
 
 DEFAULT_PLAYBACK_MODE = "simulation"
 
 PLAYBACK_MODE_SIMULATION = "simulation"
+PLAYBACK_MODE_PJSIP = "pjsip"
 PLAYBACK_MODE_MICROSIP_WINSOUND = "microsip_winsound"
 
 DEFAULT_PLAY_AFTER_DIAL_DELAY_SECONDS = 1
@@ -271,6 +277,13 @@ def play_audio_to_speaker(speaker, audio_file, broadcast_log):
 
     if playback_mode == PLAYBACK_MODE_SIMULATION:
         return simulate_play_audio_to_speaker(
+            speaker=speaker,
+            audio_file=audio_file,
+            broadcast_log=broadcast_log,
+        )
+
+    if playback_mode == PLAYBACK_MODE_PJSIP:
+        return play_audio_via_pjsip(
             speaker=speaker,
             audio_file=audio_file,
             broadcast_log=broadcast_log,
@@ -821,4 +834,89 @@ def mark_broadcast_failed(log, message, response_payload=None):
         "message": message,
         "speaker_code": log.speaker.speaker_code if log.speaker else "",
         "audio_code": log.audio_file.audio_code if log.audio_file else "",
+    }
+
+
+def play_audio_via_pjsip(speaker, audio_file, broadcast_log):
+    """Play one local WAV file through the validated PJSIP/PJSUA backend."""
+
+    try:
+        audio_path = audio_file.file.path
+    except (ValueError, NotImplementedError) as exc:
+        return {
+            "success": False,
+            "mode": PLAYBACK_MODE_PJSIP,
+            "message": f"Audio file has no local path: {exc}",
+            "reason": "audio_path_unavailable",
+            "speaker_code": speaker.speaker_code,
+            "audio_code": audio_file.audio_code,
+        }
+
+    speaker_slot = SpeakerDevice.objects.filter(
+        is_active=True,
+        speaker_code__lt=speaker.speaker_code,
+    ).count()
+
+    port_step = int(settings.PJSIP_PORT_STEP)
+    local_sip_port = (
+        int(settings.PJSIP_LOCAL_SIP_PORT_BASE)
+        + speaker_slot * port_step
+    )
+    local_rtp_port = (
+        int(settings.PJSIP_LOCAL_RTP_PORT_BASE)
+        + speaker_slot * port_step
+    )
+
+    log_path = (
+        Path(settings.PJSIP_LOG_DIR)
+        / f"dashboard_broadcast_{broadcast_log.id}_{speaker.speaker_code}.log"
+    )
+
+    try:
+        plan = build_pjsip_playback_plan(
+            executable_path=settings.PJSIP_EXECUTABLE_PATH,
+            audio_path=audio_path,
+            log_path=log_path,
+            speaker_ip=speaker.ip_address,
+            sip_uri=speaker.resolved_sip_uri,
+            local_ip=settings.PJSIP_LOCAL_IP,
+            advertise_ip=settings.PJSIP_ADVERTISE_IP,
+            local_sip_port=local_sip_port,
+            local_rtp_port=local_rtp_port,
+            disabled_codecs=settings.PJSIP_DISABLED_CODECS,
+            log_level=settings.PJSIP_LOG_LEVEL,
+            app_log_level=settings.PJSIP_APP_LOG_LEVEL,
+            check_ports=True,
+        )
+        result = execute_pjsip_playback_plan(
+            plan,
+            extra_wait_seconds=settings.PJSIP_EXTRA_WAIT_SECONDS,
+        )
+    except PjsipPreflightError as exc:
+        return {
+            "success": False,
+            "mode": PLAYBACK_MODE_PJSIP,
+            "message": str(exc),
+            "reason": "pjsip_preflight_error",
+            "speaker_code": speaker.speaker_code,
+            "resolved_sip_uri": speaker.resolved_sip_uri,
+            "audio_code": audio_file.audio_code,
+        }
+
+    return {
+        "success": result.success,
+        "mode": PLAYBACK_MODE_PJSIP,
+        "message": result.message,
+        "broadcast_log_id": broadcast_log.id,
+        "speaker_code": speaker.speaker_code,
+        "resolved_sip_uri": speaker.resolved_sip_uri,
+        "audio_code": audio_file.audio_code,
+        "audio_file": audio_file.file.name,
+        "confirmed": result.confirmed,
+        "media_active": result.media_active,
+        "disconnected": result.disconnected,
+        "return_code": result.return_code,
+        "log_file": result.log_path.name,
+        "local_sip_port": local_sip_port,
+        "local_rtp_port": local_rtp_port,
     }
