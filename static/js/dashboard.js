@@ -1,39 +1,87 @@
 document.addEventListener("DOMContentLoaded", function () {
+    const body = document.body;
     const cameraGrid = document.getElementById("cameraGrid");
+    const primaryCameraStage = document.getElementById("primaryCameraStage");
     const eventList = document.getElementById("eventList");
-    const broadcastLogTableBody = document.getElementById("broadcastLogTableBody");
-    const eventCameraCount = document.getElementById("eventCameraCount");
-    const recentEventsCount = document.getElementById("recentEventsCount");
-    const pendingBroadcastLogsCount = document.getElementById("pendingBroadcastLogsCount");
-    const pendingBroadcastMetric = document.getElementById("pendingBroadcastMetric");
+    const eventListCount = document.getElementById("eventListCount");
+    const broadcastLogContainer = document.getElementById("broadcastLogTableBody");
+    const systemDateTime = document.getElementById("systemDateTime");
+    const eventCarouselButton = document.getElementById("eventCarouselButton");
+
+    const stationCameraCount = document.getElementById("stationCameraCount");
     const latestEventType = document.getElementById("latestEventType");
     const latestEventCamera = document.getElementById("latestEventCamera");
     const latestEventTime = document.getElementById("latestEventTime");
     const dashboardPollingStatus = document.getElementById("dashboardPollingStatus");
+    const crowdFlowMetric = document.getElementById("crowdFlowMetric");
+    const crowdFlowValue = document.getElementById("crowdFlowValue");
+    const crowdFlowSummary = document.getElementById("crowdFlowSummary");
+    const inferenceHostMetric = document.getElementById("inferenceHostMetric");
+    const inferenceHostStatus = document.getElementById("inferenceHostStatus");
+    const inferenceHostDetail = document.getElementById("inferenceHostDetail");
+    const eventWarningLight = document.getElementById("eventWarningLight");
+
+    const detailEventType = document.getElementById("detailEventType");
+    const detailEventId = document.getElementById("detailEventId");
+    const detailExternalEventId = document.getElementById("detailExternalEventId");
+    const detailSourceEventId = document.getElementById("detailSourceEventId");
+    const detailEventStatus = document.getElementById("detailEventStatus");
+    const detailInferenceHost = document.getElementById("detailInferenceHost");
+    const detailCamera = document.getElementById("detailCamera");
+    const detailLocation = document.getElementById("detailLocation");
+    const detailRoi = document.getElementById("detailRoi");
+    const detailSeverity = document.getElementById("detailSeverity");
+    const detailConfidence = document.getElementById("detailConfidence");
+    const detailDetectedAt = document.getElementById("detailDetectedAt");
+    const detailCreatedAt = document.getElementById("detailCreatedAt");
+    const detailSnapshotStatus = document.getElementById("detailSnapshotStatus");
+    const detailAnnotatedStatus = document.getElementById("detailAnnotatedStatus");
+    const detailVideoStatus = document.getElementById("detailVideoStatus");
+    const detailBroadcastRule = document.getElementById("detailBroadcastRule");
+    const detailSpeaker = document.getElementById("detailSpeaker");
+    const detailAudio = document.getElementById("detailAudio");
+    const detailConfirmButton = document.getElementById("detailConfirmButton");
+    const detailCloseButton = document.getElementById("detailCloseButton");
+    const detailBroadcastButton = document.getElementById("detailBroadcastButton");
+    const detailActionMessage = document.getElementById("detailActionMessage");
+
     const processPendingBroadcastButton = document.getElementById("processPendingBroadcastButton");
     const processBroadcastStatus = document.getElementById("processBroadcastStatus");
+
     const dashboardActionToast = document.getElementById("dashboardActionToast");
     const dashboardActionToastTitle = document.getElementById("dashboardActionToastTitle");
     const dashboardActionToastMessage = document.getElementById("dashboardActionToastMessage");
-    const dashboardActionToastLink = document.getElementById("dashboardActionToastLink");
     const dashboardActionToastClose = document.getElementById("dashboardActionToastClose");
 
-    const liveStateApiUrl = document.body.dataset.dashboardLiveStateUrl;
-    const processPendingBroadcastApiUrl = document.body.dataset.processPendingBroadcastUrl;
-    const confirmEventUrlPrefix = document.body.dataset.confirmEventUrlPrefix || "/api/events/";
-    const manualBroadcastUrlPrefix = document.body.dataset.manualBroadcastUrlPrefix || "/api/notifications/broadcast/event/";
-    const canProcessEvents = document.body.dataset.canProcessEvents === "true";
-    const broadcastPlaybackModeLabel = document.body.dataset.broadcastPlaybackModeLabel || "模擬測試";
-    const broadcastPlaybackIsLive = document.body.dataset.broadcastPlaybackIsLive === "true";
+    const liveStateApiUrl = body.dataset.dashboardLiveStateUrl;
+    const processPendingBroadcastApiUrl = body.dataset.processPendingBroadcastUrl;
+    const confirmEventUrlPrefix = body.dataset.confirmEventUrlPrefix || "/api/events/";
+    const manualBroadcastUrlPrefix =
+        body.dataset.manualBroadcastUrlPrefix ||
+        "/api/notifications/broadcast/event/";
+    const canProcessEvents = body.dataset.canProcessEvents === "true";
+    const broadcastPlaybackModeLabel =
+        body.dataset.broadcastPlaybackModeLabel || "模擬測試";
+    const broadcastPlaybackIsLive =
+        body.dataset.broadcastPlaybackIsLive === "true";
 
+    let currentEvents = [];
+    let currentCameras = [];
+    let selectedEventId = null;
+    let selectedCameraId = null;
     let lastLatestEventId = null;
-    let lastSelectedCameraId = null;
-    let lastSelectedEventId = null;
-    let dashboardActionToastTimer = null;
+    let localAlarmEnabled = true;
+    let localAlarmUnlocked = false;
+    let localAlarmAudioContext = null;
+    let localAlarmStopTimer = null;
 
-    if (!cameraGrid) {
-        return;
-    }
+    let cameraSignature = "";
+    let toastTimer = null;
+    let primaryMediaMode = "live";
+    let renderedPrimaryKey = "";
+    let carouselEnabled = true;
+    let carouselTimer = null;
+    let manualSelectionUntil = 0;
 
     function escapeHtml(value) {
         if (value === null || value === undefined) {
@@ -52,77 +100,21 @@ document.addEventListener("DOMContentLoaded", function () {
         if (value === null || value === undefined || value === "") {
             return fallback || "";
         }
-
         return value;
-    }
-
-    function wait(milliseconds) {
-        return new Promise(function (resolve) {
-            window.setTimeout(resolve, milliseconds);
-        });
-    }
-
-    function hideDashboardActionToast() {
-        if (dashboardActionToastTimer !== null) {
-            window.clearTimeout(dashboardActionToastTimer);
-            dashboardActionToastTimer = null;
-        }
-
-        if (dashboardActionToast) {
-            dashboardActionToast.hidden = true;
-        }
-    }
-
-    function showDashboardActionToast(title, message, type, options) {
-        if (!dashboardActionToast) {
-            return;
-        }
-
-        const settings = options || {};
-        const duration = Number(settings.duration || 6000);
-
-        dashboardActionToast.classList.remove("is-pending", "is-success", "is-error");
-        dashboardActionToast.classList.add(`is-${type || "pending"}`);
-        dashboardActionToast.hidden = false;
-
-        if (dashboardActionToastTitle) {
-            dashboardActionToastTitle.textContent = title;
-        }
-
-        if (dashboardActionToastMessage) {
-            dashboardActionToastMessage.textContent = message;
-        }
-
-        if (dashboardActionToastLink) {
-            dashboardActionToastLink.hidden = !settings.showBroadcastLink;
-        }
-
-        if (dashboardActionToastTimer !== null) {
-            window.clearTimeout(dashboardActionToastTimer);
-        }
-
-        if (duration > 0) {
-            dashboardActionToastTimer = window.setTimeout(function () {
-                hideDashboardActionToast();
-            }, duration);
-        }
     }
 
     function getCookie(name) {
         const cookies = document.cookie ? document.cookie.split(";") : [];
 
         for (const cookie of cookies) {
-            const trimmedCookie = cookie.trim();
-            const separatorIndex = trimmedCookie.indexOf("=");
-            const cookieName = separatorIndex >= 0
-                ? trimmedCookie.slice(0, separatorIndex)
-                : trimmedCookie;
+            const item = cookie.trim();
+            const separatorIndex = item.indexOf("=");
+            const key = separatorIndex >= 0 ? item.slice(0, separatorIndex) : item;
 
-            if (cookieName === name) {
-                const cookieValue = separatorIndex >= 0
-                    ? trimmedCookie.slice(separatorIndex + 1)
-                    : "";
-                return decodeURIComponent(cookieValue);
+            if (key === name) {
+                const value =
+                    separatorIndex >= 0 ? item.slice(separatorIndex + 1) : "";
+                return decodeURIComponent(value);
             }
         }
 
@@ -135,167 +127,931 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         dashboardPollingStatus.textContent = message;
-
-        if (isError) {
-            dashboardPollingStatus.classList.add("error");
-        } else {
-            dashboardPollingStatus.classList.remove("error");
-        }
+        dashboardPollingStatus.classList.toggle("error", Boolean(isError));
     }
 
-    function setProcessBroadcastStatus(message, statusType) {
-        if (!processBroadcastStatus) {
+    function setDetailMessage(message, type) {
+        if (!detailActionMessage) {
             return;
         }
 
-        processBroadcastStatus.textContent = message;
-        processBroadcastStatus.classList.remove("success", "error");
+        detailActionMessage.textContent = message || "";
+        detailActionMessage.classList.remove("success", "error");
 
-        if (statusType === "success") {
-            processBroadcastStatus.classList.add("success");
-        }
-
-        if (statusType === "error") {
-            processBroadcastStatus.classList.add("error");
+        if (type) {
+            detailActionMessage.classList.add(type);
         }
     }
 
-    function focusEventCamera(cameraId) {
-        if (!cameraId) {
+    function updateClock() {
+        if (!systemDateTime) {
             return;
         }
 
-        lastSelectedCameraId = String(cameraId);
+        systemDateTime.textContent = new Intl.DateTimeFormat(
+            "zh-TW",
+            {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false,
+            }
+        ).format(new Date());
+    }
 
-        const cameraCards = cameraGrid.querySelectorAll("[data-camera-card]");
-        const targetCard = cameraGrid.querySelector(`[data-camera-id="${cameraId}"]`);
+    function hideToast() {
+        if (toastTimer !== null) {
+            window.clearTimeout(toastTimer);
+            toastTimer = null;
+        }
 
-        cameraCards.forEach(function (card) {
-            card.classList.remove("selected-event-camera-card");
+        if (dashboardActionToast) {
+            dashboardActionToast.hidden = true;
+        }
+    }
+
+    function showToast(title, message, type, duration) {
+        if (!dashboardActionToast) {
+            return;
+        }
+
+        dashboardActionToast.classList.remove(
+            "is-success",
+            "is-error",
+            "is-pending"
+        );
+        dashboardActionToast.classList.add(`is-${type || "pending"}`);
+        dashboardActionToast.hidden = false;
+
+        if (dashboardActionToastTitle) {
+            dashboardActionToastTitle.textContent = title;
+        }
+
+        if (dashboardActionToastMessage) {
+            dashboardActionToastMessage.textContent = message;
+        }
+
+        if (toastTimer !== null) {
+            window.clearTimeout(toastTimer);
+        }
+
+        if (duration > 0) {
+            toastTimer = window.setTimeout(hideToast, duration);
+        }
+    }
+
+    function getCameraById(cameraId) {
+        return (
+            currentCameras.find(function (camera) {
+                return String(camera.id) === String(cameraId);
+            }) || null
+        );
+    }
+
+    function getEventById(eventId) {
+        return (
+            currentEvents.find(function (event) {
+                return String(event.id) === String(eventId);
+            }) || null
+        );
+    }
+
+    function getSelectedEvent() {
+        return getEventById(selectedEventId);
+    }
+
+    function updateCameraSelectionClasses() {
+        if (!cameraGrid) {
+            return;
+        }
+
+        cameraGrid.querySelectorAll("[data-camera-card]").forEach(function (card) {
+            card.classList.toggle(
+                "selected-event-camera-card",
+                String(card.dataset.cameraId) === String(selectedCameraId)
+            );
+        });
+    }
+
+    function setMediaMode(mode) {
+        primaryMediaMode = mode;
+
+        document.querySelectorAll("[data-media-mode]").forEach(function (button) {
+            button.classList.toggle(
+                "is-active",
+                button.dataset.mediaMode === primaryMediaMode
+            );
         });
 
-        if (!targetCard) {
+        renderPrimaryMedia(true);
+    }
+
+    function renderPrimaryMedia(force) {
+        const event = getSelectedEvent();
+        const camera = getCameraById(selectedCameraId);
+
+        let mediaKey = primaryMediaMode;
+
+        if (primaryMediaMode === "live") {
+            mediaKey += `:${camera ? camera.id : "none"}`;
+        } else if (primaryMediaMode === "snapshot") {
+            mediaKey += `:${event ? event.snapshot_url : ""}`;
+        } else if (primaryMediaMode === "annotated") {
+            mediaKey += `:${event ? event.annotated_snapshot_url : ""}`;
+        } else if (primaryMediaMode === "video") {
+            mediaKey += `:${event ? event.video_url : ""}`;
+        }
+
+        if (!force && mediaKey === renderedPrimaryKey) {
             return;
         }
 
-        cameraGrid.prepend(targetCard);
-        targetCard.classList.add("selected-event-camera-card");
+        renderedPrimaryKey = mediaKey;
 
-        targetCard.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-        });
+        if (primaryMediaMode === "live") {
+            renderLiveCamera(camera);
+            return;
+        }
+
+        if (!event) {
+            primaryCameraStage.innerHTML = `
+                <div class="media-unavailable">
+                    <strong>尚未選取事件</strong>
+                    <span>請先從左側選取事件。</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (primaryMediaMode === "snapshot") {
+            renderImageMedia(
+                event.snapshot_url,
+                "事件快照",
+                "推論主機尚未提供事件快照。"
+            );
+            return;
+        }
+
+        if (primaryMediaMode === "annotated") {
+            renderImageMedia(
+                event.annotated_snapshot_url,
+                "AI 標定影像",
+                "推論主機尚未提供 AI 標定影像。"
+            );
+            return;
+        }
+
+        renderVideoMedia(event.video_url);
     }
 
-    function bindEventItemClickHandlers() {
-        const eventItems = document.querySelectorAll("[data-event-camera-id]");
+    function renderLiveCamera(camera) {
+        if (!camera) {
+            primaryCameraStage.innerHTML = `
+                <div class="empty-camera-stage">
+                    <strong>尚未選取事件攝影機</strong>
+                    <span>請從左側事件清單選取事件</span>
+                </div>
+            `;
+            return;
+        }
 
-        eventItems.forEach(function (item) {
-            item.addEventListener("click", function () {
-                const cameraId = item.dataset.eventCameraId;
-                const eventId = item.dataset.eventId;
+        const streamUrl = normalizeText(
+            camera.stream_url,
+            `/api/cameras/${camera.id}/stream/`
+        );
+        const code = normalizeText(camera.camera_code, `CAM-${camera.id}`);
+        const name = normalizeText(camera.name, code);
+        const area = normalizeText(camera.area, "未設定區域");
+        const statusDisplay = normalizeText(camera.status_display, "狀態未知");
 
-                lastSelectedCameraId = cameraId ? String(cameraId) : null;
-                lastSelectedEventId = eventId ? String(eventId) : null;
+        primaryCameraStage.innerHTML = `
+            <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(code)}" id="primaryCameraStream">
+            <div class="primary-camera-overlay">
+                <div>
+                    <h3>${escapeHtml(code)}｜${escapeHtml(name)}</h3>
+                    <p>${escapeHtml(area)}</p>
+                </div>
+                <span class="camera-status status-${escapeHtml(camera.status || "unknown")}">
+                    ${escapeHtml(statusDisplay)}
+                </span>
+            </div>
+        `;
 
-                eventItems.forEach(function (eventItem) {
-                    eventItem.classList.remove("selected-ai-event");
-                });
+        const stream = document.getElementById("primaryCameraStream");
 
+        if (stream) {
+            stream.addEventListener("error", function () {
+                primaryCameraStage.innerHTML = `
+                    <div class="primary-camera-error">
+                        <strong>${escapeHtml(code)}</strong>
+                        <span>無法取得即時影像</span>
+                    </div>
+                `;
+            });
+        }
+    }
+
+    function renderImageMedia(url, title, unavailableMessage) {
+        if (!url) {
+            primaryCameraStage.innerHTML = `
+                <div class="media-unavailable">
+                    <strong>${escapeHtml(title)}</strong>
+                    <span>${escapeHtml(unavailableMessage)}</span>
+                </div>
+            `;
+            return;
+        }
+
+        primaryCameraStage.innerHTML = `
+            <img src="${escapeHtml(url)}" alt="${escapeHtml(title)}" id="primaryEventMedia">
+            <div class="primary-camera-overlay">
+                <div>
+                    <h3>${escapeHtml(title)}</h3>
+                    <p>由 AI 推論主機提供</p>
+                </div>
+            </div>
+        `;
+
+        const image = document.getElementById("primaryEventMedia");
+
+        if (image) {
+            image.addEventListener("error", function () {
+                primaryCameraStage.innerHTML = `
+                    <div class="media-unavailable">
+                        <strong>${escapeHtml(title)}載入失敗</strong>
+                        <span>請檢查推論主機媒體網址與網路連線。</span>
+                    </div>
+                `;
+            });
+        }
+    }
+
+    function renderVideoMedia(url) {
+        if (!url) {
+            primaryCameraStage.innerHTML = `
+                <div class="media-unavailable">
+                    <strong>事件錄影尚未提供</strong>
+                    <span>事件錄影應由推論主機或 NVR/VMS 保存並提供連結。</span>
+                </div>
+            `;
+            return;
+        }
+
+        primaryCameraStage.innerHTML = `
+            <div class="video-link-stage">
+                <strong>事件錄影已提供</strong>
+                <span>影片將於新分頁開啟。</span>
+                <a
+                    href="${escapeHtml(url)}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="video-open-button"
+                >
+                    開啟事件錄影
+                </a>
+            </div>
+        `;
+    }
+
+    function selectCamera(cameraId) {
+        selectedCameraId = cameraId ? String(cameraId) : null;
+        updateCameraSelectionClasses();
+
+        if (primaryMediaMode === "live") {
+            renderPrimaryMedia(false);
+        }
+    }
+
+    function updateDetailPanel(event) {
+        if (!event) {
+            detailEventType.textContent = "尚未選取事件";
+            detailEventId.textContent = "--";
+            detailExternalEventId.textContent = "--";
+            detailSourceEventId.textContent = "--";
+            detailEventStatus.textContent = "--";
+            detailInferenceHost.textContent = "尚未提供";
+            detailCamera.textContent = "--";
+            detailLocation.textContent = "尚未提供";
+            detailRoi.textContent = "尚未提供";
+            detailSeverity.textContent = "未提供";
+            detailConfidence.textContent = "--";
+            detailDetectedAt.textContent = "--";
+            detailCreatedAt.textContent = "--";
+            detailSnapshotStatus.textContent = "未提供";
+            detailAnnotatedStatus.textContent = "未提供";
+            detailVideoStatus.textContent = "未提供";
+            detailBroadcastRule.textContent = "--";
+            detailSpeaker.textContent = "--";
+            detailAudio.textContent = "--";
+
+            detailConfirmButton.disabled = true;
+            detailCloseButton.disabled = true;
+            detailBroadcastButton.disabled = true;
+            return;
+        }
+
+        detailEventType.textContent = normalizeText(
+            event.event_type_display,
+            event.event_type || "未知事件"
+        );
+        detailEventId.textContent = event.id;
+        detailExternalEventId.textContent = normalizeText(
+            event.external_event_id,
+            "未提供"
+        );
+        detailSourceEventId.textContent = normalizeText(
+            event.source_event_id,
+            "未提供"
+        );
+        detailEventStatus.textContent = normalizeText(
+            event.status_display,
+            event.status || "未知"
+        );
+
+        const sourceHost = [event.source_host_code, event.source_host_name]
+            .filter(Boolean)
+            .join("｜");
+        detailInferenceHost.textContent = sourceHost || "尚未提供";
+
+        detailCamera.textContent = event.camera_id
+            ? `${normalizeText(event.camera_code, "")}｜${normalizeText(event.camera_name, "")}`
+            : "未指定攝影機";
+
+        const location = [
+            event.station,
+            event.area || event.camera_area,
+        ].filter(Boolean).join("／");
+        detailLocation.textContent = location || "尚未提供";
+        detailRoi.textContent = normalizeText(event.roi_id, "尚未提供");
+        detailSeverity.textContent = normalizeText(event.severity, "未提供");
+        detailConfidence.textContent =
+            event.confidence === null ||
+            event.confidence === undefined ||
+            event.confidence === ""
+                ? "未提供"
+                : event.confidence;
+        detailDetectedAt.textContent = normalizeText(
+            event.detected_at,
+            "未提供"
+        );
+        detailCreatedAt.textContent = normalizeText(event.created_at, "--");
+
+        detailSnapshotStatus.textContent = event.snapshot_url
+            ? "已提供"
+            : "未提供";
+        detailAnnotatedStatus.textContent = event.annotated_snapshot_url
+            ? "已提供"
+            : "未提供";
+        detailVideoStatus.textContent = event.video_url
+            ? "已提供"
+            : "未提供";
+
+        detailBroadcastRule.textContent = normalizeText(
+            event.broadcast_rule_code,
+            "未設定"
+        );
+        detailSpeaker.textContent = event.speaker_code
+            ? `${event.speaker_code}｜${normalizeText(event.speaker_name, "")}`
+            : "未設定";
+        detailAudio.textContent = event.audio_code
+            ? `${event.audio_code}｜${normalizeText(event.audio_name, "")}`
+            : "未設定";
+
+        const status = event.status || "unknown";
+        detailConfirmButton.disabled =
+            !canProcessEvents || !["new", "processing"].includes(status);
+        detailCloseButton.disabled =
+            !canProcessEvents || status !== "confirmed";
+        detailBroadcastButton.disabled =
+            !canProcessEvents ||
+            !event.broadcast_rule_code ||
+            !event.speaker_code ||
+            !event.audio_code;
+    }
+
+    function selectEvent(eventId, manualSelection) {
+        const event = getEventById(eventId);
+
+        if (!event) {
+            return;
+        }
+
+        const previousEventId = selectedEventId;
+        selectedEventId = String(event.id);
+
+        if (manualSelection) {
+            manualSelectionUntil = Date.now() + 30000;
+        }
+
+        document.querySelectorAll("[data-event-id]").forEach(function (item) {
+            item.classList.toggle(
+                "selected-ai-event",
+                String(item.dataset.eventId) === selectedEventId
+            );
+        });
+
+        if (event.camera_id) {
+            selectCamera(event.camera_id);
+        }
+
+        updateDetailPanel(event);
+        setDetailMessage("", "");
+
+        const eventChanged =
+            String(previousEventId) !== String(selectedEventId);
+
+        if (event.snapshot_url && (manualSelection || eventChanged)) {
+            setMediaMode("snapshot");
+            return;
+        }
+
+        renderPrimaryMedia(false);
+    }
+
+    function renderEventList(events) {
+        eventList.innerHTML = "";
+
+        if (!events.length) {
+            eventList.innerHTML = `<div class="empty-state">目前尚無事件資料。</div>`;
+            return;
+        }
+
+        events.forEach(function (event) {
+            const item = document.createElement("article");
+            item.className = "event-item clickable-event-item";
+            item.dataset.eventId = event.id;
+
+            if (event.camera_id) {
+                item.dataset.eventCameraId = event.camera_id;
+            }
+
+            if (String(event.id) === String(selectedEventId)) {
                 item.classList.add("selected-ai-event");
+            }
 
-                if (cameraId) {
-                    focusEventCamera(cameraId);
+            item.innerHTML = `
+                <div class="event-card-top">
+                    <h3>${escapeHtml(normalizeText(event.event_type_display, event.event_type || "未知事件"))}</h3>
+                    <span class="event-status-tag status-${escapeHtml(event.status || "unknown")}">
+                        ${escapeHtml(normalizeText(event.status_display, event.status || "未知"))}
+                    </span>
+                </div>
+                <p>${
+                    event.camera_id
+                        ? `${escapeHtml(normalizeText(event.camera_code, ""))}｜${escapeHtml(normalizeText(event.camera_name, ""))}`
+                        : "未指定攝影機"
+                }</p>
+                <div class="event-card-bottom">
+                    <span>事件編號 ${escapeHtml(event.id)}</span>
+                    <time>${escapeHtml(normalizeText(event.detected_at || event.created_at, ""))}</time>
+                </div>
+            `;
+
+            item.addEventListener("click", function () {
+                const isSameEvent =
+                    String(selectedEventId) === String(event.id);
+
+                selectEvent(event.id, true);
+
+                if (isSameEvent && event.snapshot_url) {
+                    setMediaMode("snapshot");
+                }
+            });
+
+            eventList.appendChild(item);
+        });
+    }
+
+    function getCameraListSignature(cameras) {
+        return JSON.stringify(
+            cameras.map(function (camera) {
+                return [
+                    camera.id,
+                    camera.camera_code,
+                    camera.name,
+                    camera.area,
+                    camera.status,
+                    camera.stream_url,
+                ];
+            })
+        );
+    }
+
+    function bindThumbnailStreamHandlers() {
+        document.querySelectorAll("[data-dashboard-camera-stream]").forEach(function (stream) {
+            const screen = stream.closest(".camera-thumbnail-screen");
+            const overlay = screen
+                ? screen.querySelector("[data-dashboard-stream-overlay]")
+                : null;
+
+            stream.addEventListener("load", function () {
+                if (overlay) {
+                    overlay.classList.add("hidden");
+                }
+            });
+
+            stream.addEventListener("error", function () {
+                if (overlay) {
+                    overlay.classList.remove("hidden");
+                    overlay.innerHTML = `
+                        <span>${escapeHtml(stream.alt || "攝影機")}</span>
+                        <small>無法取得即時影像</small>
+                    `;
                 }
             });
         });
     }
 
-    function buildConfirmEventButton(eventId, eventStatus, speakerCode, audioCode) {
-        if (!canProcessEvents) {
-            return "";
-        }
+    function renderCameraGrid(cameras) {
+        const newSignature = getCameraListSignature(cameras);
 
-        if (eventStatus === "new" || eventStatus === "processing") {
-            return `
-                <div class="event-actions">
-                    <button
-                        type="button"
-                        class="confirm-event-button"
-                        data-confirm-event
-                        data-event-id="${escapeHtml(eventId)}"
-                    >
-                        \u78ba\u8a8d\u4e8b\u4ef6
-                    </button>
-                    <button
-                        type="button"
-                        class="manual-broadcast-button"
-                        data-manual-broadcast
-                        data-event-id="${escapeHtml(eventId)}"
-                        data-speaker-code="${escapeHtml(speakerCode)}"
-                        data-audio-code="${escapeHtml(audioCode)}"
-                    >
-                        \u624b\u52d5\u5ee3\u64ad
-                    </button>
-                    <span class="event-action-message" data-event-action-message></span>
-                </div>
-            `;
-        }
-
-        if (eventStatus === "confirmed") {
-            return `
-                <div class="event-actions">
-                    <button
-                        type="button"
-                        class="confirm-event-button is-confirmed"
-                        disabled
-                    >
-                        \u5df2\u78ba\u8a8d
-                    </button>
-                    <button
-                        type="button"
-                        class="close-event-button"
-                        data-close-event
-                        data-event-id="${escapeHtml(eventId)}"
-                    >
-                        \u89e3\u9664\u4e8b\u4ef6
-                    </button>
-                    <button
-                        type="button"
-                        class="manual-broadcast-button"
-                        data-manual-broadcast
-                        data-event-id="${escapeHtml(eventId)}"
-                        data-speaker-code="${escapeHtml(speakerCode)}"
-                        data-audio-code="${escapeHtml(audioCode)}"
-                    >
-                        \u624b\u52d5\u5ee3\u64ad
-                    </button>
-                    <span class="event-action-message" data-event-action-message></span>
-                </div>
-            `;
-        }
-
-        return "";
-    }
-
-    async function confirmEvent(button) {
-        const eventId = button.dataset.eventId;
-        const actions = button.closest(".event-actions");
-        const message = actions
-            ? actions.querySelector("[data-event-action-message]")
-            : null;
-
-        if (!eventId || button.disabled) {
+        if (newSignature === cameraSignature) {
+            updateCameraSelectionClasses();
             return;
         }
 
-        button.disabled = true;
-        button.textContent = "\u78ba\u8a8d\u4e2d...";
+        cameraSignature = newSignature;
+        cameraGrid.innerHTML = "";
 
-        if (message) {
-            message.textContent = "";
-            message.classList.remove("success", "error");
+        if (!cameras.length) {
+            cameraGrid.innerHTML = `<div class="empty-state">目前尚無事件相關攝影機。</div>`;
+            return;
         }
+
+        cameras.forEach(function (camera) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "camera-thumbnail";
+            button.dataset.cameraCard = "";
+            button.dataset.cameraId = camera.id;
+
+            const streamUrl = normalizeText(
+                camera.stream_url,
+                `/api/cameras/${camera.id}/stream/`
+            );
+            const code = normalizeText(camera.camera_code, `CAM-${camera.id}`);
+            const name = normalizeText(camera.name, code);
+
+            button.innerHTML = `
+                <div class="camera-thumbnail-screen">
+                    <img
+                        src="${escapeHtml(streamUrl)}"
+                        alt="${escapeHtml(code)}"
+                        data-dashboard-camera-stream
+                    >
+                    <div class="thumbnail-overlay" data-dashboard-stream-overlay>
+                        <span>${escapeHtml(code)}</span>
+                        <small>載入即時影像中</small>
+                    </div>
+                </div>
+                <div class="camera-thumbnail-info">
+                    <strong>${escapeHtml(code)}</strong>
+                    <span>${escapeHtml(name)}</span>
+                </div>
+            `;
+
+            button.addEventListener("click", function () {
+                selectCamera(camera.id);
+                setMediaMode("live");
+            });
+
+            cameraGrid.appendChild(button);
+        });
+
+        bindThumbnailStreamHandlers();
+        updateCameraSelectionClasses();
+    }
+
+    function renderBroadcastLogs(logs) {
+        broadcastLogContainer.innerHTML = "";
+
+        if (!logs.length) {
+            broadcastLogContainer.innerHTML = `<div class="empty-state">目前尚無廣播任務。</div>`;
+            return;
+        }
+
+        logs.slice(0, 6).forEach(function (log) {
+            const item = document.createElement("div");
+            item.className = "broadcast-log-item";
+            item.innerHTML = `
+                <div>
+                    <strong>${escapeHtml(normalizeText(log.event_type_display, log.event_type || "無事件"))}</strong>
+                    <span>${escapeHtml(normalizeText(log.created_at, ""))}</span>
+                </div>
+                <span class="broadcast-status broadcast-status-${escapeHtml(log.status || "unknown")}">
+                    ${escapeHtml(normalizeText(log.status_display, log.status || "未知"))}
+                </span>
+            `;
+            broadcastLogContainer.appendChild(item);
+        });
+    }
+
+    function updateCrowdFlowSummary(crowdFlow) {
+        if (
+            !crowdFlowMetric ||
+            !crowdFlowValue ||
+            !crowdFlowSummary
+        ) {
+            return;
+        }
+
+        const summary = crowdFlow || {};
+        const hasCount =
+            summary.count !== null &&
+            summary.count !== undefined &&
+            summary.count !== "";
+        const isAbnormal = Boolean(summary.is_abnormal);
+
+        crowdFlowMetric.classList.toggle("is-abnormal", isAbnormal);
+        crowdFlowMetric.classList.toggle("is-normal", !isAbnormal);
+
+        crowdFlowValue.textContent = isAbnormal
+            ? "異常"
+            : hasCount
+                ? String(summary.count)
+                : "--";
+
+        const rangeLabel = normalizeText(
+            summary.range_label,
+            "尚未設定正常範圍"
+        );
+
+        crowdFlowSummary.textContent = hasCount
+            ? `目前 ${summary.count} 人｜${rangeLabel}`
+            : `尚無人流統計資料｜${rangeLabel}`;
+    }
+
+    function updateInferenceHostSummary(inferenceHosts) {
+        if (
+            !inferenceHostMetric ||
+            !inferenceHostStatus ||
+            !inferenceHostDetail
+        ) {
+            return;
+        }
+
+        const summary = inferenceHosts || {};
+        const isAbnormal = Boolean(summary.is_abnormal);
+
+        inferenceHostMetric.classList.toggle("is-abnormal", isAbnormal);
+        inferenceHostMetric.classList.toggle("is-normal", !isAbnormal);
+
+        inferenceHostStatus.textContent = normalizeText(
+            summary.status_label,
+            "尚未設定"
+        );
+
+        inferenceHostDetail.textContent = normalizeText(
+            summary.detail_label,
+            "尚未設定推論主機"
+        );
+    }
+
+    function getLocalAlarmAudioContext() {
+        if (localAlarmAudioContext) {
+            return localAlarmAudioContext;
+        }
+
+        const AudioContextClass =
+            window.AudioContext || window.webkitAudioContext;
+
+        if (!AudioContextClass) {
+            return null;
+        }
+
+        localAlarmAudioContext = new AudioContextClass();
+        return localAlarmAudioContext;
+    }
+
+    async function unlockLocalAlarmAudio() {
+        const audioContext = getLocalAlarmAudioContext();
+
+        if (!audioContext) {
+            localAlarmUnlocked = false;
+            return false;
+        }
+
+        try {
+            if (audioContext.state === "suspended") {
+                await audioContext.resume();
+            }
+
+            localAlarmUnlocked = audioContext.state === "running";
+        } catch (error) {
+            console.warn("無法啟用本機警報聲：", error);
+            localAlarmUnlocked = false;
+        }
+
+        return localAlarmUnlocked;
+    }
+
+    async function playLocalEventAlarm() {
+        if (!localAlarmEnabled) {
+            return;
+        }
+
+        const unlocked = await unlockLocalAlarmAudio();
+
+        if (!unlocked) {
+            showToast(
+                "本機警報聲尚未啟用",
+                "請先點擊頁面任意位置，完成瀏覽器音訊授權。",
+                "error",
+                8000
+            );
+            return;
+        }
+
+        const audioContext = getLocalAlarmAudioContext();
+        const startTime = audioContext.currentTime;
+        const durationSeconds = 4.2;
+
+        const masterGain = audioContext.createGain();
+        masterGain.gain.setValueAtTime(0.0001, startTime);
+        masterGain.gain.exponentialRampToValueAtTime(0.22, startTime + 0.05);
+        masterGain.gain.setValueAtTime(0.22, startTime + durationSeconds - 0.15);
+        masterGain.gain.exponentialRampToValueAtTime(
+            0.0001,
+            startTime + durationSeconds
+        );
+        masterGain.connect(audioContext.destination);
+
+        const oscillatorA = audioContext.createOscillator();
+        const oscillatorB = audioContext.createOscillator();
+
+        oscillatorA.type = "sawtooth";
+        oscillatorB.type = "square";
+
+        oscillatorA.frequency.setValueAtTime(720, startTime);
+        oscillatorB.frequency.setValueAtTime(520, startTime);
+
+        const modulationInterval = 0.35;
+        const modulationSteps = Math.ceil(
+            durationSeconds / modulationInterval
+        );
+
+        for (let index = 0; index <= modulationSteps; index += 1) {
+            const time = startTime + index * modulationInterval;
+            const highPhase = index % 2 === 0;
+
+            oscillatorA.frequency.setValueAtTime(
+                highPhase ? 980 : 720,
+                time
+            );
+            oscillatorB.frequency.setValueAtTime(
+                highPhase ? 680 : 520,
+                time
+            );
+        }
+
+        const oscillatorAGain = audioContext.createGain();
+        const oscillatorBGain = audioContext.createGain();
+
+        oscillatorAGain.gain.value = 0.72;
+        oscillatorBGain.gain.value = 0.28;
+
+        oscillatorA.connect(oscillatorAGain);
+        oscillatorB.connect(oscillatorBGain);
+        oscillatorAGain.connect(masterGain);
+        oscillatorBGain.connect(masterGain);
+
+        oscillatorA.start(startTime);
+        oscillatorB.start(startTime);
+        oscillatorA.stop(startTime + durationSeconds);
+        oscillatorB.stop(startTime + durationSeconds);
+
+        if (localAlarmStopTimer) {
+            window.clearTimeout(localAlarmStopTimer);
+        }
+
+        localAlarmStopTimer = window.setTimeout(() => {
+            try {
+                masterGain.disconnect();
+            } catch (error) {
+                console.debug("本機警報聲節點已釋放。", error);
+            }
+        }, (durationSeconds + 0.5) * 1000);
+    }
+
+    function initializeLocalAlarm() {
+        const unlockOnce = () => {
+            unlockLocalAlarmAudio();
+        };
+
+        document.addEventListener("pointerdown", unlockOnce, {
+            once: true,
+            passive: true,
+        });
+
+        document.addEventListener("keydown", unlockOnce, {
+            once: true,
+        });
+    }
+
+    function updateEventWarningLight(isActive) {
+        if (!eventWarningLight) {
+            return;
+        }
+
+        const active = Boolean(isActive);
+
+        eventWarningLight.classList.toggle("is-active", active);
+        eventWarningLight.setAttribute(
+            "aria-label",
+            active ? "收到未處理的推論事件" : "事件警示燈待命"
+        );
+    }
+
+    function updateSummary(data) {
+        const cameras = data.cameras || [];
+        const events = data.events || [];
+        const latestEvent = events[0] || null;
+        if (stationCameraCount) {
+            stationCameraCount.textContent = String(
+                data.station_camera_count ?? 0
+            );
+        }
+
+        eventListCount.textContent = String(events.length);
+
+        updateCrowdFlowSummary(data.crowd_flow);
+        updateInferenceHostSummary(data.inference_hosts);
+        updateEventWarningLight(data.event_alert_active);
+
+        if (latestEvent) {
+            latestEventType.textContent = normalizeText(
+                latestEvent.event_type_display,
+                latestEvent.event_type || "未知事件"
+            );
+            latestEventCamera.textContent = latestEvent.camera_id
+                ? `${normalizeText(latestEvent.camera_code, "")}｜${normalizeText(latestEvent.camera_name, "")}`
+                : "未指定攝影機";
+            latestEventTime.textContent = normalizeText(
+                latestEvent.detected_at || latestEvent.created_at,
+                "--"
+            );
+        } else {
+            latestEventType.textContent = "目前無事件";
+            latestEventCamera.textContent = "系統正在等待 AI 推論事件";
+            latestEventTime.textContent = "--";
+        }
+    }
+
+    function getCarouselEvents() {
+        const activeStatuses = new Set(["new", "processing", "confirmed"]);
+        const activeEvents = currentEvents.filter(function (event) {
+            return activeStatuses.has(event.status);
+        });
+
+        return activeEvents.length >= 2 ? activeEvents : currentEvents;
+    }
+
+    function rotateEvent() {
+        if (!carouselEnabled || Date.now() < manualSelectionUntil) {
+            return;
+        }
+
+        const events = getCarouselEvents();
+
+        if (events.length < 2) {
+            return;
+        }
+
+        const currentIndex = events.findIndex(function (event) {
+            return String(event.id) === String(selectedEventId);
+        });
+        const nextIndex = currentIndex >= 0
+            ? (currentIndex + 1) % events.length
+            : 0;
+
+        selectEvent(events[nextIndex].id, false);
+    }
+
+    function updateCarouselButton() {
+        if (!eventCarouselButton) {
+            return;
+        }
+
+        eventCarouselButton.textContent = carouselEnabled
+            ? "輪播中"
+            : "已暫停";
+        eventCarouselButton.classList.toggle("is-paused", !carouselEnabled);
+    }
+
+    async function confirmSelectedEvent() {
+        const event = getSelectedEvent();
+
+        if (!event || detailConfirmButton.disabled) {
+            return;
+        }
+
+        const eventId = event.id;
+        detailConfirmButton.disabled = true;
+        detailConfirmButton.textContent = "確認中...";
+        setDetailMessage("", "");
 
         try {
             const response = await fetch(
@@ -305,10 +1061,11 @@ document.addEventListener("DOMContentLoaded", function () {
                     headers: {
                         "Accept": "application/json",
                         "X-Requested-With": "XMLHttpRequest",
-                        "X-CSRFToken": getCookie("csrftoken")
-                    }
+                        "X-CSRFToken": getCookie("csrftoken"),
+                    },
                 }
             );
+
             const data = await response.json().catch(function () {
                 return {};
             });
@@ -317,76 +1074,47 @@ document.addEventListener("DOMContentLoaded", function () {
                 throw new Error(data.message || `HTTP ${response.status}`);
             }
 
-            button.textContent = "\u5df2\u78ba\u8a8d";
-            button.classList.add("is-confirmed");
-
-            if (message) {
-                message.textContent = "\u4e8b\u4ef6\u5df2\u78ba\u8a8d";
-                message.classList.add("success");
-            }
+            detailConfirmButton.textContent = "已確認";
+            setDetailMessage("事件已確認。", "success");
 
             await fetchDashboardLiveState();
-        } catch (error) {
-            console.error("Failed to confirm event:", error);
-            button.disabled = false;
-            button.textContent = "\u78ba\u8a8d\u4e8b\u4ef6";
 
-            if (message) {
-                message.textContent = `\u78ba\u8a8d\u5931\u6557\uff1a${error.message}`;
-                message.classList.add("error");
+            const refreshedEvent = getEventById(eventId);
+            if (refreshedEvent) {
+                selectedEventId = String(eventId);
+                updateDetailPanel(refreshedEvent);
             }
+        } catch (error) {
+            detailConfirmButton.textContent = "確認事件";
+            detailConfirmButton.disabled = false;
+            setDetailMessage(`確認失敗：${error.message}`, "error");
         }
     }
 
-    function bindConfirmEventHandlers() {
-        const confirmButtons = document.querySelectorAll("[data-confirm-event]");
+    async function closeSelectedEvent() {
+        const event = getSelectedEvent();
 
-        confirmButtons.forEach(function (button) {
-            button.addEventListener("click", function (event) {
-                event.preventDefault();
-                event.stopPropagation();
-                confirmEvent(button);
-            });
-        });
-    }
-
-    async function closeEvent(button) {
-        const eventId = button.dataset.eventId;
-        const actions = button.closest(".event-actions");
-        const message = actions
-            ? actions.querySelector("[data-event-action-message]")
-            : null;
-
-        if (!eventId || button.disabled) {
+        if (!event || detailCloseButton.disabled) {
             return;
         }
 
-        const shouldClose = window.confirm(
-            "\u78ba\u5b9a\u8981\u89e3\u9664\u9019\u7b46\u4e8b\u4ef6\uff1f\u89e3\u9664\u5f8c\u72c0\u614b\u5c07\u8b8a\u66f4\u70ba Closed\u3002"
-        );
-
-        if (!shouldClose) {
+        if (!window.confirm("確定要解除這筆事件？解除後狀態將變更為「已解除」。")) {
             return;
         }
 
-        button.disabled = true;
-        button.textContent = "\u89e3\u9664\u4e2d...";
-
-        if (message) {
-            message.textContent = "";
-            message.classList.remove("success", "error");
-        }
+        detailCloseButton.disabled = true;
+        detailCloseButton.textContent = "解除中...";
 
         try {
             const response = await fetch(
-                `${confirmEventUrlPrefix}${encodeURIComponent(eventId)}/close/`,
+                `${confirmEventUrlPrefix}${encodeURIComponent(event.id)}/close/`,
                 {
                     method: "POST",
                     headers: {
                         "Accept": "application/json",
                         "X-Requested-With": "XMLHttpRequest",
-                        "X-CSRFToken": getCookie("csrftoken")
-                    }
+                        "X-CSRFToken": getCookie("csrftoken"),
+                    },
                 }
             );
             const data = await response.json().catch(function () {
@@ -397,93 +1125,45 @@ document.addEventListener("DOMContentLoaded", function () {
                 throw new Error(data.message || `HTTP ${response.status}`);
             }
 
-            button.textContent = "\u5df2\u89e3\u9664";
-            button.classList.add("is-closed");
-
-            if (message) {
-                message.textContent = "\u4e8b\u4ef6\u5df2\u89e3\u9664";
-                message.classList.add("success");
-            }
-
+            setDetailMessage("事件已解除。", "success");
             await fetchDashboardLiveState();
         } catch (error) {
-            console.error("Failed to close event:", error);
-            button.disabled = false;
-            button.textContent = "\u89e3\u9664\u4e8b\u4ef6";
-
-            if (message) {
-                message.textContent = `\u89e3\u9664\u5931\u6557\uff1a${error.message}`;
-                message.classList.add("error");
-            }
+            setDetailMessage(`解除失敗：${error.message}`, "error");
+        } finally {
+            detailCloseButton.textContent = "解除事件";
         }
     }
 
-    function bindCloseEventHandlers() {
-        const closeButtons = document.querySelectorAll("[data-close-event]");
+    async function broadcastSelectedEvent() {
+        const event = getSelectedEvent();
 
-        closeButtons.forEach(function (button) {
-            button.addEventListener("click", function (event) {
-                event.preventDefault();
-                event.stopPropagation();
-                closeEvent(button);
-            });
-        });
-    }
-
-    async function manualEventBroadcast(button) {
-        const eventId = button.dataset.eventId;
-        const speakerCode = button.dataset.speakerCode || "依廣播規則自動選擇";
-        const audioCode = button.dataset.audioCode || "依廣播規則自動選擇";
-        const actions = button.closest(".event-actions");
-        const message = actions
-            ? actions.querySelector("[data-event-action-message]")
-            : null;
-
-        if (!eventId || button.disabled) {
+        if (!event || detailBroadcastButton.disabled) {
             return;
         }
 
-        const modeWarning = broadcastPlaybackIsLive
-            ? `【${broadcastPlaybackModeLabel}】此操作會讓現場 IP Speaker 實際發聲。`
-            : `【${broadcastPlaybackModeLabel}】此操作不會呼叫實體 IP Speaker。`;
-        const shouldBroadcast = window.confirm(
-            `${modeWarning}\n\n` +
-            `事件：${eventId}\n` +
-            `Speaker：${speakerCode}\n` +
-            `音檔：${audioCode}\n\n` +
-            "確定要執行手動廣播？"
-        );
+        const warning = broadcastPlaybackIsLive
+            ? `目前後端模式為「${broadcastPlaybackModeLabel}」，此操作可能讓現場廣播喇叭發聲。`
+            : `目前後端模式為「${broadcastPlaybackModeLabel}」，不會呼叫實體廣播喇叭。`;
 
-        if (!shouldBroadcast) {
+        if (!window.confirm(
+            `${warning}\n\n事件編號：${event.id}\n廣播喇叭：${event.speaker_code}\n音檔：${event.audio_code}\n\n確定要執行手動廣播？`
+        )) {
             return;
         }
 
-        button.disabled = true;
-        button.textContent = "\u5ee3\u64ad\u8655\u7406\u4e2d...";
-        const requestStartedAt = Date.now();
-
-        showDashboardActionToast(
-            "\u624b\u52d5\u5ee3\u64ad\u8655\u7406\u4e2d",
-            `Event ${eventId} \u6b63\u5728\u5efa\u7acb\u8207\u8655\u7406\u5ee3\u64ad\u4efb\u52d9...`,
-            "pending",
-            {duration: 0}
-        );
-
-        if (message) {
-            message.textContent = "";
-            message.classList.remove("success", "error");
-        }
+        detailBroadcastButton.disabled = true;
+        detailBroadcastButton.textContent = "廣播中...";
 
         try {
             const response = await fetch(
-                `${manualBroadcastUrlPrefix}${encodeURIComponent(eventId)}/manual/`,
+                `${manualBroadcastUrlPrefix}${encodeURIComponent(event.id)}/manual/`,
                 {
                     method: "POST",
                     headers: {
                         "Accept": "application/json",
                         "X-Requested-With": "XMLHttpRequest",
-                        "X-CSRFToken": getCookie("csrftoken")
-                    }
+                        "X-CSRFToken": getCookie("csrftoken"),
+                    },
                 }
             );
             const data = await response.json().catch(function () {
@@ -494,501 +1174,49 @@ document.addEventListener("DOMContentLoaded", function () {
                 throw new Error(data.message || `HTTP ${response.status}`);
             }
 
-            const elapsed = Date.now() - requestStartedAt;
-
-            if (elapsed < 800) {
-                await wait(800 - elapsed);
-            }
-
-            button.textContent = "\u5ee3\u64ad\u6210\u529f";
-            button.classList.add("is-success");
-
-            if (message) {
-                const speakerCode = data.speaker_code || "Speaker";
-                const audioCode = data.audio_code || "Audio";
-                message.textContent = `\u5df2\u5b8c\u6210\uff1a${speakerCode} / ${audioCode}`;
-                message.classList.add("success");
-            }
-
-            showDashboardActionToast(
-                "\u624b\u52d5\u5ee3\u64ad\u5b8c\u6210",
-                `Log ${data.broadcast_log_id} \uff5c ${data.speaker_code || "Speaker"} \uff5c ${data.audio_code || "Audio"} \uff5c ${data.status_display || data.status || "Success"}`,
-                "success",
-                {duration: 7000, showBroadcastLink: true}
-            );
-
+            setDetailMessage("手動廣播已完成。", "success");
             await fetchDashboardLiveState();
         } catch (error) {
-            console.error("Failed to broadcast event:", error);
-            button.disabled = false;
-            button.textContent = "\u624b\u52d5\u5ee3\u64ad";
-
-            if (message) {
-                message.textContent = `\u5ee3\u64ad\u5931\u6557\uff1a${error.message}`;
-                message.classList.add("error");
-            }
-
-            showDashboardActionToast(
-                "\u624b\u52d5\u5ee3\u64ad\u5931\u6557",
-                error.message,
-                "error",
-                {duration: 9000}
-            );
-        }
-    }
-
-    function bindManualBroadcastHandlers() {
-        const broadcastButtons = document.querySelectorAll("[data-manual-broadcast]");
-
-        broadcastButtons.forEach(function (button) {
-            button.addEventListener("click", function (event) {
-                event.preventDefault();
-                event.stopPropagation();
-                manualEventBroadcast(button);
-            });
-        });
-    }
-
-    function bindStreamHandlers() {
-        const dashboardStreams = document.querySelectorAll("[data-dashboard-camera-stream]");
-
-        dashboardStreams.forEach(function (stream) {
-            stream.addEventListener("load", function () {
-                const card = stream.closest("[data-camera-card]");
-
-                if (!card) {
-                    return;
-                }
-
-                const overlay = card.querySelector("[data-dashboard-stream-overlay]");
-
-                if (overlay) {
-                    overlay.classList.add("hidden");
-                }
-            });
-
-            stream.addEventListener("error", function () {
-                const card = stream.closest("[data-camera-card]");
-
-                if (!card) {
-                    return;
-                }
-
-                const overlay = card.querySelector("[data-dashboard-stream-overlay]");
-
-                if (overlay) {
-                    overlay.classList.remove("hidden");
-                    overlay.innerHTML = `
-                        <div>
-                            <div class="camera-code">${escapeHtml(stream.alt || "CAMERA")}</div>
-                            <div class="placeholder-text">Stream unavailable</div>
-                        </div>
-                    `;
-                }
-            });
-
-            setTimeout(function () {
-                const card = stream.closest("[data-camera-card]");
-
-                if (!card) {
-                    return;
-                }
-
-                const overlay = card.querySelector("[data-dashboard-stream-overlay]");
-
-                if (!overlay || overlay.classList.contains("hidden")) {
-                    return;
-                }
-
-                overlay.innerHTML = `
-                    <div>
-                        <div class="camera-code">${escapeHtml(stream.alt || "CAMERA")}</div>
-                        <div class="placeholder-text">Still loading live stream...</div>
-                    </div>
-                `;
-            }, 15000);
-        });
-    }
-
-    function getCameraStreamUrl(camera) {
-        if (camera.stream_url) {
-            return camera.stream_url;
-        }
-
-        return `/api/cameras/${camera.id}/stream/`;
-    }
-
-    function renderCameraGrid(cameras, highlightedCameraId) {
-        cameraGrid.innerHTML = "";
-
-        if (!cameras || cameras.length === 0) {
-            cameraGrid.innerHTML = `
-                <div class="empty-state">
-                    \u76ee\u524d\u5c1a\u7121\u4e8b\u4ef6\u76f8\u95dc\u651d\u5f71\u6a5f\u3002\u8acb\u5148\u900f\u904e AI Event Trigger \u5efa\u7acb\u4e8b\u4ef6\u3002
-                </div>
-            `;
-
-            if (eventCameraCount) {
-                eventCameraCount.textContent = "0";
-            }
-
-            return;
-        }
-
-        cameras.forEach(function (camera) {
-            const cameraId = camera.id;
-            const cameraCode = normalizeText(camera.camera_code, "CAM-" + cameraId);
-            const cameraName = normalizeText(camera.name, cameraCode);
-            const area = normalizeText(camera.area, "\u672a\u8a2d\u5b9a\u5340\u57df");
-            const status = normalizeText(camera.status, "unknown");
-            const statusDisplay = normalizeText(camera.status_display, status);
-            const description = normalizeText(camera.description, "");
-            const streamUrl = getCameraStreamUrl(camera);
-
-            const isHighlighted = String(cameraId) === String(highlightedCameraId);
-            const isSelected = String(cameraId) === String(lastSelectedCameraId);
-            const shouldHighlight = lastSelectedCameraId ? isSelected : isHighlighted;
-
-            const card = document.createElement("div");
-            card.className = "camera-card event-camera-card";
-
-            if (shouldHighlight) {
-                card.classList.add("selected-event-camera-card");
-            }
-
-            card.dataset.cameraCard = "";
-            card.dataset.cameraId = cameraId;
-
-            card.innerHTML = `
-                <div class="camera-screen">
-                    <img
-                        src="${escapeHtml(streamUrl)}"
-                        alt="${escapeHtml(cameraCode)}"
-                        class="dashboard-camera-stream"
-                        data-dashboard-camera-stream
-                    >
-
-                    <div class="dashboard-stream-overlay" data-dashboard-stream-overlay>
-                        <div>
-                            <div class="camera-code">${escapeHtml(cameraCode)}</div>
-                            <div class="placeholder-text">Loading live stream...</div>
-                        </div>
-                    </div>
-
-                    <div class="event-camera-badge">
-                        \u4e8b\u4ef6\u651d\u5f71\u6a5f
-                    </div>
-                </div>
-
-                <div class="camera-info">
-                    <div>
-                        <h3>${escapeHtml(cameraName)}</h3>
-                        <p>${escapeHtml(area)}</p>
-                    </div>
-
-                    <span class="camera-status status-${escapeHtml(status)}">
-                        ${escapeHtml(statusDisplay)}
-                    </span>
-                </div>
-
-                ${
-                    description
-                        ? `<div class="camera-description">${escapeHtml(description)}</div>`
-                        : ""
-                }
-            `;
-
-            cameraGrid.appendChild(card);
-        });
-
-        if (eventCameraCount) {
-            eventCameraCount.textContent = String(cameras.length);
-        }
-
-        bindStreamHandlers();
-    }
-
-    function renderEventList(events) {
-        if (!eventList) {
-            return;
-        }
-
-        eventList.innerHTML = "";
-
-        if (!events || events.length === 0) {
-            eventList.innerHTML = `
-                <div class="empty-state">
-                    \u76ee\u524d\u5c1a\u7121\u4e8b\u4ef6\u8cc7\u6599\u3002
-                </div>
-            `;
-
-            if (recentEventsCount) {
-                recentEventsCount.textContent = "0";
-            }
-
-            return;
-        }
-
-        events.forEach(function (event) {
-            const eventId = event.id;
-            const cameraId = event.camera_id;
-            const eventType = normalizeText(event.event_type_display, event.event_type || "\u672a\u77e5\u4e8b\u4ef6");
-            const status = normalizeText(event.status_display, event.status || "unknown");
-            const statusCode = normalizeText(event.status, "unknown");
-            const cameraCode = normalizeText(event.camera_code, "");
-            const cameraName = normalizeText(event.camera_name, "");
-            const createdAt = normalizeText(event.created_at, "");
-            const confidence = event.confidence;
-
-            const item = document.createElement("div");
-            item.className = "event-item clickable-event-item";
-
-            if (String(eventId) === String(lastSelectedEventId)) {
-                item.classList.add("selected-ai-event");
-            }
-
-            item.dataset.eventId = eventId;
-
-            if (cameraId) {
-                item.dataset.eventCameraId = cameraId;
-            }
-
-            const cameraText = cameraId
-                ? `\u651d\u5f71\u6a5f\uff1a${escapeHtml(cameraCode)} - ${escapeHtml(cameraName)}`
-                : "\u651d\u5f71\u6a5f\uff1a\u672a\u6307\u5b9a";
-
-            item.innerHTML = `
-                <h3 class="event-type">${escapeHtml(eventType)}</h3>
-                <p class="event-meta">${cameraText}</p>
-                <p class="event-status" data-event-status>\u72c0\u614b\uff1a${escapeHtml(status)}</p>
-                ${
-                    confidence !== null && confidence !== undefined && confidence !== ""
-                        ? `<p>\u4fe1\u5fc3\u5206\u6578\uff1a${escapeHtml(confidence)}</p>`
-                        : ""
-                }
-                <p>\u6642\u9593\uff1a${escapeHtml(createdAt)}</p>
-                ${buildConfirmEventButton(
-                    eventId,
-                    statusCode,
-                    normalizeText(event.speaker_code, ""),
-                    normalizeText(event.audio_code, "")
-                )}
-            `;
-
-            eventList.appendChild(item);
-        });
-
-        if (recentEventsCount) {
-            recentEventsCount.textContent = String(events.length);
-        }
-
-        bindEventItemClickHandlers();
-        bindConfirmEventHandlers();
-        bindCloseEventHandlers();
-        bindManualBroadcastHandlers();
-    }
-
-    function renderBroadcastLogs(logs) {
-        if (!broadcastLogTableBody) {
-            return;
-        }
-
-        broadcastLogTableBody.innerHTML = "";
-
-        if (!logs || logs.length === 0) {
-            broadcastLogTableBody.innerHTML = `
-                <tr>
-                    <td colspan="7" class="empty-table-message">
-                        \u5c1a\u672a\u5efa\u7acb\u5ee3\u64ad\u4efb\u52d9\u3002\u53ef\u900f\u904e POST /api/events/trigger/ \u5efa\u7acb\u6e2c\u8a66\u4e8b\u4ef6\u3002
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        logs.forEach(function (log) {
-            const createdAt = normalizeText(log.created_at, "");
-            const eventType = normalizeText(log.event_type_display, log.event_type || "\u7121\u4e8b\u4ef6");
-            const eventCameraCode = normalizeText(log.event_camera_code, "");
-            const eventCameraName = normalizeText(log.event_camera_name, "");
-            const ruleCode = normalizeText(log.rule_code, "\u7121\u898f\u5247");
-            const ruleName = normalizeText(log.rule_name, "");
-            const speakerCode = normalizeText(log.speaker_code, "\u7121 Speaker");
-            const speakerName = normalizeText(log.speaker_name, "");
-            const sipUri = normalizeText(log.resolved_sip_uri, log.sip_uri || "-");
-            const audioCode = normalizeText(log.audio_code, "\u7121\u97f3\u6a94");
-            const audioName = normalizeText(log.audio_file_name, log.audio_name || "");
-            const status = normalizeText(log.status, "unknown");
-            const statusDisplay = normalizeText(log.status_display, status);
-
-            const eventCameraText = eventCameraCode || eventCameraName
-                ? `<div class="broadcast-sub-text">${escapeHtml(eventCameraCode)} - ${escapeHtml(eventCameraName)}</div>`
-                : "";
-
-            const ruleSubText = ruleName
-                ? `<div class="broadcast-sub-text">${escapeHtml(ruleName)}</div>`
-                : "";
-
-            const speakerSubText = speakerName
-                ? `<div class="broadcast-sub-text">${escapeHtml(speakerName)}</div>`
-                : "";
-
-            const audioSubText = audioName
-                ? `<div class="broadcast-sub-text">${escapeHtml(audioName)}</div>`
-                : "";
-
-            const row = document.createElement("tr");
-
-            row.innerHTML = `
-                <td>
-                    <div class="broadcast-main-text">${escapeHtml(createdAt)}</div>
-                </td>
-
-                <td>
-                    <div class="broadcast-main-text">${escapeHtml(eventType)}</div>
-                    ${eventCameraText}
-                </td>
-
-                <td>
-                    <div class="broadcast-main-text">${escapeHtml(ruleCode)}</div>
-                    ${ruleSubText}
-                </td>
-
-                <td>
-                    <div class="broadcast-main-text">${escapeHtml(speakerCode)}</div>
-                    ${speakerSubText}
-                </td>
-
-                <td>
-                    <div class="broadcast-main-text">${escapeHtml(sipUri)}</div>
-                </td>
-
-                <td>
-                    <div class="broadcast-main-text">${escapeHtml(audioCode)}</div>
-                    ${audioSubText}
-                </td>
-
-                <td>
-                    <span class="broadcast-status broadcast-status-${escapeHtml(status)}">
-                        ${escapeHtml(statusDisplay)}
-                    </span>
-                </td>
-            `;
-
-            broadcastLogTableBody.appendChild(row);
-        });
-    }
-
-    function updateSummary(data) {
-        const cameras = data.cameras || [];
-        const events = data.events || [];
-        const latestEvent = events[0] || null;
-        const pendingCount =
-            data.pending_broadcast_count ??
-            data.pending_broadcast_logs ??
-            0;
-
-        if (eventCameraCount) {
-            eventCameraCount.textContent = String(cameras.length);
-        }
-
-        if (recentEventsCount) {
-            recentEventsCount.textContent = String(events.length);
-        }
-
-        if (pendingBroadcastLogsCount) {
-            pendingBroadcastLogsCount.textContent = String(pendingCount);
-        }
-
-        if (pendingBroadcastMetric) {
-            pendingBroadcastMetric.classList.toggle("is-clear", Number(pendingCount) === 0);
-        }
-
-        if (latestEvent) {
-            if (latestEventType) {
-                latestEventType.textContent = normalizeText(
-                    latestEvent.event_type_display,
-                    latestEvent.event_type || "\u672a\u77e5\u4e8b\u4ef6"
-                );
-            }
-
-            if (latestEventCamera) {
-                const cameraCode = normalizeText(latestEvent.camera_code, "");
-                const cameraName = normalizeText(latestEvent.camera_name, "");
-                latestEventCamera.textContent =
-                    cameraCode || cameraName
-                        ? `${cameraCode}\uff5c${cameraName}`
-                        : "\u672a\u6307\u5b9a\u651d\u5f71\u6a5f";
-            }
-
-            if (latestEventTime) {
-                latestEventTime.textContent = normalizeText(latestEvent.created_at, "--");
-            }
-        } else {
-            if (latestEventType) {
-                latestEventType.textContent = "\u76ee\u524d\u7121\u4e8b\u4ef6";
-            }
-
-            if (latestEventCamera) {
-                latestEventCamera.textContent = "\u7cfb\u7d71\u6b63\u5728\u7b49\u5f85 AI \u63a8\u8ad6\u4e8b\u4ef6";
-            }
-
-            if (latestEventTime) {
-                latestEventTime.textContent = "--";
-            }
+            setDetailMessage(`廣播失敗：${error.message}`, "error");
+        } finally {
+            detailBroadcastButton.textContent = "手動廣播";
         }
     }
 
     async function processPendingBroadcastLogs() {
-        if (!processPendingBroadcastButton) {
-            return;
-        }
-
         processPendingBroadcastButton.disabled = true;
-        processPendingBroadcastButton.textContent = "\u8655\u7406\u4e2d...";
-        setProcessBroadcastStatus("\u6b63\u5728\u8655\u7406 pending \u5ee3\u64ad\u4efb\u52d9...", "");
+        processPendingBroadcastButton.textContent = "處理中...";
+        processBroadcastStatus.textContent = "正在處理待播放廣播任務...";
+        processBroadcastStatus.classList.remove("success", "error");
 
         try {
             const response = await fetch(processPendingBroadcastApiUrl, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "X-Requested-With": "XMLHttpRequest"
+                    "X-Requested-With": "XMLHttpRequest",
+                    "X-CSRFToken": getCookie("csrftoken"),
                 },
-                body: JSON.stringify({
-                    limit: 10
-                })
+                body: JSON.stringify({limit: 10}),
+            });
+            const data = await response.json().catch(function () {
+                return {};
             });
 
-            if (!response.ok) {
-                setProcessBroadcastStatus(`\u8655\u7406\u5931\u6557\uff1aHTTP ${response.status}`, "error");
-                return;
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || `HTTP ${response.status}`);
             }
 
-            const data = await response.json();
-
-            if (!data.success) {
-                setProcessBroadcastStatus(
-                    data.message || "\u8655\u7406\u5931\u6557\uff1aAPI \u56de\u50b3 success=false",
-                    "error"
-                );
-                return;
-            }
-
-            setProcessBroadcastStatus(
-                `\u8655\u7406\u5b8c\u6210\uff1a${data.processed_count} \u7b46\uff0c\u6210\u529f ${data.success_count} \u7b46\uff0c\u5931\u6557 ${data.failed_count} \u7b46\uff0c\u5269\u9918 pending ${data.pending_count} \u7b46`,
-                "success"
-            );
-
+            processBroadcastStatus.textContent =
+                `處理完成：${data.processed_count} 筆，成功 ${data.success_count} 筆，失敗 ${data.failed_count} 筆，剩餘 ${data.pending_count} 筆。`;
+            processBroadcastStatus.classList.add("success");
             await fetchDashboardLiveState();
-
         } catch (error) {
-            console.error("Failed to process pending broadcast logs:", error);
-            setProcessBroadcastStatus("\u8655\u7406\u5931\u6557\uff1a\u8acb\u6aa2\u67e5 API \u6216 console", "error");
-
+            processBroadcastStatus.textContent = `處理失敗：${error.message}`;
+            processBroadcastStatus.classList.add("error");
         } finally {
             processPendingBroadcastButton.disabled = false;
-            processPendingBroadcastButton.textContent = "\u8655\u7406\u5f85\u64ad\u653e\u4efb\u52d9";
+            processPendingBroadcastButton.textContent = "處理待播放任務";
         }
     }
 
@@ -996,75 +1224,106 @@ document.addEventListener("DOMContentLoaded", function () {
         try {
             const response = await fetch(liveStateApiUrl, {
                 method: "GET",
-                headers: {
-                    "X-Requested-With": "XMLHttpRequest"
-                }
+                headers: {"X-Requested-With": "XMLHttpRequest"},
             });
 
             if (!response.ok) {
-                setPollingStatus(`Dashboard polling\uff1aAPI error ${response.status}`, true);
+                setPollingStatus(`資料更新失敗：HTTP ${response.status}`, true);
                 return;
             }
 
             const data = await response.json();
-
-            const cameras = data.cameras || [];
-            const events = data.events || [];
-            const logs = data.broadcast_logs || data.recent_broadcast_logs || [];
-            const highlightedCameraId = data.highlighted_camera_id;
+            currentCameras = data.cameras || [];
+            currentEvents = data.events || [];
+            const logs = data.broadcast_logs || [];
 
             updateSummary(data);
-            renderCameraGrid(cameras, highlightedCameraId);
-            renderEventList(events);
+            renderCameraGrid(currentCameras);
+            renderEventList(currentEvents);
             renderBroadcastLogs(logs);
 
-            if (events.length > 0) {
-                const latestEventId = events[0].id;
+            if (currentEvents.length) {
+                const latestEvent = currentEvents[0];
 
-                if (lastLatestEventId !== null && String(latestEventId) !== String(lastLatestEventId)) {
-                    const targetCameraId = highlightedCameraId || events[0].camera_id;
+                if (
+                    lastLatestEventId !== null &&
+                    String(latestEvent.id) !== String(lastLatestEventId)
+                ) {
+                    selectedEventId = String(latestEvent.id);
+                    selectedCameraId = latestEvent.camera_id
+                        ? String(latestEvent.camera_id)
+                        : null;
 
-                    lastSelectedEventId = String(latestEventId);
-                    lastSelectedCameraId = targetCameraId ? String(targetCameraId) : null;
+                    showToast(
+                        "收到新的 AI 推論事件",
+                        `${normalizeText(latestEvent.event_type_display, latestEvent.event_type || "未知事件")}｜${normalizeText(latestEvent.camera_code, "未指定攝影機")}`,
+                        "error",
+                        8000
+                    );
 
-                    if (targetCameraId) {
-                        focusEventCamera(targetCameraId);
-                    }
+                    playLocalEventAlarm();
                 }
 
-                lastLatestEventId = latestEventId;
+                lastLatestEventId = latestEvent.id;
+
+                if (!selectedEventId || !getEventById(selectedEventId)) {
+                    selectedEventId = String(latestEvent.id);
+                }
+
+                selectEvent(selectedEventId, false);
+            } else {
+                selectedEventId = null;
+                selectedCameraId = null;
+                updateDetailPanel(null);
+                renderPrimaryMedia(false);
             }
 
-            const serverTime = data.server_time || new Date().toLocaleString();
-            setPollingStatus(`Dashboard polling\uff1a\u5df2\u66f4\u65b0 ${serverTime}`, false);
-
+            setPollingStatus(
+                `資料更新：${data.server_time || "完成"}`,
+                false
+            );
         } catch (error) {
-            console.error("Failed to fetch dashboard live state:", error);
-            setPollingStatus("Dashboard polling\uff1a\u66f4\u65b0\u5931\u6557\uff0c\u8acb\u6aa2\u67e5 API \u6216 console", true);
+            console.error("Dashboard live state error:", error);
+            setPollingStatus("資料更新失敗，請檢查 API 或瀏覽器主控台。", true);
         }
     }
 
-    if (processPendingBroadcastButton) {
-        processPendingBroadcastButton.addEventListener("click", function () {
-            processPendingBroadcastLogs();
+    document.querySelectorAll("[data-media-mode]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            setMediaMode(button.dataset.mediaMode);
         });
-    }
+    });
 
-    if (dashboardActionToastClose) {
-        dashboardActionToastClose.addEventListener("click", function () {
-            hideDashboardActionToast();
+    document.querySelectorAll("[data-planned-feature]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            showToast(
+                button.dataset.plannedFeature,
+                "此快捷入口已納入介面，功能頁面將於後續階段接入。",
+                "pending",
+                4500
+            );
         });
-    }
+    });
 
-    bindEventItemClickHandlers();
-    bindConfirmEventHandlers();
-    bindCloseEventHandlers();
-    bindManualBroadcastHandlers();
-    bindStreamHandlers();
+    detailConfirmButton.addEventListener("click", confirmSelectedEvent);
+    detailCloseButton.addEventListener("click", closeSelectedEvent);
+    detailBroadcastButton.addEventListener("click", broadcastSelectedEvent);
+    processPendingBroadcastButton.addEventListener(
+        "click",
+        processPendingBroadcastLogs
+    );
+    dashboardActionToastClose.addEventListener("click", hideToast);
+
+    eventCarouselButton.addEventListener("click", function () {
+        carouselEnabled = !carouselEnabled;
+        updateCarouselButton();
+    });
+
+    updateClock();
+    window.setInterval(updateClock, 1000);
+    updateCarouselButton();
+    carouselTimer = window.setInterval(rotateEvent, 8000);
 
     fetchDashboardLiveState();
-
-    setInterval(function () {
-        fetchDashboardLiveState();
-    }, 5000);
+    window.setInterval(fetchDashboardLiveState, 3000);
 });

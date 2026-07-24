@@ -1,11 +1,10 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hant-TW">
 <head>
     <meta charset="UTF-8">
-    <title>KRTC AI CCTV 通報主機 Dashboard</title>
+    <title>KRTC AI CCTV 通報主機</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
 </head>
 
@@ -19,536 +18,348 @@
     data-broadcast-playback-mode-label="{{ broadcast_playback_mode_label }}"
     data-broadcast-playback-is-live="{{ broadcast_playback_mode_is_live|yesno:'true,false' }}"
 >
-    <div class="dashboard-layout">
-        <header class="dashboard-header">
-            <div class="dashboard-header-row">
-                <div>
-                    <h1>KRTC AI CCTV 通報主機 Dashboard</h1>
-                    <p>需求版本 v2.0｜AI 事件通報、攝影機監控、人流統計、IP Speaker 廣播規則預留</p>
-                    <div id="dashboardPollingStatus" class="polling-status">
-                        Dashboard polling：等待更新
+    <div class="dashboard-shell">
+        <header class="topbar">
+            <div class="topbar-brand-zone">
+                <div class="brand-block">
+                    <img
+                        src="{% static 'img/KRTC_logo.png' %}"
+                        alt="高雄捷運"
+                        class="brand-logo"
+                    >
+
+                    <div class="brand-title">
+                        {{ station_name|default:"站區名" }} 通報主機
                     </div>
                 </div>
+            </div>
 
-                <div class="header-actions">
+            <div class="topbar-navigation-zone">
+                <nav class="function-nav-row" aria-label="系統功能導覽">
+                    <div class="function-nav-group">
+                        <button
+                            type="button"
+                            class="quick-nav-button"
+                            data-planned-feature="設備清單"
+                        >
+                            設備清單
+                        </button>
+
+                        <button
+                            type="button"
+                            class="quick-nav-button"
+                            data-planned-feature="事件快照清單"
+                        >
+                            事件快照
+                        </button>
+
+                        <button
+                            type="button"
+                            class="quick-nav-button"
+                            data-planned-feature="事件紀錄查詢"
+                        >
+                            事件紀錄
+                        </button>
+                    </div>
+
+                    <span class="function-nav-divider" aria-hidden="true"></span>
+
+                    <div class="function-nav-group">
+                        <button
+                            type="button"
+                            class="quick-nav-button quick-nav-button-broadcast"
+                            data-planned-feature="站區廣播系統"
+                        >
+                            站區廣播系統
+                        </button>
+
+                        <a
+                            href="{% url 'dashboard:monitor' %}"
+                            class="quick-nav-button quick-nav-button-monitor"
+                        >
+                            即時監視牆
+                        </a>
+                    </div>
+
+                    <span class="function-nav-divider" aria-hidden="true"></span>
+
+                    <div class="function-nav-group">
+                        <button
+                            type="button"
+                            class="quick-nav-button quick-nav-button-settings"
+                            data-planned-feature="系統設定"
+                        >
+                            系統設定
+                        </button>
+                    </div>
+                </nav>
+            </div>
+
+            <div class="topbar-control-zone">
+                <div class="topbar-control-row">
                     <div
-                        class="playback-mode-badge {% if broadcast_playback_mode_is_live %}is-live{% else %}is-simulation{% endif %}"
+                        class="playback-mode-badge {% if broadcast_playback_mode_is_live %}is-healthy{% else %}is-test{% endif %}"
                         id="broadcastPlaybackModeBadge"
-                        title="{% if broadcast_playback_mode_is_live %}手動廣播會讓現場 IP Speaker 發聲{% else %}目前不會呼叫實體 IP Speaker{% endif %}"
+                        title="目前後端模式：{{ broadcast_playback_mode_label }}"
                     >
-                        <span class="playback-mode-dot" aria-hidden="true"></span>
-                        <span>廣播模式</span>
-                        <strong id="broadcastPlaybackModeLabel">{{ broadcast_playback_mode_label }}</strong>
+                        <span class="status-dot"></span>
+                        <strong>
+                            {% if broadcast_playback_mode_is_live %}
+                                廣播模式
+                            {% else %}
+                                測試模式
+                            {% endif %}
+                        </strong>
                     </div>
+<time class="topbar-clock" id="systemDateTime">--</time>
 
-                    <div class="user-badge">
-                        操作員：{{ request.user.username }}
-                    </div>
-
-                    <a href="{% url 'dashboard:monitor' %}" class="monitor-wall-link">
-                        進入監控牆
-                    </a>
-
-                    <form method="post" action="{% url 'logout' %}" class="logout-form">
+                    <form
+                        method="post"
+                        action="{% url 'logout' %}"
+                        class="logout-form"
+                    >
                         {% csrf_token %}
-                        <button type="submit" class="logout-button">
+                        <button
+                            type="submit"
+                            class="topbar-button topbar-button-logout"
+                        >
                             登出
                         </button>
                     </form>
                 </div>
             </div>
-
-            {% if broadcast_playback_mode_is_live %}
-                <div class="live-playback-warning" role="alert">
-                    LIVE：手動廣播會讓現場 IP Speaker 實際發聲，請確認 Speaker 與音檔後再執行。
-                </div>
-            {% endif %}
         </header>
 
-        <aside
-            class="dashboard-action-toast"
-            id="dashboardActionToast"
-            role="status"
-            aria-live="polite"
-            hidden
-        >
-            <div class="dashboard-action-toast-copy">
-                <strong id="dashboardActionToastTitle">系統通知</strong>
-                <span id="dashboardActionToastMessage"></span>
-            </div>
-            <div class="dashboard-action-toast-actions">
-                <a href="#broadcastLogTableBody" id="dashboardActionToastLink" hidden>
-                    查看廣播紀錄
-                </a>
-                <button type="button" id="dashboardActionToastClose" aria-label="關閉通知">
-                    ×
-                </button>
-            </div>
-        </aside>
+        <section class="summary-strip">
+            <div class="latest-event-summary">
+                <div class="summary-kicker latest-event-kicker">
+                    最新事件
+                </div>
 
-        <section class="status-banner" id="eventStatusBanner" aria-label="系統事件狀態">
-            <div class="status-banner-main">
-                <div class="status-banner-heading">
-                    <div class="status-kicker">
-                        <span class="system-live-dot" aria-hidden="true"></span>
-                        通報主機運作中
-                    </div>
-
-                    {% with latest_event=recent_events.0 %}
-                        {% if latest_event %}
-                            <h2 id="latestEventType">
-                                {% if latest_event.get_event_type_display %}
-                                    {{ latest_event.get_event_type_display }}
-                                {% else %}
-                                    {{ latest_event.event_type }}
-                                {% endif %}
-                            </h2>
-                            <p id="latestEventCamera">
+                {% with latest_event=recent_events.0 %}
+                    {% if latest_event %}
+                        <div class="latest-event-title" id="latestEventType">
+                            {% if latest_event.get_event_type_display %}
+                                {{ latest_event.get_event_type_display }}
+                            {% else %}
+                                {{ latest_event.event_type }}
+                            {% endif %}
+                        </div>
+                        <div class="latest-event-meta">
+                            <span id="latestEventCamera">
                                 {% if latest_event.camera %}
                                     {{ latest_event.camera.camera_code }}｜{{ latest_event.camera.name }}
                                 {% else %}
                                     未指定攝影機
                                 {% endif %}
-                            </p>
-                            <time id="latestEventTime">{{ latest_event.created_at|date:"Y-m-d H:i:s" }}</time>
-                        {% else %}
-                            <h2 id="latestEventType">目前無事件</h2>
-                            <p id="latestEventCamera">系統正在等待 AI 推論事件</p>
-                            <time id="latestEventTime">--</time>
-                        {% endif %}
-                    {% endwith %}
-                </div>
-
-                <div class="alert-state-group" aria-label="PAO 聲光提示狀態">
-                    <div class="alert-state alert-state-ready">
-                        <span class="alert-state-icon" aria-hidden="true">●</span>
-                        聲音提示待命
-                    </div>
-                    <div class="alert-state alert-state-ready">
-                        <span class="alert-state-icon alert-state-icon-red" aria-hidden="true">●</span>
-                        警示燈待命
-                    </div>
-                </div>
+                            </span>
+                            <span id="latestEventTime">{{ latest_event.created_at|date:"Y-m-d H:i:s" }}</span>
+                        </div>
+                    {% else %}
+                        <div class="latest-event-title" id="latestEventType">目前無事件</div>
+                        <div class="latest-event-meta">
+                            <span id="latestEventCamera">系統正在等待 AI 推論事件</span>
+                            <span id="latestEventTime">--</span>
+                        </div>
+                    {% endif %}
+                {% endwith %}
             </div>
 
-            <div class="status-metrics">
-                <div class="status-metric">
-                    <span class="status-metric-label">事件攝影機</span>
-                    <strong id="eventCameraCount">{{ cameras|length }}</strong>
-                    <span class="status-metric-unit">台</span>
+            <div class="metric-row">
+                <div class="metric-card">
+                    <span>站區攝影機</span>
+                    <strong id="stationCameraCount">{{ station_camera_count }}</strong>
+                    <small>台運行中</small>
                 </div>
 
-                <div class="status-metric">
-                    <span class="status-metric-label">近期事件</span>
-                    <strong id="recentEventsCount">{{ recent_events|length }}</strong>
-                    <span class="status-metric-unit">筆</span>
-                </div>
-
-                <div class="status-metric status-metric-warning" id="pendingBroadcastMetric">
-                    <span class="status-metric-label">待播放任務</span>
-                    <strong id="pendingBroadcastLogsCount">{{ pending_broadcast_logs }}</strong>
-                    <span class="status-metric-unit">筆</span>
-                </div>
-
-                <div class="status-metric">
-                    <span class="status-metric-label">人流狀態</span>
-                    <strong class="status-metric-text">
-                        {% if crowd_flow_records.0.is_abnormal %}異常{% else %}正常{% endif %}
-                    </strong>
-                    <span class="status-metric-unit">{{ crowd_flow_records|length }} 筆紀錄</span>
-                </div>
-
-                <div class="status-metric">
-                    <span class="status-metric-label">Speaker</span>
+                <div class="metric-card">
+                    <span>站區廣播喇叭</span>
                     <strong>{{ active_speakers }}</strong>
-                    <span class="status-metric-unit">台啟用</span>
+                    <small>台啟用</small>
                 </div>
 
-                <div class="status-metric">
-                    <span class="status-metric-label">廣播資源</span>
-                    <strong>{{ active_broadcast_rules }}</strong>
-                    <span class="status-metric-unit">規則／{{ active_audio_files }} 音檔</span>
+                <div
+                    class="metric-card crowd-flow-metric {% if crowd_flow_summary.is_abnormal %}is-abnormal{% else %}is-normal{% endif %}"
+                    id="crowdFlowMetric"
+                >
+                    <span>人流統計</span>
+
+                    <strong
+                        class="metric-text"
+                        id="crowdFlowValue"
+                    >
+                        {% if crowd_flow_summary.is_abnormal %}
+                            異常
+                        {% elif crowd_flow_summary.count != None %}
+                            {{ crowd_flow_summary.count }}
+                        {% else %}
+                            --
+                        {% endif %}
+                    </strong>
+
+                    <small id="crowdFlowSummary">
+                        {% if crowd_flow_summary.count != None %}
+                            目前 {{ crowd_flow_summary.count }} 人｜{{ crowd_flow_summary.range_label }}
+                        {% else %}
+                            尚無人流統計資料｜{{ crowd_flow_summary.range_label }}
+                        {% endif %}
+                    </small>
+                </div>
+
+                <div
+                    class="metric-card inference-host-metric {% if inference_host_summary.is_abnormal %}is-abnormal{% else %}is-normal{% endif %}"
+                    id="inferenceHostMetric"
+                >
+                    <span>站區推論主機狀態</span>
+
+                    <strong
+                        class="metric-text"
+                        id="inferenceHostStatus"
+                    >
+                        {{ inference_host_summary.status_label }}
+                    </strong>
+
+                    <small id="inferenceHostDetail">
+                        {{ inference_host_summary.detail_label }}
+                    </small>
+                </div>
+
+                <div
+                    class="metric-card event-warning-metric"
+                    id="eventWarningMetric"
+                >
+                    <span>事件警示</span>
+
+                    <div
+                        class="event-warning-light"
+                        id="eventWarningLight"
+                        role="status"
+                        aria-live="polite"
+                        aria-label="事件警示燈待命"
+                    >
+                        <span class="event-warning-core"></span>
+                    </div>
+
                 </div>
             </div>
         </section>
 
-        <main class="main-grid">
-            <section class="monitor-section">
-                <div class="section-header">
+        <main class="workspace-grid">
+            <aside class="panel event-panel">
+                <div class="panel-header">
                     <div>
-                        <h2>事件攝影機即時監控</h2>
-                        <p>Event Camera Live Preview｜點擊右側 AI 事件後，對應 Camera 會以紅框標示</p>
+                        <h2>近期 AI 事件</h2>
+                        <p>點擊事件可切換影像與詳細資料</p>
+                    </div>
+                    <div class="event-panel-tools">
+                        <button type="button" id="eventCarouselButton" class="carousel-button">輪播中</button>
+                        <span class="panel-count" id="eventListCount">{{ recent_events|length }}</span>
                     </div>
                 </div>
+                <div class="event-list" id="eventList"></div>
+            </aside>
 
-                <div class="camera-grid dashboard-event-grid" id="cameraGrid">
-                    {% for camera in cameras %}
-                        <div
-                            class="camera-card {% if camera.id in recent_event_camera_ids %}event-camera-card{% endif %}"
-                            data-camera-card
-                            data-camera-id="{{ camera.id }}"
-                        >
-                            <div class="camera-screen">
-                                <img
-                                    src="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
-                                    alt="{{ camera.camera_code }}"
-                                    class="dashboard-camera-stream"
-                                    data-dashboard-camera-stream
-                                >
-
-                                <div class="dashboard-stream-overlay" data-dashboard-stream-overlay>
-                                    <div>
-                                        <div class="camera-code">{{ camera.camera_code }}</div>
-                                        <div class="placeholder-text">Loading live stream...</div>
-                                    </div>
-                                </div>
-
-                                {% if camera.id in recent_event_camera_ids %}
-                                    <div class="event-camera-badge">
-                                        事件攝影機
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            <div class="camera-info">
-                                <div>
-                                    <h3>{{ camera.name }}</h3>
-
-                                    {% if camera.area %}
-                                        <p>{{ camera.area }}</p>
-                                    {% else %}
-                                        <p>未設定區域</p>
-                                    {% endif %}
-                                </div>
-
-                                <span class="camera-status status-{{ camera.status|default:'unknown' }}">
-                                    {% if camera.get_status_display %}
-                                        {{ camera.get_status_display }}
-                                    {% else %}
-                                        Unknown
-                                    {% endif %}
-                                </span>
-                            </div>
-
-                            {% if camera.description %}
-                                <div class="camera-description">
-                                    {{ camera.description }}
-                                </div>
-                            {% endif %}
-                        </div>
-                    {% empty %}
-                        <div class="empty-state">
-                            目前尚無事件相關攝影機。請先透過 AI Event Trigger 建立事件。
-                        </div>
-                    {% endfor %}
+            <section class="panel camera-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>事件影像</h2>
+                        <p>即時畫面、事件快照與錄影連結</p>
+                    </div>
+                    <div id="dashboardPollingStatus" class="polling-status">資料更新：等待中</div>
                 </div>
+
+                <div class="media-toolbar" role="tablist" aria-label="事件影像模式">
+                    <button type="button" class="media-mode-button is-active" data-media-mode="live">即時畫面</button>
+                    <button type="button" class="media-mode-button" data-media-mode="snapshot">事件快照</button>
+                    <button type="button" class="media-mode-button" data-media-mode="video">事件錄影</button>
+                </div>
+
+                <div class="primary-camera-stage" id="primaryCameraStage"></div>
+
+                <div class="camera-thumbnail-strip" id="cameraGrid"></div>
             </section>
 
-            <aside>
-                <section class="side-section">
-                    <div class="section-header">
-                        <div>
-                            <h2>近期 AI 事件</h2>
-                            <p>Recent AI Events｜點擊事件可定位相關攝影機</p>
+            <aside class="panel detail-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>事件詳細資料</h2>
+                        <p>來源、媒體、廣播與處理狀態</p>
+                    </div>
+                </div>
+
+                <div class="detail-scroll">
+                    <section class="detail-section">
+                        <h3 id="detailEventType">尚未選取事件</h3>
+                        <dl class="detail-list">
+                            <div><dt>本站事件編號</dt><dd id="detailEventId">--</dd></div>
+                            <div><dt>外部事件編號</dt><dd id="detailExternalEventId">--</dd></div>
+                            <div><dt>來源事件編號</dt><dd id="detailSourceEventId">--</dd></div>
+                            <div><dt>處理狀態</dt><dd id="detailEventStatus">--</dd></div>
+                            <div><dt>來源推論主機</dt><dd id="detailInferenceHost">尚未提供</dd></div>
+                            <div><dt>攝影機</dt><dd id="detailCamera">--</dd></div>
+                            <div><dt>站別／區域</dt><dd id="detailLocation">尚未提供</dd></div>
+                            <div><dt>ROI</dt><dd id="detailRoi">尚未提供</dd></div>
+                            <div><dt>嚴重程度</dt><dd id="detailSeverity">未提供</dd></div>
+                            <div><dt>信心分數</dt><dd id="detailConfidence">--</dd></div>
+                            <div><dt>偵測時間</dt><dd id="detailDetectedAt">--</dd></div>
+                            <div><dt>匯入時間</dt><dd id="detailCreatedAt">--</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="detail-section">
+                        <h3>媒體資料</h3>
+                        <dl class="detail-list">
+                            <div><dt>事件快照</dt><dd id="detailSnapshotStatus">未提供</dd></div>
+                            <div><dt>AI 標定影像</dt><dd id="detailAnnotatedStatus">未提供</dd></div>
+                            <div><dt>事件錄影</dt><dd id="detailVideoStatus">未提供</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="detail-section">
+                        <h3>廣播設定</h3>
+                        <dl class="detail-list">
+                            <div><dt>廣播規則</dt><dd id="detailBroadcastRule">--</dd></div>
+                            <div><dt>廣播喇叭</dt><dd id="detailSpeaker">--</dd></div>
+                            <div><dt>播放音檔</dt><dd id="detailAudio">--</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="detail-section">
+                        <h3>事件操作</h3>
+                        <div class="detail-actions">
+                            <button type="button" class="action-button action-primary" id="detailConfirmButton" disabled>確認事件</button>
+                            <button type="button" class="action-button action-danger" id="detailCloseButton" disabled>解除事件</button>
+                            <button type="button" class="action-button action-warning" id="detailBroadcastButton" disabled>手動廣播</button>
                         </div>
-                    </div>
+                        <div class="detail-action-message" id="detailActionMessage"></div>
+                    </section>
 
-                    <div class="event-list" id="eventList">
-                        {% for event in recent_events %}
-                            <div
-                                class="event-item clickable-event-item"
-                                data-event-id="{{ event.id }}"
-                                {% if event.camera %}
-                                    data-event-camera-id="{{ event.camera.id }}"
-                                {% endif %}
-                            >
-                                <h3 class="event-type">
-                                    {% if event.get_event_type_display %}
-                                        {{ event.get_event_type_display }}
-                                    {% else %}
-                                        {{ event.event_type }}
-                                    {% endif %}
-                                </h3>
-
-                                {% if event.camera %}
-                                    <p class="event-meta">
-                                        攝影機：{{ event.camera.camera_code }} - {{ event.camera.name }}
-                                    </p>
-                                {% else %}
-                                    <p class="event-meta">攝影機：未指定</p>
-                                {% endif %}
-
-                                <p class="event-status" data-event-status>
-                                    狀態：
-                                    {% if event.get_status_display %}
-                                        {{ event.get_status_display }}
-                                    {% else %}
-                                        {{ event.status }}
-                                    {% endif %}
-                                </p>
-
-                                {% if event.confidence %}
-                                    <p>信心分數：{{ event.confidence }}</p>
-                                {% endif %}
-
-                                <p>時間：{{ event.created_at|date:"Y-m-d H:i:s" }}</p>
-
-                                {% if can_process_events %}
-                                    <div class="event-actions">
-                                        {% if event.status == "new" or event.status == "processing" %}
-                                            <button
-                                                type="button"
-                                                class="confirm-event-button"
-                                                data-confirm-event
-                                                data-event-id="{{ event.id }}"
-                                            >
-                                                確認事件
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="manual-broadcast-button"
-                                                data-manual-broadcast
-                                                data-event-id="{{ event.id }}"
-                                                data-speaker-code="{{ event.dashboard_broadcast_rule.speaker.speaker_code|default:'' }}"
-                                                data-audio-code="{{ event.dashboard_broadcast_rule.audio_file.audio_code|default:'' }}"
-                                            >
-                                                手動廣播
-                                            </button>
-                                        {% elif event.status == "confirmed" %}
-                                            <button
-                                                type="button"
-                                                class="confirm-event-button is-confirmed"
-                                                disabled
-                                            >
-                                                已確認
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="close-event-button"
-                                                data-close-event
-                                                data-event-id="{{ event.id }}"
-                                            >
-                                                解除事件
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="manual-broadcast-button"
-                                                data-manual-broadcast
-                                                data-event-id="{{ event.id }}"
-                                                data-speaker-code="{{ event.dashboard_broadcast_rule.speaker.speaker_code|default:'' }}"
-                                                data-audio-code="{{ event.dashboard_broadcast_rule.audio_file.audio_code|default:'' }}"
-                                            >
-                                                手動廣播
-                                            </button>
-                                        {% endif %}
-                                        <span class="event-action-message" data-event-action-message></span>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        {% empty %}
-                            <div class="empty-state">
-                                目前尚無事件資料。
-                            </div>
-                        {% endfor %}
-                    </div>
-                </section>
+                    <section class="detail-section">
+                        <div class="detail-section-heading">
+                            <h3>近期廣播任務</h3>
+                            <button type="button" id="processPendingBroadcastButton" class="compact-button">處理待播放任務</button>
+                        </div>
+                        <div id="processBroadcastStatus" class="process-broadcast-status">尚未執行播放處理</div>
+                        <div class="broadcast-log-list" id="broadcastLogTableBody"></div>
+                    </section>
+                </div>
             </aside>
         </main>
 
-        <section class="broadcast-section">
-            <div class="section-header">
-                <div>
-                    <h2>近期廣播任務</h2>
-                    <p>BroadcastLog｜AI Event 觸發後建立的 IP Speaker / PAO 廣播任務</p>
-                </div>
-
-                <div class="broadcast-action-area">
-                    <button type="button" id="processPendingBroadcastButton" class="process-broadcast-button">
-                        處理待播放任務
-                    </button>
-                    <div id="processBroadcastStatus" class="process-broadcast-status">
-                        尚未執行播放處理
-                    </div>
-                </div>
-            </div>
-
-            <div class="broadcast-note-box">
-                目前階段僅建立 BroadcastLog，尚未實際呼叫 IP Speaker 播放音檔。
-                Pending 代表系統已依 BroadcastRule 建立廣播任務，等待後續播放服務整合。
-            </div>
-
-            <div class="broadcast-table-wrapper">
-                <table class="broadcast-table">
-                    <thead>
-                        <tr>
-                            <th>時間</th>
-                            <th>事件</th>
-                            <th>規則</th>
-                            <th>Speaker</th>
-                            <th>SIP URI</th>
-                            <th>音檔</th>
-                            <th>狀態</th>
-                        </tr>
-                    </thead>
-
-                    <tbody id="broadcastLogTableBody">
-                        {% for log in recent_broadcast_logs %}
-                            <tr>
-                                <td>
-                                    <div class="broadcast-main-text">
-                                        {{ log.created_at|date:"Y-m-d H:i:s" }}
-                                    </div>
-                                </td>
-
-                                <td>
-                                    {% if log.event %}
-                                        <div class="broadcast-main-text">
-                                            {% if log.event.get_event_type_display %}
-                                                {{ log.event.get_event_type_display }}
-                                            {% else %}
-                                                {{ log.event.event_type }}
-                                            {% endif %}
-                                        </div>
-
-                                        {% if log.event.camera %}
-                                            <div class="broadcast-sub-text">
-                                                {{ log.event.camera.camera_code }} - {{ log.event.camera.name }}
-                                            </div>
-                                        {% endif %}
-                                    {% else %}
-                                        <div class="broadcast-main-text">無事件</div>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if log.rule %}
-                                        <div class="broadcast-main-text">{{ log.rule.rule_code }}</div>
-                                        <div class="broadcast-sub-text">{{ log.rule.name }}</div>
-                                    {% else %}
-                                        <div class="broadcast-main-text">無規則</div>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if log.speaker %}
-                                        <div class="broadcast-main-text">{{ log.speaker.speaker_code }}</div>
-                                        <div class="broadcast-sub-text">{{ log.speaker.name }}</div>
-                                    {% else %}
-                                        <div class="broadcast-main-text">無 Speaker</div>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if log.speaker %}
-                                        <div class="broadcast-main-text">{{ log.speaker.resolved_sip_uri }}</div>
-                                    {% else %}
-                                        <div class="broadcast-main-text">-</div>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    {% if log.audio_file %}
-                                        <div class="broadcast-main-text">{{ log.audio_file.audio_code }}</div>
-                                        <div class="broadcast-sub-text">{{ log.audio_file.name }}</div>
-                                    {% else %}
-                                        <div class="broadcast-main-text">無音檔</div>
-                                    {% endif %}
-                                </td>
-
-                                <td>
-                                    <span class="broadcast-status broadcast-status-{{ log.status }}">
-                                        {% if log.get_status_display %}
-                                            {{ log.get_status_display }}
-                                        {% else %}
-                                            {{ log.status }}
-                                        {% endif %}
-                                    </span>
-                                </td>
-                            </tr>
-                        {% empty %}
-                            <tr>
-                                <td colspan="7" class="empty-table-message">
-                                    尚未建立廣播任務。可透過 POST /api/events/trigger/ 建立測試事件。
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section class="bottom-grid">
-            <section class="table-section">
-                <div class="section-header">
-                    <div>
-                        <h2>人流正常範圍設定</h2>
-                        <p>Crowd Flow Settings</p>
-                    </div>
-                </div>
-
-                <div class="flow-list">
-                    {% for setting in crowd_flow_settings %}
-                        <div class="flow-item">
-                            <h3>{{ setting.name }}</h3>
-
-                            {% if setting.camera %}
-                                <p>攝影機：{{ setting.camera.camera_code }} - {{ setting.camera.name }}</p>
-                            {% else %}
-                                <p>攝影機：未指定</p>
-                            {% endif %}
-
-                            <p>最小值：{{ setting.min_count }}｜最大值：{{ setting.max_count }}</p>
-
-                            {% if setting.description %}
-                                <p>說明：{{ setting.description }}</p>
-                            {% endif %}
-                        </div>
-                    {% empty %}
-                        <div class="empty-state">
-                            目前尚無人流設定資料。
-                        </div>
-                    {% endfor %}
-                </div>
-            </section>
-
-            <section class="table-section">
-                <div class="section-header">
-                    <div>
-                        <h2>近期人流統計紀錄</h2>
-                        <p>Crowd Flow Records</p>
-                    </div>
-                </div>
-
-                <div class="flow-list">
-                    {% for record in crowd_flow_records %}
-                        <div class="flow-item">
-                            <h3>
-                                {% if record.camera %}
-                                    {{ record.camera.camera_code }} - {{ record.camera.name }}
-                                {% else %}
-                                    未指定攝影機
-                                {% endif %}
-                            </h3>
-
-                            <p>人數：{{ record.people_count }}</p>
-
-                            {% if record.is_abnormal %}
-                                <p>狀態：異常</p>
-                            {% else %}
-                                <p>狀態：正常</p>
-                            {% endif %}
-
-                            <p>時間：{{ record.created_at|date:"Y-m-d H:i:s" }}</p>
-                        </div>
-                    {% empty %}
-                        <div class="empty-state">
-                            目前尚無人流紀錄資料。
-                        </div>
-                    {% endfor %}
-                </div>
-            </section>
-        </section>
+        <footer class="footer-strip">
+            <span>聲音提示：待命</span>
+            <span>警示燈：待命</span>
+            <span>系統版本：v2.1</span>
+        </footer>
     </div>
+
+    <aside class="dashboard-action-toast" id="dashboardActionToast" role="status" aria-live="polite" hidden>
+        <div>
+            <strong id="dashboardActionToastTitle">系統通知</strong>
+            <span id="dashboardActionToastMessage"></span>
+        </div>
+        <button type="button" id="dashboardActionToastClose" aria-label="關閉通知">×</button>
+    </aside>
 
     <script src="{% static 'js/dashboard.js' %}"></script>
 </body>

@@ -44,3 +44,6 @@ logs/
 !docs/images/
 !docs/images/*.png
 !docs/images/*.jpg
+# Local dashboard update and backup folders
+_update_v2_*/
+_backup_v2_*/
