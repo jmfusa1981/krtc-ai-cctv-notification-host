@@ -23,23 +23,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const detailEventType = document.getElementById("detailEventType");
     const detailEventId = document.getElementById("detailEventId");
-    const detailExternalEventId = document.getElementById("detailExternalEventId");
-    const detailSourceEventId = document.getElementById("detailSourceEventId");
     const detailEventStatus = document.getElementById("detailEventStatus");
     const detailInferenceHost = document.getElementById("detailInferenceHost");
     const detailCamera = document.getElementById("detailCamera");
     const detailLocation = document.getElementById("detailLocation");
-    const detailRoi = document.getElementById("detailRoi");
-    const detailSeverity = document.getElementById("detailSeverity");
-    const detailConfidence = document.getElementById("detailConfidence");
     const detailDetectedAt = document.getElementById("detailDetectedAt");
     const detailCreatedAt = document.getElementById("detailCreatedAt");
-    const detailSnapshotStatus = document.getElementById("detailSnapshotStatus");
-    const detailAnnotatedStatus = document.getElementById("detailAnnotatedStatus");
-    const detailVideoStatus = document.getElementById("detailVideoStatus");
-    const detailBroadcastRule = document.getElementById("detailBroadcastRule");
-    const detailSpeaker = document.getElementById("detailSpeaker");
-    const detailAudio = document.getElementById("detailAudio");
     const detailConfirmButton = document.getElementById("detailConfirmButton");
     const detailCloseButton = document.getElementById("detailCloseButton");
     const detailBroadcastButton = document.getElementById("detailBroadcastButton");
@@ -429,23 +418,12 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!event) {
             detailEventType.textContent = "尚未選取事件";
             detailEventId.textContent = "--";
-            detailExternalEventId.textContent = "--";
-            detailSourceEventId.textContent = "--";
             detailEventStatus.textContent = "--";
             detailInferenceHost.textContent = "尚未提供";
             detailCamera.textContent = "--";
             detailLocation.textContent = "尚未提供";
-            detailRoi.textContent = "尚未提供";
-            detailSeverity.textContent = "未提供";
-            detailConfidence.textContent = "--";
             detailDetectedAt.textContent = "--";
             detailCreatedAt.textContent = "--";
-            detailSnapshotStatus.textContent = "未提供";
-            detailAnnotatedStatus.textContent = "未提供";
-            detailVideoStatus.textContent = "未提供";
-            detailBroadcastRule.textContent = "--";
-            detailSpeaker.textContent = "--";
-            detailAudio.textContent = "--";
 
             detailConfirmButton.disabled = true;
             detailCloseButton.disabled = true;
@@ -458,14 +436,6 @@ document.addEventListener("DOMContentLoaded", function () {
             event.event_type || "未知事件"
         );
         detailEventId.textContent = event.id;
-        detailExternalEventId.textContent = normalizeText(
-            event.external_event_id,
-            "未提供"
-        );
-        detailSourceEventId.textContent = normalizeText(
-            event.source_event_id,
-            "未提供"
-        );
         detailEventStatus.textContent = normalizeText(
             event.status_display,
             event.status || "未知"
@@ -480,45 +450,15 @@ document.addEventListener("DOMContentLoaded", function () {
             ? `${normalizeText(event.camera_code, "")}｜${normalizeText(event.camera_name, "")}`
             : "未指定攝影機";
 
-        const location = [
-            event.station,
+        detailLocation.textContent = normalizeText(
             event.area || event.camera_area,
-        ].filter(Boolean).join("／");
-        detailLocation.textContent = location || "尚未提供";
-        detailRoi.textContent = normalizeText(event.roi_id, "尚未提供");
-        detailSeverity.textContent = normalizeText(event.severity, "未提供");
-        detailConfidence.textContent =
-            event.confidence === null ||
-            event.confidence === undefined ||
-            event.confidence === ""
-                ? "未提供"
-                : event.confidence;
+            "尚未提供"
+        );
         detailDetectedAt.textContent = normalizeText(
             event.detected_at,
             "未提供"
         );
         detailCreatedAt.textContent = normalizeText(event.created_at, "--");
-
-        detailSnapshotStatus.textContent = event.snapshot_url
-            ? "已提供"
-            : "未提供";
-        detailAnnotatedStatus.textContent = event.annotated_snapshot_url
-            ? "已提供"
-            : "未提供";
-        detailVideoStatus.textContent = event.video_url
-            ? "已提供"
-            : "未提供";
-
-        detailBroadcastRule.textContent = normalizeText(
-            event.broadcast_rule_code,
-            "未設定"
-        );
-        detailSpeaker.textContent = event.speaker_code
-            ? `${event.speaker_code}｜${normalizeText(event.speaker_name, "")}`
-            : "未設定";
-        detailAudio.textContent = event.audio_code
-            ? `${event.audio_code}｜${normalizeText(event.audio_name, "")}`
-            : "未設定";
 
         const status = event.status || "unknown";
         detailConfirmButton.disabled =
@@ -1325,5 +1265,5 @@ document.addEventListener("DOMContentLoaded", function () {
     carouselTimer = window.setInterval(rotateEvent, 8000);
 
     fetchDashboardLiveState();
-    window.setInterval(fetchDashboardLiveState, 3000);
+    window.setInterval(fetchDashboardLiveState, 1000);
 });

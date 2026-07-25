@@ -37,21 +37,19 @@
             <div class="topbar-navigation-zone">
                 <nav class="function-nav-row" aria-label="系統功能導覽">
                     <div class="function-nav-group">
-                        <button
-                            type="button"
+                        <a
+                            href="{% url 'dashboard:device_list' %}"
                             class="quick-nav-button"
-                            data-planned-feature="設備清單"
                         >
                             設備清單
-                        </button>
+                        </a>
 
-                        <button
-                            type="button"
+                        <a
+                            href="{% url 'dashboard:event_snapshot_list' %}"
                             class="quick-nav-button"
-                            data-planned-feature="事件快照清單"
                         >
                             事件快照
-                        </button>
+                        </a>
 
                         <button
                             type="button"
@@ -283,7 +281,7 @@
                 <div class="panel-header">
                     <div>
                         <h2>事件詳細資料</h2>
-                        <p>來源、媒體、廣播與處理狀態</p>
+                        <p>來源與處理狀態</p>
                     </div>
                 </div>
 
@@ -292,35 +290,12 @@
                         <h3 id="detailEventType">尚未選取事件</h3>
                         <dl class="detail-list">
                             <div><dt>本站事件編號</dt><dd id="detailEventId">--</dd></div>
-                            <div><dt>外部事件編號</dt><dd id="detailExternalEventId">--</dd></div>
-                            <div><dt>來源事件編號</dt><dd id="detailSourceEventId">--</dd></div>
                             <div><dt>處理狀態</dt><dd id="detailEventStatus">--</dd></div>
                             <div><dt>來源推論主機</dt><dd id="detailInferenceHost">尚未提供</dd></div>
                             <div><dt>攝影機</dt><dd id="detailCamera">--</dd></div>
-                            <div><dt>站別／區域</dt><dd id="detailLocation">尚未提供</dd></div>
-                            <div><dt>ROI</dt><dd id="detailRoi">尚未提供</dd></div>
-                            <div><dt>嚴重程度</dt><dd id="detailSeverity">未提供</dd></div>
-                            <div><dt>信心分數</dt><dd id="detailConfidence">--</dd></div>
+                            <div><dt>區域</dt><dd id="detailLocation">尚未提供</dd></div>
                             <div><dt>偵測時間</dt><dd id="detailDetectedAt">--</dd></div>
                             <div><dt>匯入時間</dt><dd id="detailCreatedAt">--</dd></div>
-                        </dl>
-                    </section>
-
-                    <section class="detail-section">
-                        <h3>媒體資料</h3>
-                        <dl class="detail-list">
-                            <div><dt>事件快照</dt><dd id="detailSnapshotStatus">未提供</dd></div>
-                            <div><dt>AI 標定影像</dt><dd id="detailAnnotatedStatus">未提供</dd></div>
-                            <div><dt>事件錄影</dt><dd id="detailVideoStatus">未提供</dd></div>
-                        </dl>
-                    </section>
-
-                    <section class="detail-section">
-                        <h3>廣播設定</h3>
-                        <dl class="detail-list">
-                            <div><dt>廣播規則</dt><dd id="detailBroadcastRule">--</dd></div>
-                            <div><dt>廣播喇叭</dt><dd id="detailSpeaker">--</dd></div>
-                            <div><dt>播放音檔</dt><dd id="detailAudio">--</dd></div>
                         </dl>
                     </section>
 

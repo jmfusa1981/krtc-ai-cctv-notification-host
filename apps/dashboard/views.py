@@ -110,6 +110,128 @@ def dashboard_home(request):
 
 
 @login_required
+def device_list(request):
+    """站區設備清單：唯讀顯示攝影機與廣播喇叭設定。"""
+    cameras = []
+    speakers = []
+
+    if Camera is not None:
+        cameras = list(Camera.objects.all().order_by("camera_code"))
+        for camera in cameras:
+            camera.connection_status_label = CAMERA_STATUS_LABELS.get(
+                getattr(camera, "status", "unknown"),
+                "狀態未知",
+            )
+            camera.active_status_label = (
+                "已啟用" if getattr(camera, "is_active", False) else "已停用"
+            )
+            camera.stream_status_label = get_camera_stream_status_label(camera)
+
+    if SpeakerDevice is not None:
+        speakers = list(SpeakerDevice.objects.all().order_by("speaker_code"))
+        for speaker in speakers:
+            speaker.device_area = (
+                getattr(speaker, "area", "")
+                or getattr(speaker, "location", "")
+                or getattr(speaker, "location_note", "")
+                or "未設定"
+            )
+            speaker.active_status_label = (
+                "已啟用" if getattr(speaker, "is_active", False) else "已停用"
+            )
+            speaker.device_status_label = get_speaker_status_label(speaker)
+
+    context = {
+        "cameras": cameras,
+        "speakers": speakers,
+        "camera_count": len(cameras),
+        "speaker_count": len(speakers),
+        "camera_abnormal_count": sum(
+            1
+            for camera in cameras
+            if getattr(camera, "status", "unknown") != "online"
+        ),
+        "speaker_abnormal_count": sum(
+            1
+            for speaker in speakers
+            if getattr(speaker, "status", "unknown") != "online"
+        ),
+    }
+
+    return render(request, "dashboard/device_list.html", context)
+
+
+def get_camera_stream_status_label(camera):
+    if not getattr(camera, "is_active", False):
+        return "未啟用"
+
+    status = getattr(camera, "status", "unknown")
+    return {
+        "online": "正常",
+        "offline": "無法連線",
+        "maintenance": "暫停檢查",
+        "error": "檢查異常",
+    }.get(status, "未檢查")
+
+
+def get_speaker_status_label(speaker):
+    return {
+        "online": "線上",
+        "offline": "離線",
+        "unknown": "未知",
+        "maintenance": "維護中",
+        "error": "異常",
+    }.get(getattr(speaker, "status", "unknown"), "未知")
+
+
+@login_required
+def event_snapshot_list(request):
+    """事件快照清單：本地快照優先，遠端 snapshot_url 作為備援。"""
+    snapshot_events = []
+
+    if Event is not None:
+        snapshot_events = list(
+            Event.objects.select_related("camera")
+            .exclude(Q(snapshot__isnull=True) & Q(snapshot_url=""))
+            .order_by("-detected_at", "-created_at")[:200]
+        )
+
+        for event in snapshot_events:
+            snapshot_file = getattr(event, "snapshot", None)
+            local_url = ""
+
+            if snapshot_file:
+                try:
+                    local_url = snapshot_file.url
+                except (ValueError, AttributeError):
+                    local_url = ""
+
+            remote_url = getattr(event, "snapshot_url", "") or ""
+            event.snapshot_display_url = local_url or remote_url
+            event.snapshot_storage_label = (
+                "通報主機本地" if local_url else "推論主機遠端"
+            )
+            event.snapshot_is_local = bool(local_url)
+            event.status_display_zh = EVENT_STATUS_LABELS.get(
+                getattr(event, "status", ""),
+                get_display_value(event, "status") or "未知",
+            )
+
+    local_count = sum(
+        1 for event in snapshot_events if getattr(event, "snapshot_is_local", False)
+    )
+
+    context = {
+        "snapshot_events": snapshot_events,
+        "snapshot_count": len(snapshot_events),
+        "local_snapshot_count": local_count,
+        "remote_snapshot_count": len(snapshot_events) - local_count,
+    }
+
+    return render(request, "dashboard/event_snapshot_list.html", context)
+
+
+@login_required
 def monitor_wall(request):
     cameras = []
 

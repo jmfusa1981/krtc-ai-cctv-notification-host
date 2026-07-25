@@ -1,0 +1,159 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>事件快照｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/event_snapshot_list.css' %}">
+</head>
+<body>
+    <div class="snapshot-shell">
+        <header class="snapshot-topbar">
+            <div class="brand-block">
+                <img src="{% static 'img/KRTC_logo.png' %}" alt="高雄捷運" class="brand-logo">
+                <div>
+                    <h1>{{ station_name|default:"站區名" }} 通報主機</h1>
+                    <p>事件快照清單</p>
+                </div>
+            </div>
+
+            <nav class="top-actions dashboard-style-actions" aria-label="系統功能導覽">
+                <div class="top-action-group nav-group-primary">
+                    <a href="{% url 'dashboard:device_list' %}" class="top-action-button nav-cyan">設備清單</a>
+                    <span class="top-action-button nav-cyan is-disabled" aria-disabled="true">事件紀錄</span>
+                </div>
+
+                <span class="top-action-divider" aria-hidden="true"></span>
+
+                <div class="top-action-group nav-group-secondary">
+                    <span class="top-action-button nav-blue is-disabled" aria-disabled="true">站區廣播系統</span>
+                    <a href="{% url 'dashboard:monitor' %}" class="top-action-button nav-blue">即時監視牆</a>
+                </div>
+
+                <span class="top-action-divider" aria-hidden="true"></span>
+
+                <div class="top-action-group nav-group-system">
+                    <a href="/admin/" class="top-action-button nav-navy">系統設定</a>
+                </div>
+
+                <div class="nav-spacer" aria-hidden="true"></div>
+
+                <a href="{% url 'dashboard:home' %}" class="top-action-button nav-home">主頁面</a>
+                <form method="post" action="{% url 'logout' %}" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="top-action-button nav-navy nav-logout">登出</button>
+                </form>
+            </nav>
+        </header>
+
+        <section class="page-heading">
+            <div>
+                <span class="eyebrow">EVENT SNAPSHOTS</span>
+                <h2>事件快照</h2>
+                <p>優先顯示通報主機本地快照；尚未下載時使用推論主機提供的遠端網址。</p>
+            </div>
+            <div class="summary-row">
+                <div class="summary-card">
+                    <span>快照總數</span>
+                    <strong>{{ snapshot_count }}</strong>
+                </div>
+                <div class="summary-card">
+                    <span>本地快照</span>
+                    <strong>{{ local_snapshot_count }}</strong>
+                </div>
+                <div class="summary-card">
+                    <span>遠端快照</span>
+                    <strong>{{ remote_snapshot_count }}</strong>
+                </div>
+            </div>
+        </section>
+
+        <section class="filter-bar">
+            <label>
+                <span>搜尋</span>
+                <input id="snapshotSearch" type="search" placeholder="事件類型、攝影機編號、區域或事件編號">
+            </label>
+            <label>
+                <span>儲存位置</span>
+                <select id="snapshotStorageFilter">
+                    <option value="all">全部</option>
+                    <option value="local">通報主機本地</option>
+                    <option value="remote">推論主機遠端</option>
+                </select>
+            </label>
+            <span class="filter-result" id="snapshotResultCount">顯示 {{ snapshot_count }} 筆</span>
+        </section>
+
+        <main class="snapshot-grid" id="snapshotGrid">
+            {% for event in snapshot_events %}
+                <article
+                    class="snapshot-card"
+                    data-snapshot-card
+                    data-storage="{% if event.snapshot_is_local %}local{% else %}remote{% endif %}"
+                    data-search="{{ event.id }} {{ event.get_event_type_display }} {{ event.camera.camera_code }} {{ event.camera.area }} {{ event.source_event_id }}"
+                >
+                    <button
+                        type="button"
+                        class="snapshot-preview-button"
+                        data-preview-url="{{ event.snapshot_display_url }}"
+                        data-preview-title="{{ event.get_event_type_display }}｜事件 {{ event.id }}"
+                        aria-label="查看事件 {{ event.id }} 快照大圖"
+                    >
+                        <img
+                            src="{{ event.snapshot_display_url }}"
+                            alt="事件 {{ event.id }} 快照"
+                            loading="lazy"
+                            referrerpolicy="no-referrer"
+                        >
+                        <span class="image-fallback">快照載入失敗</span>
+                    </button>
+
+                    <div class="snapshot-card-body">
+                        <div class="snapshot-title-row">
+                            <h3>{{ event.get_event_type_display }}</h3>
+                            <span class="status-tag status-{{ event.status }}">{{ event.status_display_zh }}</span>
+                        </div>
+
+                        <dl>
+                            <div><dt>事件編號</dt><dd>{{ event.id }}</dd></div>
+                            <div><dt>攝影機</dt><dd>{{ event.camera.camera_code }}</dd></div>
+                            <div><dt>區域</dt><dd>{{ event.camera.area|default:"未設定" }}</dd></div>
+                            <div><dt>偵測時間</dt><dd>{{ event.detected_at|date:"Y-m-d H:i:s" }}</dd></div>
+                            <div><dt>儲存位置</dt><dd>{{ event.snapshot_storage_label }}</dd></div>
+                        </dl>
+
+                        <div class="snapshot-card-actions">
+                            <button
+                                type="button"
+                                data-preview-url="{{ event.snapshot_display_url }}"
+                                data-preview-title="{{ event.get_event_type_display }}｜事件 {{ event.id }}"
+                            >
+                                查看大圖
+                            </button>
+                            <a href="{% url 'dashboard:home' %}?event={{ event.id }}">前往事件處理</a>
+                        </div>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="empty-state">
+                    <strong>目前沒有可顯示的事件快照</strong>
+                    <span>請確認推論主機事件資料是否提供 snapshot_url。</span>
+                </div>
+            {% endfor %}
+        </main>
+    </div>
+
+    <dialog class="snapshot-dialog" id="snapshotDialog">
+        <div class="dialog-header">
+            <strong id="snapshotDialogTitle">事件快照</strong>
+            <button type="button" id="snapshotDialogClose" aria-label="關閉">×</button>
+        </div>
+        <div class="dialog-content">
+            <img id="snapshotDialogImage" alt="事件快照大圖">
+        </div>
+    </dialog>
+
+    <script src="{% static 'js/event_snapshot_list.js' %}"></script>
+</body>
+</html>

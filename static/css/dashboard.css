@@ -1892,3 +1892,36 @@ textarea {
             minmax(390px, 0.9fr);
     }
 }
+
+
+/* v2.17：事件警示燈加寬 */
+.event-warning-light {
+    width: 168px;
+}
+
+.event-warning-core {
+    width: 124px;
+}
+
+@media (max-width: 1750px) {
+    .event-warning-light {
+        width: 146px;
+    }
+
+    .event-warning-core {
+        width: 104px;
+    }
+}
+
+
+/* v2.18：主頁與功能頁統一版型高度 */
+.topbar {
+    height: 108px;
+    min-height: 108px;
+    max-height: 108px;
+}
+.summary-strip {
+    height: 128px;
+    min-height: 128px;
+    max-height: 128px;
+}
