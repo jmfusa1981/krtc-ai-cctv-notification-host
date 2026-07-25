@@ -1,0 +1,136 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>站區廣播系統｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/station_broadcast.css' %}?v=1">
+</head>
+<body>
+<div class="broadcast-shell">
+    {% include "dashboard/includes/system_header.html" with current_page="broadcast" page_title="站區廣播系統" %}
+
+    <section class="broadcast-banner">
+        <div>
+            <h1>站區廣播系統</h1>
+            <p>選擇本站 IP Speaker 與預錄音檔，執行單站手動廣播。</p>
+        </div>
+        <span class="mode-badge {% if broadcast_playback_mode_is_live %}is-live{% else %}is-test{% endif %}">
+            {% if broadcast_playback_mode_is_live %}廣播模式{% else %}測試模式{% endif %}
+        </span>
+    </section>
+
+    <section class="summary-grid">
+        <article><span>可用 Speaker</span><strong>{{ active_speaker_count }}</strong></article>
+        <article><span>可用音檔</span><strong>{{ available_audio_count }}/{{ audio_files|length }}</strong></article>
+        <article><span>播放模式</span><strong class="mode-text">{{ broadcast_playback_mode_label }}</strong></article>
+        <article><span>最近紀錄</span><strong>{{ recent_broadcast_logs|length }}</strong></article>
+    </section>
+
+    <main class="broadcast-layout">
+        <section class="control-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>手動預錄廣播</h2>
+                    <p>一次對一台 Speaker 播放一個音檔。播放期間該 Speaker 不接受其他任務。</p>
+                </div>
+            </div>
+
+            {% if can_process_events %}
+            <form id="manualBroadcastForm" data-submit-url="{% url 'notifications:manual_station_broadcast_api' %}">
+                {% csrf_token %}
+                <div class="form-grid">
+                    <label>
+                        <span>廣播區域</span>
+                        <select id="areaFilter">
+                            <option value="">全部區域</option>
+                            {% for area in speaker_areas %}<option value="{{ area }}">{{ area }}</option>{% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span>IP Speaker</span>
+                        <select id="speakerSelect" required>
+                            <option value="">請選擇 Speaker</option>
+                            {% for speaker in speakers %}
+                                <option value="{{ speaker.id }}" data-area="{{ speaker.area|default:'未設定' }}" data-status="{{ speaker.status }}">
+                                    {{ speaker.speaker_code }}｜{{ speaker.name }}｜{{ speaker.area|default:"未設定" }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="full-width">
+                        <span>預錄音檔</span>
+                        <select id="audioSelect" required>
+                            <option value="">請選擇音檔</option>
+                            {% for audio in audio_files %}
+                                <option value="{{ audio.id }}" {% if not audio.file_available %}disabled{% endif %}>
+                                    {{ audio.audio_code }}｜{{ audio.name }}{% if not audio.file_available %}｜檔案遺失{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div class="selection-preview" id="selectionPreview">
+                    <strong>尚未選擇播放目標</strong>
+                    <span>請先選擇 Speaker 與音檔。</span>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="secondary-button" id="clearSelectionButton">清除選擇</button>
+                    <button type="submit" class="primary-button" id="broadcastSubmitButton" disabled>開始廣播</button>
+                </div>
+            </form>
+            {% else %}
+                <div class="permission-notice">目前帳號沒有執行廣播的權限。</div>
+            {% endif %}
+        </section>
+
+        <aside class="status-panel">
+            <h2>播放狀態</h2>
+            <div id="broadcastStatus" class="broadcast-status is-idle">
+                <strong>待命中</strong>
+                <span>尚未送出廣播任務。</span>
+            </div>
+            <dl>
+                <div><dt>後端模式</dt><dd>{{ broadcast_playback_mode }}</dd></div>
+                <div><dt>執行方式</dt><dd>通報主機本地同步執行</dd></div>
+                <div><dt>安全限制</dt><dd>同一 Speaker 同時間僅允許一筆任務</dd></div>
+            </dl>
+        </aside>
+    </main>
+
+    <section class="log-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>最近廣播紀錄</h2>
+                <p>顯示本站最近 12 筆播放結果。</p>
+            </div>
+            <button type="button" class="secondary-button" id="refreshPageButton">重新整理</button>
+        </div>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>時間</th><th>狀態</th><th>Speaker</th><th>音檔</th><th>來源</th><th>訊息</th></tr></thead>
+                <tbody>
+                {% for log in recent_broadcast_logs %}
+                    <tr>
+                        <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+                        <td><span class="status-tag status-{{ log.status }}">{{ log.get_status_display }}</span></td>
+                        <td>{{ log.speaker.speaker_code|default:"—" }}</td>
+                        <td>{{ log.audio_file.audio_code|default:"—" }}</td>
+                        <td>{% if log.request_payload.source == "station_broadcast_console" %}手動廣播{% elif log.event_id %}事件觸發{% else %}系統{% endif %}</td>
+                        <td class="message-cell">{{ log.message|default:"—" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6" class="empty-row">目前沒有廣播紀錄。</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+<script src="{% static 'js/station_broadcast.js' %}?v=1"></script>
+</body>
+</html>

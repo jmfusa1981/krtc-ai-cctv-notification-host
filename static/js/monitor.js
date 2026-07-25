@@ -14,19 +14,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const carouselToggle = document.getElementById("carouselToggle");
     const carouselInterval = document.getElementById("carouselInterval");
     const carouselStatus = document.getElementById("carouselStatus");
-    const layoutNameInput = document.getElementById("layoutNameInput");
-    const savedLayoutSelect = document.getElementById("savedLayoutSelect");
-    const saveLayoutButton = document.getElementById("saveLayoutButton");
-    const loadLayoutButton = document.getElementById("loadLayoutButton");
-    const deleteLayoutButton = document.getElementById("deleteLayoutButton");
-    const layoutStatus = document.getElementById("layoutStatus");
-    const LAYOUT_STORAGE_KEY = "krtc.monitor.layouts.v1";
     const liveStateUrl = document.body.dataset.liveStateUrl;
     const monitorEventAlert = document.getElementById("monitorEventAlert");
     const monitorEventType = document.getElementById("monitorEventType");
     const monitorEventCamera = document.getElementById("monitorEventCamera");
     const monitorEventTime = document.getElementById("monitorEventTime");
     const dismissMonitorEventAlert = document.getElementById("dismissMonitorEventAlert");
+    const monitorDateTime = document.getElementById("monitorDateTime");
     const MAX_SLOT_COUNT = 16;
     let monitorSlots = [];
     let selectedSlot = null;
@@ -40,6 +34,25 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (!monitorGrid || buttons.length === 0) {
         return;
+    }
+
+
+    function updateMonitorDateTime() {
+        if (!monitorDateTime) {
+            return;
+        }
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        const hours = String(now.getHours()).padStart(2, "0");
+        const minutes = String(now.getMinutes()).padStart(2, "0");
+        const seconds = String(now.getSeconds()).padStart(2, "0");
+
+        monitorDateTime.textContent =
+            `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+        monitorDateTime.dateTime = now.toISOString();
     }
 
     function createEmptySlot(slotIndex) {
@@ -473,309 +486,6 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    function setLayoutStatus(message) {
-        if (layoutStatus) {
-            layoutStatus.textContent = message;
-        }
-    }
-
-    function readSavedLayouts() {
-        try {
-            const rawValue = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
-            const layouts = rawValue ? JSON.parse(rawValue) : [];
-
-            return Array.isArray(layouts) ? layouts : [];
-        } catch (error) {
-            console.error("Failed to read monitor layouts:", error);
-            return [];
-        }
-    }
-
-    function writeSavedLayouts(layouts) {
-        try {
-            window.localStorage.setItem(
-                LAYOUT_STORAGE_KEY,
-                JSON.stringify(layouts)
-            );
-            return true;
-        } catch (error) {
-            console.error("Failed to save monitor layouts:", error);
-            setLayoutStatus("\u5132\u5b58\u5931\u6557");
-            return false;
-        }
-    }
-
-    function updateLayoutButtons() {
-        const hasSelection = Boolean(
-            savedLayoutSelect && savedLayoutSelect.value
-        );
-
-        if (loadLayoutButton) {
-            loadLayoutButton.disabled = !hasSelection;
-        }
-
-        if (deleteLayoutButton) {
-            deleteLayoutButton.disabled = !hasSelection;
-        }
-    }
-
-    function renderSavedLayouts(preferredName) {
-        if (!savedLayoutSelect) {
-            return;
-        }
-
-        const layouts = readSavedLayouts();
-        savedLayoutSelect.innerHTML =
-            '<option value="">\u9078\u64c7 Layout</option>';
-
-        layouts
-            .slice()
-            .sort(function (left, right) {
-                return left.name.localeCompare(right.name);
-            })
-            .forEach(function (layout) {
-                const option = document.createElement("option");
-                option.value = layout.name;
-                option.textContent = layout.name;
-                savedLayoutSelect.appendChild(option);
-            });
-
-        if (preferredName && layouts.some(function (layout) {
-            return layout.name === preferredName;
-        })) {
-            savedLayoutSelect.value = preferredName;
-        }
-
-        updateLayoutButtons();
-    }
-
-    function captureCurrentLayout(name) {
-        const assignments = Array.from(cameraCards).map(function (card) {
-            const slot = card.closest("[data-monitor-slot]");
-
-            return {
-                cameraId: String(card.dataset.cameraId || ""),
-                slotIndex: slot ? Number(slot.dataset.slotIndex) : null
-            };
-        }).filter(function (assignment) {
-            return assignment.cameraId && Number.isInteger(assignment.slotIndex);
-        });
-
-        return {
-            name: name,
-            gridSize: currentGridSize,
-            assignments: assignments,
-            carouselSeconds: carouselInterval
-                ? parseInt(carouselInterval.value, 10)
-                : 10,
-            sidebarCollapsed: Boolean(
-                monitorContent &&
-                monitorContent.classList.contains("sidebar-collapsed")
-            ),
-            updatedAt: new Date().toISOString()
-        };
-    }
-
-    function saveCurrentLayout() {
-        if (!layoutNameInput) {
-            return;
-        }
-
-        const name = layoutNameInput.value.trim();
-
-        if (!name) {
-            setLayoutStatus("\u8acb\u8f38\u5165\u540d\u7a31");
-            layoutNameInput.focus();
-            return;
-        }
-
-        const layouts = readSavedLayouts();
-        const nextLayout = captureCurrentLayout(name);
-        const existingIndex = layouts.findIndex(function (layout) {
-            return layout.name === name;
-        });
-
-        if (existingIndex >= 0) {
-            layouts[existingIndex] = nextLayout;
-        } else {
-            layouts.push(nextLayout);
-        }
-
-        if (!writeSavedLayouts(layouts)) {
-            return;
-        }
-
-        renderSavedLayouts(name);
-        setLayoutStatus(existingIndex >= 0 ? "\u5df2\u8986\u5beb" : "\u5df2\u5132\u5b58");
-    }
-
-    function restoreLayoutAssignments(assignments) {
-        const desiredByCameraId = new Map();
-        const reservedIndices = new Set();
-        const assignedSlots = new Set();
-        const availableCameraIds = new Set(
-            Array.from(cameraCards).map(function (card) {
-                return String(card.dataset.cameraId || "");
-            })
-        );
-
-        (Array.isArray(assignments) ? assignments : []).forEach(function (assignment) {
-            const slotIndex = Number(assignment.slotIndex);
-            const cameraId = String(assignment.cameraId || "");
-
-            if (
-                cameraId &&
-                availableCameraIds.has(cameraId) &&
-                Number.isInteger(slotIndex) &&
-                slotIndex >= 0 &&
-                slotIndex < MAX_SLOT_COUNT &&
-                !reservedIndices.has(slotIndex)
-            ) {
-                desiredByCameraId.set(cameraId, slotIndex);
-                reservedIndices.add(slotIndex);
-            }
-        });
-
-        cameraCards.forEach(function (card) {
-            const cameraId = String(card.dataset.cameraId || "");
-            const desiredIndex = desiredByCameraId.get(cameraId);
-            const slot = card.closest("[data-monitor-slot]");
-
-            if (slot && desiredIndex !== undefined) {
-                slot.dataset.slotIndex = String(desiredIndex);
-                assignedSlots.add(slot);
-            }
-        });
-
-        const remainingIndices = Array.from(
-            { length: MAX_SLOT_COUNT },
-            function (_, index) {
-                return index;
-            }
-        ).filter(function (index) {
-            return !reservedIndices.has(index);
-        });
-
-        monitorSlots
-            .filter(function (slot) {
-                return !assignedSlots.has(slot);
-            })
-            .forEach(function (slot, index) {
-                slot.dataset.slotIndex = String(remainingIndices[index]);
-            });
-
-        monitorSlots.forEach(function (slot) {
-            applySlotPosition(slot);
-            syncSlotState(slot);
-        });
-
-        updateTreeAssignments();
-    }
-
-    function loadSelectedLayout() {
-        if (!savedLayoutSelect || !savedLayoutSelect.value) {
-            return;
-        }
-
-        const selectedName = savedLayoutSelect.value;
-        const layout = readSavedLayouts().find(function (item) {
-            return item.name === selectedName;
-        });
-
-        if (!layout) {
-            setLayoutStatus("\u627e\u4e0d\u5230 Layout");
-            renderSavedLayouts();
-            return;
-        }
-
-        stopCarousel();
-
-        if (carouselInterval && layout.carouselSeconds) {
-            carouselInterval.value = String(layout.carouselSeconds);
-        }
-
-        restoreLayoutAssignments(layout.assignments);
-        setGridMode(String(layout.gridSize || 4));
-
-        if (monitorContent) {
-            monitorContent.classList.toggle(
-                "sidebar-collapsed",
-                Boolean(layout.sidebarCollapsed)
-            );
-        }
-
-        if (cameraTreeToggle) {
-            const isCollapsed = Boolean(layout.sidebarCollapsed);
-            cameraTreeToggle.classList.toggle("active", !isCollapsed);
-            cameraTreeToggle.setAttribute("aria-expanded", String(!isCollapsed));
-        }
-
-        if (layoutNameInput) {
-            layoutNameInput.value = layout.name;
-        }
-
-        updateCarouselUi();
-        setLayoutStatus("\u5df2\u8f09\u5165");
-    }
-
-    function deleteSelectedLayout() {
-        if (!savedLayoutSelect || !savedLayoutSelect.value) {
-            return;
-        }
-
-        const selectedName = savedLayoutSelect.value;
-        const shouldDelete = window.confirm(
-            `\u78ba\u5b9a\u522a\u9664 Layout\u300c${selectedName}\u300d\uff1f`
-        );
-
-        if (!shouldDelete) {
-            return;
-        }
-
-        const layouts = readSavedLayouts().filter(function (layout) {
-            return layout.name !== selectedName;
-        });
-
-        if (!writeSavedLayouts(layouts)) {
-            return;
-        }
-
-        renderSavedLayouts();
-        setLayoutStatus("\u5df2\u522a\u9664");
-    }
-
-    function bindLayoutControls() {
-        if (saveLayoutButton) {
-            saveLayoutButton.addEventListener("click", saveCurrentLayout);
-        }
-
-        if (loadLayoutButton) {
-            loadLayoutButton.addEventListener("click", loadSelectedLayout);
-        }
-
-        if (deleteLayoutButton) {
-            deleteLayoutButton.addEventListener("click", deleteSelectedLayout);
-        }
-
-        if (savedLayoutSelect) {
-            savedLayoutSelect.addEventListener("change", function () {
-                updateLayoutButtons();
-                setLayoutStatus("");
-            });
-        }
-
-        if (layoutNameInput) {
-            layoutNameInput.addEventListener("keydown", function (event) {
-                if (event.key === "Enter") {
-                    event.preventDefault();
-                    saveCurrentLayout();
-                }
-            });
-        }
-
-        renderSavedLayouts();
-    }
-
     function getCarouselIntervalMilliseconds() {
         const seconds = carouselInterval
             ? parseInt(carouselInterval.value, 10)
@@ -792,8 +502,8 @@ document.addEventListener("DOMContentLoaded", function () {
             carouselToggle.disabled = !canRun;
             carouselToggle.classList.toggle("is-running", isCarouselRunning);
             carouselToggle.textContent = isCarouselRunning
-                ? "\u505c\u6b62\u8f2a\u64ad"
-                : "\u958b\u59cb\u8f2a\u64ad";
+                ? "停止"
+                : "輪播";
         }
 
         if (carouselInterval) {
@@ -802,8 +512,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (carouselStatus) {
             carouselStatus.textContent = isCarouselRunning
-                ? `${Math.round(getCarouselIntervalMilliseconds() / 1000)} \u79d2\u8f2a\u64ad\u4e2d`
-                : (canRun ? "\u8f2a\u64ad\u5f85\u547d" : "\u50c5\u4e00\u7d44");
+                ? `${Math.round(getCarouselIntervalMilliseconds() / 1000)} 秒`
+                : (canRun ? "待命" : "單組");
         }
     }
 
@@ -1165,6 +875,9 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    updateMonitorDateTime();
+    window.setInterval(updateMonitorDateTime, 1000);
+
     prepareMonitorSlots();
     monitorSlots.forEach(function (slot) {
         applySlotPosition(slot);
@@ -1175,7 +888,6 @@ document.addEventListener("DOMContentLoaded", function () {
     bindCameraDragAndDrop();
     bindCameraGroupNavigation();
     bindCarouselControls();
-    bindLayoutControls();
     bindMonitorEventNotifications();
     updateTreeAssignments();
 

@@ -1,4 +1,4 @@
-* { box-sizing: border-box; }
+﻿* { box-sizing: border-box; }
 :root {
     --bg: #e9eef5;
     --panel: #ffffff;
@@ -379,4 +379,50 @@ dd { margin: 0; overflow-wrap: anywhere; font-size: 10px; font-weight: 700; }
         min-width: 78px;
         font-size: 13px;
     }
+}
+
+
+/* v1.4: simplified snapshot banner */
+.page-heading {
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 128px;
+}
+.page-heading h2 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+/* Phase 1.1: align snapshot and record banner title positions */
+.page-heading {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    height: 128px;
+    min-height: 128px;
+    padding: 0 30px;
+    box-sizing: border-box;
+}
+
+.page-heading h2 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 400;
+    line-height: 1.2;
+}
+
+/* Phase 1.2: force identical banner title typography */
+.page-heading h2,
+.record-banner h1 {
+    margin: 0;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    font-size: 28px;
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1.2;
+    letter-spacing: 0;
+    text-rendering: geometricPrecision;
 }

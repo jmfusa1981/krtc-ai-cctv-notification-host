@@ -47,3 +47,10 @@ logs/
 # Local dashboard update and backup folders
 _update_v2_*/
 _backup_v2_*/
+
+# Third-party PJSIP source/build
+pjproject/
+
+# Temporary development scripts
+APPLY_PHASE2.ps1
+apply_event_records_feature.ps1

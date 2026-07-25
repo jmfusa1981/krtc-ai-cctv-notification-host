@@ -3,7 +3,7 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>KRTC AI CCTV 監控牆</title>
+    <title>{{ station_name|default:"站區名" }} 即時監視牆</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <link rel="stylesheet" href="{% static 'css/monitor.css' %}">
@@ -12,76 +12,89 @@
 <body data-live-state-url="{% url 'dashboard:dashboard_live_state_api' %}">
     <div class="monitor-wall-layout">
         <header class="monitor-toolbar">
-            <div class="monitor-title">
-                <h1>KRTC AI CCTV 監控牆</h1>
-                <p>純影像監看模式｜1 / 4 / 9 / 16 分割畫面｜Stream health check enabled</p>
+            <div class="monitor-brand">
+                <img
+                    src="{% static 'img/KRTC_logo.png' %}"
+                    alt="KRTC Logo"
+                    class="monitor-logo"
+                >
+                <h1 class="monitor-title">
+                    <span class="station-name">{{ station_name|default:"站區名" }}</span>
+                    <span class="page-name">即時監視牆</span>
+                </h1>
             </div>
 
             <div class="monitor-actions">
-                <div class="operator-badge">
-                    操作員：{{ request.user.username }}
-                </div>
-
-                <button
-                    type="button"
-                    class="camera-tree-toggle"
-                    id="cameraTreeToggle"
-                    aria-controls="cameraSidebar"
-                    aria-expanded="true"
-                >
-                    Camera Tree
-                </button>
-
-                <div class="layout-controls" aria-label="監看版面配置">
-                    <input
-                        type="text"
-                        id="layoutNameInput"
-                        placeholder="Layout 名稱"
-                        maxlength="40"
+                <div class="toolbar-group camera-toolbar-group">
+                    <button
+                        type="button"
+                        class="camera-tree-toggle"
+                        id="cameraTreeToggle"
+                        aria-controls="cameraSidebar"
+                        aria-expanded="true"
                     >
-                    <button type="button" id="saveLayoutButton">儲存</button>
-                    <select id="savedLayoutSelect" aria-label="已儲存 Layout">
-                        <option value="">選擇 Layout</option>
-                    </select>
-                    <button type="button" id="loadLayoutButton" disabled>載入</button>
-                    <button type="button" id="deleteLayoutButton" disabled>刪除</button>
-                    <span id="layoutStatus" aria-live="polite"></span>
+                        攝影機清單
+                    </button>
                 </div>
 
-                <div class="carousel-controls" aria-label="攝影機分組輪播">
-                    <button type="button" id="carouselToggle" disabled>開始輪播</button>
+                <span class="toolbar-divider" aria-hidden="true"></span>
+
+                <div class="toolbar-group camera-group-navigation" aria-label="攝影機分組切換">
+                    <button type="button" id="previousCameraGroup" title="上一組" aria-label="上一組">‹</button>
+                    <span id="cameraGroupStatus">1 / 1</span>
+                    <button type="button" id="nextCameraGroup" title="下一組" aria-label="下一組">›</button>
+                </div>
+
+                <div class="toolbar-group carousel-controls" aria-label="攝影機分組輪播">
+                    <button type="button" id="carouselToggle" disabled>輪播</button>
                     <select id="carouselInterval" aria-label="輪播間隔">
                         <option value="5">5 秒</option>
                         <option value="10" selected>10 秒</option>
                         <option value="15">15 秒</option>
                         <option value="30">30 秒</option>
                     </select>
-                    <span id="carouselStatus">輪播待命</span>
+                    <span id="carouselStatus">待命</span>
                 </div>
 
-                <div class="camera-group-navigation" aria-label="攝影機分組切換">
-                    <button type="button" id="previousCameraGroup" title="上一組">‹</button>
-                    <span id="cameraGroupStatus">1 / 1</span>
-                    <button type="button" id="nextCameraGroup" title="下一組">›</button>
+                <span class="toolbar-divider" aria-hidden="true"></span>
+
+                <div class="toolbar-group grid-mode-buttons" role="group" aria-label="畫面分割">
+                    <button type="button" class="grid-mode-btn" data-grid="1" title="單畫面">1</button>
+                    <button type="button" class="grid-mode-btn active" data-grid="4" title="四分割">4</button>
+                    <button type="button" class="grid-mode-btn" data-grid="9" title="九分割">9</button>
+                    <button type="button" class="grid-mode-btn" data-grid="16" title="十六分割">16</button>
                 </div>
 
-                <div class="grid-mode-buttons">
-                    <button type="button" class="grid-mode-btn" data-grid="1">1</button>
-                    <button type="button" class="grid-mode-btn active" data-grid="4">4</button>
-                    <button type="button" class="grid-mode-btn" data-grid="9">9</button>
-                    <button type="button" class="grid-mode-btn" data-grid="16">16</button>
+                <span class="toolbar-divider" aria-hidden="true"></span>
+
+                <time
+                    id="monitorDateTime"
+                    class="monitor-datetime"
+                    datetime=""
+                    aria-label="系統日期與時間"
+                >
+                    ----/--/-- --:--:--
+                </time>
+
+                <span class="toolbar-divider" aria-hidden="true"></span>
+
+                <div class="toolbar-group account-toolbar-group">
+                    <div class="operator-badge" title="目前登入操作員">
+                        <span class="operator-label">操作員：</span>
+                        <strong>{{ request.user.username }}</strong>
+                    </div>
+
+                    <a href="{% url 'dashboard:home' %}" class="back-dashboard-link">
+                        主頁面
+                    </a>
+
+                    <form method="post" action="{% url 'logout' %}" class="logout-form">
+                        {% csrf_token %}
+                        <button type="submit" class="logout-button">
+                            登出
+                        </button>
+                    </form>
                 </div>
-
-                <a href="{% url 'dashboard:home' %}" class="back-dashboard-link">
-                    返回 Dashboard
-                </a>
-
-                <form method="post" action="{% url 'logout' %}" class="logout-form">
-                    {% csrf_token %}
-                    <button type="submit" class="logout-button">
-                        登出
-                    </button>
-                </form>
             </div>
         </header>
 
@@ -103,7 +116,7 @@
             <aside class="camera-sidebar" id="cameraSidebar">
                 <div class="camera-sidebar-header">
                     <div>
-                        <h2>Camera Tree</h2>
+                        <h2>攝影機清單</h2>
                         <p>{{ cameras|length }} 台啟用中</p>
                     </div>
                 </div>

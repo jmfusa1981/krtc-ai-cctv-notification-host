@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     manual_event_broadcast_api,
+    manual_station_broadcast_api,
     process_pending_broadcast_logs_api,
 )
 
@@ -9,6 +10,11 @@ from .views import (
 app_name = "notifications"
 
 urlpatterns = [
+    path(
+        "broadcast/manual/",
+        manual_station_broadcast_api,
+        name="manual_station_broadcast_api",
+    ),
     path(
         "broadcast/process-pending/",
         process_pending_broadcast_logs_api,

@@ -1,0 +1,191 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統設定｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=5.2">
+</head>
+<body>
+<div class="settings-shell">
+    {% include "dashboard/includes/system_header.html" with current_page="settings" page_title="單站系統設定" %}
+
+    <section class="settings-page-heading">
+        <div>
+            <h1>單站通報主機系統設定</h1>
+            <p>管理本站基本資料與本機操作設定，並檢視、診斷推論主機、攝影機、AI 與廣播設備。</p>
+        </div>
+        <div class="settings-actions">
+            <span class="mode-pill {% if broadcast_playback_mode == 'pjsip' %}is-live{% else %}is-test{% endif %}">
+                {% if broadcast_playback_mode == 'pjsip' %}廣播模式{% else %}測試模式{% endif %}
+            </span>
+            {% if can_open_django_admin %}
+                <a href="/admin/" class="admin-link">進階管理後台</a>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="summary-grid" aria-label="本站設定摘要">
+        <article class="summary-card"><span>推論主機</span><strong>{{ active_inference_host_count }}/{{ inference_host_count }}</strong><small>啟用／總數</small></article>
+        <article class="summary-card"><span>攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong><small>線上／啟用</small></article>
+        <article class="summary-card"><span>IP Speaker</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong><small>線上／啟用</small></article>
+        <article class="summary-card"><span>AI 模型</span><strong>{{ active_ai_model_count }}/{{ ai_model_count }}</strong><small>啟用／總數</small></article>
+        <article class="summary-card"><span>廣播規則</span><strong>{{ active_broadcast_rule_count }}/{{ broadcast_rule_count }}</strong><small>啟用／總數</small></article>
+    </section>
+
+    <section class="system-check-bar" aria-label="本站系統檢查">
+        <div>
+            <p class="eyebrow">SYSTEM DIAGNOSTIC</p>
+            <h2>本站系統檢查</h2>
+            <p>一次檢查推論主機、攝影機、IP Speaker 與音檔；AI 映射及廣播規則採設定完整性檢查。</p>
+        </div>
+        <button type="button" id="run-all-diagnostics" class="primary-button">執行本站系統檢查</button>
+    </section>
+
+    <section id="system-check-summary" class="system-check-summary" aria-live="polite">
+        <article class="check-normal"><span>正常</span><strong id="check-success-count">—</strong></article>
+        <article class="check-warning"><span>警告</span><strong id="check-warning-count">{{ initial_issue_count }}</strong></article>
+        <article class="check-error"><span>異常</span><strong id="check-failure-count">—</strong></article>
+        <article class="check-pending"><span>未檢查</span><strong id="check-pending-count">—</strong></article>
+        <div class="check-progress-wrap">
+            <div class="check-progress"><i id="check-progress-bar"></i></div>
+            <small id="check-progress-text">尚未執行全站診斷；目前依資料庫狀態發現 {{ initial_issue_count }} 項需注意。</small>
+        </div>
+    </section>
+
+    <section class="issue-overview">
+        <div class="issue-overview-heading"><h2>目前需注意項目</h2><span>{{ initial_issue_count }} 項</span></div>
+        <ul id="dynamic-issue-list">
+            {% for issue in initial_issues %}<li>{{ issue }}</li>{% empty %}<li class="is-ok">目前沒有由設定資料判定的異常。</li>{% endfor %}
+        </ul>
+    </section>
+
+    <nav class="settings-tabs" aria-label="系統設定分類">
+        <button class="settings-tab is-active" data-tab="local">本站設定</button>
+        <button class="settings-tab" data-tab="hosts">主機連線</button>
+        <button class="settings-tab" data-tab="devices">本站設備</button>
+        <button class="settings-tab" data-tab="ai">AI 與映射</button>
+        <button class="settings-tab" data-tab="broadcast">廣播設定</button>
+        <button class="settings-tab" data-tab="logs">執行紀錄</button>
+    </nav>
+
+    <main class="settings-content">
+        <section class="settings-panel is-active" data-panel="local">
+            <div class="panel-heading">
+                <div><h2>本站基本資訊與本機操作設定</h2><p>本站基本資料與顯示、通知及廣播執行偏好。設定只影響本車站通報主機。</p></div>
+                <div class="config-meta">設定版本 v{{ local_settings.config_version }}<br>最後修改 {{ local_settings.updated_at|date:"Y-m-d H:i:s" }}</div>
+            </div>
+            {% if settings_saved %}<div class="notice notice-success">本機設定已儲存並生效。</div>{% endif %}
+            {% if settings_save_failed %}<div class="notice notice-error">設定未儲存，請修正下方欄位。</div>{% endif %}
+            <form method="post" class="local-settings-form" novalidate>
+                {% csrf_token %}
+                <article class="settings-card">
+                    <div class="card-heading"><div><h3>本站基本資訊</h3><p>識別本站與目前通報主機版本。</p></div><span class="card-badge">LOCAL</span></div>
+                <div class="form-grid">
+                    <label><span>車站代碼</span>{{ settings_form.station_code }}{{ settings_form.station_code.errors }}</label>
+                    <label><span>車站名稱</span>{{ settings_form.station_name }}{{ settings_form.station_name.errors }}</label>
+                    <label><span>通報主機名稱</span>{{ settings_form.notification_host_name }}{{ settings_form.notification_host_name.errors }}</label>
+                    <label><span>系統版本</span>{{ settings_form.system_version }}{{ settings_form.system_version.errors }}</label>
+                </div>
+                </article>
+                <article class="settings-card">
+                    <div class="card-heading"><div><h3>中央維護主機</h3><p>預留未來分站設定同步與狀態回傳。</p></div><span class="status status-pending">規劃中</span></div>
+                    <div class="form-grid maintenance-grid">
+                    <label class="form-full"><span>中央維護主機 URL</span><div class="inline-control">{{ settings_form.maintenance_host_url }}<button type="button" class="test-button" data-test-kind="maintenance-host" data-test-url="{% url 'settings_app:test_maintenance_host' %}">測試連線</button></div>{{ settings_form.maintenance_host_url.errors }}<small>尚未建置維護主機時可留空，不影響本站通報。</small></label>
+                    </div>
+                </article>
+                <article class="settings-card">
+                    <div class="card-heading"><div><h3>本機操作設定</h3><p>設定監視牆、頁面更新及本站提示行為。</p></div><span class="card-badge">RUNTIME</span></div>
+                <div class="form-grid">
+                    <label><span>監視牆預設格數</span>{{ settings_form.default_monitor_grid }}{{ settings_form.default_monitor_grid.errors }}</label>
+                    <label><span>輪播間隔（秒）</span>{{ settings_form.carousel_interval_seconds }}{{ settings_form.carousel_interval_seconds.errors }}</label>
+                    <label><span>Dashboard 更新（秒）</span>{{ settings_form.dashboard_refresh_seconds }}{{ settings_form.dashboard_refresh_seconds.errors }}</label>
+                    <label class="switch-field"><span><b>事件提示音</b><small>事件抵達時播放本站提示音。</small></span><span class="toggle">{{ settings_form.notification_sound_enabled }}<i></i></span></label>
+                    <label class="switch-field"><span><b>警示燈</b><small>事件抵達時啟動警示燈號。</small></span><span class="toggle">{{ settings_form.warning_light_enabled }}<i></i></span></label>
+                    <label class="switch-field"><span><b>自動廣播</b><small>依啟用規則自動執行站區廣播。</small></span><span class="toggle">{{ settings_form.auto_broadcast_enabled }}<i></i></span></label>
+                </div>
+                </article>
+                {% if can_edit_settings %}<div class="form-actions"><button type="submit" class="primary-button">儲存本機設定</button></div>{% else %}<div class="notice">目前帳號為唯讀權限，只有 Staff／系統管理員可以修改。</div>{% endif %}
+            </form>
+        </section>
+
+        <section class="settings-panel" data-panel="hosts" hidden>
+            <div class="panel-heading"><div><h2>推論主機連線</h2><p>執行 /health 診斷，並保存最近檢查時間與錯誤原因。</p></div></div>
+            <div class="diagnostic-summary">
+                <article><span>啟用主機</span><strong>{{ active_inference_host_count }}/{{ inference_host_count }}</strong></article>
+                <article><span>目前在線</span><strong>{{ inference_hosts|length }}</strong><small>請以逐台 Health 測試結果為準</small></article>
+            </div>
+            <div class="table-wrap"><table class="diagnostic-table host-diagnostic-table"><thead><tr><th>代碼</th><th>主機名稱</th><th>Health URL</th><th>狀態</th><th>最後檢查</th><th>最後成功</th><th>診斷</th></tr></thead><tbody>
+            {% for host in inference_hosts %}<tr><td class="code">{{ host.host_code }}</td><td>{{ host.name }}</td><td class="mono">{{ host.normalized_base_url }}/health</td><td><span class="status status-{{ host.status }}">{{ host.status_label_zh }}</span></td><td>{{ host.last_health_at|date:"Y-m-d H:i:s"|default:"尚無紀錄" }}{% if host.last_error %}<small class="row-error">{{ host.last_error|truncatechars:90 }}</small>{% endif %}</td><td>{{ host.last_success_at|date:"Y-m-d H:i:s"|default:"尚無紀錄" }}</td><td><button type="button" class="test-button diagnostic-item" data-check-category="推論主機" data-check-label="{{ host.host_code }}" data-test-url="{% url 'settings_app:test_inference_host' %}" data-object-id="{{ host.id }}" data-result-target="host-result-{{ host.id }}">測試 Health</button><small id="host-result-{{ host.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="7" class="empty">尚未設定推論主機。</td></tr>{% endfor %}
+            </tbody></table></div>
+        </section>
+
+        <section class="settings-panel" data-panel="devices" hidden>
+            <div class="panel-heading"><div><h2>本站設備</h2><p>攝影機與 IP Speaker 為本站執行所需的本地設定副本。</p></div></div>
+            <div class="diagnostic-summary">
+                <article><span>在線攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong></article>
+                <article><span>已建立映射</span><strong>{{ mapped_active_camera_count }}/{{ active_camera_count }}</strong></article>
+                <article><span>在線 Speaker</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong></article>
+            </div>
+            <h3>攝影機</h3>
+            <div class="table-wrap"><table class="diagnostic-table camera-diagnostic-table"><thead><tr><th>編號</th><th>名稱／區域</th><th>測試端點</th><th>映射</th><th>狀態</th><th>診斷</th></tr></thead><tbody>
+            {% for camera in cameras %}<tr><td class="code">{{ camera.camera_code }}</td><td>{{ camera.name }}<small>{{ camera.area|default:"未設定" }}</small></td><td class="mono">{{ camera.diagnostic_endpoint }}</td><td>{% if camera.mapping_count %}<span class="status status-online">{{ camera.mapping_count }} 組</span>{% else %}<span class="status status-error">未映射</span>{% endif %}</td><td><span class="status status-{{ camera.status }}">{{ camera.status_label_zh }}</span><small>{{ camera.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><button type="button" class="test-button diagnostic-item" data-check-category="攝影機" data-check-label="{{ camera.camera_code }}" data-test-url="{% url 'settings_app:test_camera' %}" data-object-id="{{ camera.id }}" data-result-target="camera-result-{{ camera.id }}">測試串流埠</button><small id="camera-result-{{ camera.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定攝影機。</td></tr>{% endfor %}
+            </tbody></table></div>
+            <h3>IP Speaker</h3>
+            <div class="table-wrap"><table class="diagnostic-table speaker-diagnostic-table"><thead><tr><th>編號</th><th>名稱／區域</th><th>網路端點</th><th>SIP URI</th><th>狀態</th><th>診斷</th></tr></thead><tbody>
+            {% for speaker in speakers %}<tr><td class="code">{{ speaker.speaker_code }}</td><td>{{ speaker.name }}<small>{{ speaker.area|default:"未設定" }}</small></td><td class="mono">{{ speaker.ip_address }}:{{ speaker.port }}</td><td class="mono">{{ speaker.sip_uri|default:"未設定" }}</td><td><span class="status status-{{ speaker.status }}">{{ speaker.status_label_zh }}</span><small>{{ speaker.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><button type="button" class="test-button diagnostic-item" data-check-category="IP Speaker" data-check-label="{{ speaker.speaker_code }}" data-test-url="{% url 'settings_app:test_speaker' %}" data-object-id="{{ speaker.id }}" data-result-target="speaker-result-{{ speaker.id }}">測試網路</button><small id="speaker-result-{{ speaker.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定 IP Speaker。</td></tr>{% endfor %}
+            </tbody></table></div>
+        </section>
+
+        <section class="settings-panel" data-panel="ai" hidden>
+            <div class="panel-heading"><div><h2>AI 模型與攝影機映射</h2><p>確認推論端 Camera ID 能正確對應本站攝影機。</p></div></div>
+            <div class="diagnostic-summary">
+                <article><span>模型狀態</span><strong>{{ active_ai_model_count }}/{{ ai_model_count }}</strong><small>啟用／總數</small></article>
+                <article><span>健康映射</span><strong>{{ healthy_mapping_count }}/{{ mappings|length }}</strong></article>
+                <article><span>未映射攝影機</span><strong>{{ unmapped_active_cameras|length }}</strong></article>
+            </div>
+            {% if unmapped_active_cameras %}<div class="notice notice-warning">未映射：{% for camera in unmapped_active_cameras %}{{ camera.camera_code }}{% if not forloop.last %}、{% endif %}{% endfor %}</div>{% endif %}
+            <h3>AI 模型</h3>
+            <div class="table-wrap"><table><thead><tr><th>模型代碼</th><th>名稱</th><th>版本</th><th>事件類型</th><th>門檻</th><th>啟用</th><th>檢查</th></tr></thead><tbody>
+            {% for model in ai_models %}<tr class="static-diagnostic-item" data-static-ok="{% if model.health_ok %}1{% else %}0{% endif %}" data-check-category="AI 模型" data-check-label="{{ model.model_code }}"><td class="code">{{ model.model_code }}</td><td>{{ model.name }}</td><td>{{ model.version|default:"—" }}</td><td>{{ model.get_event_type_display }}</td><td>{{ model.confidence_threshold|floatformat:2 }}</td><td>{{ model.is_active|yesno:"是,否" }}</td><td><span class="status {% if model.health_ok %}status-online{% else %}status-error{% endif %}">{{ model.health_label }}</span></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定 AI 模型。</td></tr>{% endfor %}
+            </tbody></table></div>
+            <h3>Camera ID 映射</h3>
+            <div class="table-wrap"><table><thead><tr><th>推論主機</th><th>來源 Camera ID</th><th>本站攝影機</th><th>啟用</th><th>檢查</th></tr></thead><tbody>
+            {% for mapping in mappings %}<tr class="static-diagnostic-item" data-static-ok="{% if mapping.health_ok %}1{% else %}0{% endif %}" data-check-category="Camera 映射" data-check-label="{{ mapping.source_camera_id }}"><td>{{ mapping.inference_host.host_code }}</td><td class="mono">{{ mapping.source_camera_id }}</td><td class="code">{{ mapping.camera.camera_code }}</td><td>{{ mapping.is_active|yesno:"是,否" }}</td><td><span class="status {% if mapping.health_ok %}status-online{% else %}status-error{% endif %}">{{ mapping.health_label }}</span></td></tr>{% empty %}<tr><td colspan="4" class="empty">尚未設定 Camera ID 映射。</td></tr>{% endfor %}
+            </tbody></table></div>
+        </section>
+
+        <section class="settings-panel" data-panel="broadcast" hidden>
+            <div class="panel-heading"><div><h2>廣播設定</h2><p>本站通報主機依本地音檔與規則執行事件廣播。</p></div></div>
+            <div class="diagnostic-summary">
+                <article><span>完整規則</span><strong>{{ healthy_rule_count }}/{{ broadcast_rules|length }}</strong></article>
+                <article><span>可用音檔</span><strong>{{ healthy_audio_count }}/{{ audio_files|length }}</strong></article>
+                <article><span>廣播模式</span><strong class="small-strong">{{ broadcast_playback_mode }}</strong></article>
+            </div>
+            <h3>廣播規則</h3>
+            <div class="table-wrap"><table><thead><tr><th>規則</th><th>事件</th><th>攝影機</th><th>Speaker</th><th>音檔</th><th>自動廣播</th><th>完整性</th></tr></thead><tbody>
+            {% for rule in broadcast_rules %}<tr class="static-diagnostic-item" data-static-ok="{% if rule.health_ok %}1{% else %}0{% endif %}" data-check-category="廣播規則" data-check-label="{{ rule.rule_code }}"><td class="code">{{ rule.rule_code }}</td><td>{{ rule.get_event_type_display }}</td><td>{{ rule.camera.camera_code|default:"通用" }}</td><td>{{ rule.speaker.speaker_code }}</td><td>{{ rule.audio_file.audio_code }}</td><td>{{ rule.auto_broadcast|yesno:"是,否" }}</td><td><span class="status {% if rule.health_ok %}status-online{% else %}status-error{% endif %}">{{ rule.health_label }}</span></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定廣播規則。</td></tr>{% endfor %}
+            </tbody></table></div>
+            <h3>音檔</h3>
+            <div class="table-wrap"><table class="diagnostic-table audio-diagnostic-table"><thead><tr><th>音檔代碼</th><th>名稱</th><th>類型</th><th>檔案</th><th>啟用</th><th>檔案狀態</th><th>診斷</th></tr></thead><tbody>
+            {% for audio in audio_files %}<tr><td class="code">{{ audio.audio_code }}</td><td>{{ audio.name }}</td><td>{{ audio.get_audio_type_display }}</td><td>{{ audio.file.name|default:"未上傳" }}</td><td>{{ audio.is_active|yesno:"是,否" }}</td><td><span class="status {% if audio.health_ok %}status-online{% else %}status-error{% endif %}">{{ audio.health_label }}</span><small>{{ audio.health_detail }}</small></td><td><button type="button" class="test-button diagnostic-item" data-check-category="音檔" data-check-label="{{ audio.audio_code }}" data-test-url="{% url 'settings_app:test_audio_file' %}" data-object-id="{{ audio.id }}" data-result-target="audio-result-{{ audio.id }}">重新檢查</button><small id="audio-result-{{ audio.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定廣播音檔。</td></tr>{% endfor %}
+            </tbody></table></div>
+        </section>
+
+        <section class="settings-panel" data-panel="logs" hidden>
+            <div class="panel-heading"><div><h2>最近廣播執行紀錄</h2><p>本站廣播由通報主機執行，紀錄留存在本站並可供未來維護主機彙整。</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>時間</th><th>狀態</th><th>Speaker</th><th>音檔</th><th>訊息</th></tr></thead><tbody>
+            {% for log in recent_broadcast_logs %}<tr><td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td><td><span class="status status-{{ log.status }}">{{ log.get_status_display }}</span></td><td>{{ log.speaker.speaker_code|default:"—" }}</td><td>{{ log.audio_file.audio_code|default:"—" }}</td><td>{{ log.message|default:"—" }}</td></tr>{% empty %}<tr><td colspan="5" class="empty">目前沒有廣播紀錄。</td></tr>{% endfor %}
+            </tbody></table></div>
+        </section>
+    </main>
+
+    <div id="diagnostic-result" class="diagnostic-result" hidden></div>
+
+    <footer class="settings-footer">最後載入時間：{{ server_time|date:"Y-m-d H:i:s" }}　｜　中央維護主機同步功能：規劃中</footer>
+</div>
+<script src="{% static 'js/station_settings.js' %}?v=5"></script>
+</body>
+</html>

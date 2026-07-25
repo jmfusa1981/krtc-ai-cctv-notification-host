@@ -6,67 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>事件快照｜KRTC AI CCTV 通報主機</title>
     <link rel="stylesheet" href="{% static 'css/event_snapshot_list.css' %}">
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
 </head>
 <body>
     <div class="snapshot-shell">
-        <header class="snapshot-topbar">
-            <div class="brand-block">
-                <img src="{% static 'img/KRTC_logo.png' %}" alt="高雄捷運" class="brand-logo">
-                <div>
-                    <h1>{{ station_name|default:"站區名" }} 通報主機</h1>
-                    <p>事件快照清單</p>
-                </div>
-            </div>
-
-            <nav class="top-actions dashboard-style-actions" aria-label="系統功能導覽">
-                <div class="top-action-group nav-group-primary">
-                    <a href="{% url 'dashboard:device_list' %}" class="top-action-button nav-cyan">設備清單</a>
-                    <span class="top-action-button nav-cyan is-disabled" aria-disabled="true">事件紀錄</span>
-                </div>
-
-                <span class="top-action-divider" aria-hidden="true"></span>
-
-                <div class="top-action-group nav-group-secondary">
-                    <span class="top-action-button nav-blue is-disabled" aria-disabled="true">站區廣播系統</span>
-                    <a href="{% url 'dashboard:monitor' %}" class="top-action-button nav-blue">即時監視牆</a>
-                </div>
-
-                <span class="top-action-divider" aria-hidden="true"></span>
-
-                <div class="top-action-group nav-group-system">
-                    <a href="/admin/" class="top-action-button nav-navy">系統設定</a>
-                </div>
-
-                <div class="nav-spacer" aria-hidden="true"></div>
-
-                <a href="{% url 'dashboard:home' %}" class="top-action-button nav-home">主頁面</a>
-                <form method="post" action="{% url 'logout' %}" class="logout-form">
-                    {% csrf_token %}
-                    <button type="submit" class="top-action-button nav-navy nav-logout">登出</button>
-                </form>
-            </nav>
-        </header>
+        {% include "dashboard/includes/system_header.html" with current_page="snapshots" page_title="事件快照" %}
 
         <section class="page-heading">
-            <div>
-                <span class="eyebrow">EVENT SNAPSHOTS</span>
-                <h2>事件快照</h2>
-                <p>優先顯示通報主機本地快照；尚未下載時使用推論主機提供的遠端網址。</p>
-            </div>
-            <div class="summary-row">
-                <div class="summary-card">
-                    <span>快照總數</span>
-                    <strong>{{ snapshot_count }}</strong>
-                </div>
-                <div class="summary-card">
-                    <span>本地快照</span>
-                    <strong>{{ local_snapshot_count }}</strong>
-                </div>
-                <div class="summary-card">
-                    <span>遠端快照</span>
-                    <strong>{{ remote_snapshot_count }}</strong>
-                </div>
-            </div>
+            <h2>事件快照</h2>
         </section>
 
         <section class="filter-bar">
@@ -157,3 +104,4 @@
     <script src="{% static 'js/event_snapshot_list.js' %}"></script>
 </body>
 </html>
+

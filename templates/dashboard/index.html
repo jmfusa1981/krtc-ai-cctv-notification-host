@@ -6,6 +6,7 @@
     <title>KRTC AI CCTV 通報主機</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
 </head>
 
 <body
@@ -19,114 +20,7 @@
     data-broadcast-playback-is-live="{{ broadcast_playback_mode_is_live|yesno:'true,false' }}"
 >
     <div class="dashboard-shell">
-        <header class="topbar">
-            <div class="topbar-brand-zone">
-                <div class="brand-block">
-                    <img
-                        src="{% static 'img/KRTC_logo.png' %}"
-                        alt="高雄捷運"
-                        class="brand-logo"
-                    >
-
-                    <div class="brand-title">
-                        {{ station_name|default:"站區名" }} 通報主機
-                    </div>
-                </div>
-            </div>
-
-            <div class="topbar-navigation-zone">
-                <nav class="function-nav-row" aria-label="系統功能導覽">
-                    <div class="function-nav-group">
-                        <a
-                            href="{% url 'dashboard:device_list' %}"
-                            class="quick-nav-button"
-                        >
-                            設備清單
-                        </a>
-
-                        <a
-                            href="{% url 'dashboard:event_snapshot_list' %}"
-                            class="quick-nav-button"
-                        >
-                            事件快照
-                        </a>
-
-                        <button
-                            type="button"
-                            class="quick-nav-button"
-                            data-planned-feature="事件紀錄查詢"
-                        >
-                            事件紀錄
-                        </button>
-                    </div>
-
-                    <span class="function-nav-divider" aria-hidden="true"></span>
-
-                    <div class="function-nav-group">
-                        <button
-                            type="button"
-                            class="quick-nav-button quick-nav-button-broadcast"
-                            data-planned-feature="站區廣播系統"
-                        >
-                            站區廣播系統
-                        </button>
-
-                        <a
-                            href="{% url 'dashboard:monitor' %}"
-                            class="quick-nav-button quick-nav-button-monitor"
-                        >
-                            即時監視牆
-                        </a>
-                    </div>
-
-                    <span class="function-nav-divider" aria-hidden="true"></span>
-
-                    <div class="function-nav-group">
-                        <button
-                            type="button"
-                            class="quick-nav-button quick-nav-button-settings"
-                            data-planned-feature="系統設定"
-                        >
-                            系統設定
-                        </button>
-                    </div>
-                </nav>
-            </div>
-
-            <div class="topbar-control-zone">
-                <div class="topbar-control-row">
-                    <div
-                        class="playback-mode-badge {% if broadcast_playback_mode_is_live %}is-healthy{% else %}is-test{% endif %}"
-                        id="broadcastPlaybackModeBadge"
-                        title="目前後端模式：{{ broadcast_playback_mode_label }}"
-                    >
-                        <span class="status-dot"></span>
-                        <strong>
-                            {% if broadcast_playback_mode_is_live %}
-                                廣播模式
-                            {% else %}
-                                測試模式
-                            {% endif %}
-                        </strong>
-                    </div>
-<time class="topbar-clock" id="systemDateTime">--</time>
-
-                    <form
-                        method="post"
-                        action="{% url 'logout' %}"
-                        class="logout-form"
-                    >
-                        {% csrf_token %}
-                        <button
-                            type="submit"
-                            class="topbar-button topbar-button-logout"
-                        >
-                            登出
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </header>
+        {% include "dashboard/includes/system_header.html" with current_page="dashboard" show_dashboard_status=True %}
 
         <section class="summary-strip">
             <div class="latest-event-summary">
@@ -339,3 +233,4 @@
     <script src="{% static 'js/dashboard.js' %}"></script>
 </body>
 </html>
+

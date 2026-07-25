@@ -1925,3 +1925,139 @@ textarea {
     min-height: 128px;
     max-height: 128px;
 }
+/* =========================================================
+   KRTC Dashboard header logo and event warning light override
+   ========================================================= */
+
+/* Dashboard 左上角品牌區 */
+.topbar-brand-zone {
+    display: flex;
+    align-items: center;
+    min-width: 360px;
+    height: 100%;
+}
+
+.topbar-brand-zone .brand-block {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    height: 100%;
+}
+
+.topbar-brand-zone .brand-logo {
+    display: block;
+    width: 118px;
+    height: 88px;
+    flex: 0 0 118px;
+    object-fit: contain;
+    object-position: center;
+}
+
+.topbar-brand-zone .brand-title {
+    margin: 0;
+    color: #10213c;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+/* 事件警示燈外層 */
+.event-alert-light,
+.event-warning-light,
+.warning-light,
+.alert-light {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 若燈心是獨立 HTML 元素，套用此設定 */
+.event-alert-light-core,
+.event-warning-light-core,
+.warning-light-core,
+.alert-light-core,
+.light-core {
+    width: 132px !important;
+    height: 28px !important;
+    min-width: 132px;
+    min-height: 28px;
+    border-radius: 999px;
+    background:
+        linear-gradient(
+            180deg,
+            rgba(244, 96, 117, 0.96) 0%,
+            rgba(192, 55, 76, 0.96) 48%,
+            rgba(145, 38, 57, 0.98) 100%
+        );
+    box-shadow:
+        0 0 9px rgba(255, 94, 118, 0.95),
+        0 0 20px rgba(255, 94, 118, 0.72),
+        inset 0 2px 4px rgba(255, 255, 255, 0.26),
+        inset 0 -3px 5px rgba(91, 18, 34, 0.45);
+}
+
+/* 若燈心是 ::before 偽元素，套用此設定 */
+.event-alert-light::before,
+.event-warning-light::before,
+.warning-light::before,
+.alert-light::before {
+    width: 132px !important;
+    height: 28px !important;
+    border-radius: 999px;
+}
+
+/* 警示觸發狀態 */
+.event-alert-light.is-active .event-alert-light-core,
+.event-warning-light.is-active .event-warning-light-core,
+.warning-light.is-active .warning-light-core,
+.alert-light.is-active .alert-light-core,
+.event-alert-light.active .event-alert-light-core,
+.event-warning-light.active .event-warning-light-core {
+    background:
+        linear-gradient(
+            180deg,
+            #ff778d 0%,
+            #ed3150 48%,
+            #b81434 100%
+        );
+    box-shadow:
+        0 0 12px rgba(255, 79, 107, 1),
+        0 0 28px rgba(255, 79, 107, 0.92),
+        0 0 45px rgba(255, 79, 107, 0.58),
+        inset 0 2px 5px rgba(255, 255, 255, 0.35),
+        inset 0 -4px 6px rgba(91, 13, 30, 0.5);
+}
+
+/* 小於 1600px 時稍微縮小，避免擠壓 */
+@media (max-width: 1600px) {
+    .topbar-brand-zone {
+        min-width: 320px;
+    }
+
+    .topbar-brand-zone .brand-logo {
+        width: 104px;
+        height: 78px;
+        flex-basis: 104px;
+    }
+
+    .topbar-brand-zone .brand-title {
+        font-size: 22px;
+    }
+
+    .event-alert-light-core,
+    .event-warning-light-core,
+    .warning-light-core,
+    .alert-light-core,
+    .light-core,
+    .event-alert-light::before,
+    .event-warning-light::before,
+    .warning-light::before,
+    .alert-light::before {
+        width: 118px !important;
+        height: 26px !important;
+    }
+}

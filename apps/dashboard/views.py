@@ -110,6 +110,58 @@ def dashboard_home(request):
 
 
 @login_required
+def station_broadcast_console(request):
+    """Single-station PA broadcast console for manual prerecorded playback."""
+    StationLocalSettings = get_model_or_none("settings_app", "StationLocalSettings")
+    station_name = "KRTC Demo Station"
+    if StationLocalSettings is not None:
+        try:
+            station_name = StationLocalSettings.load().station_name
+        except Exception:
+            pass
+
+    speakers = []
+    if SpeakerDevice is not None:
+        speakers = list(
+            SpeakerDevice.objects.filter(is_active=True).order_by("area", "speaker_code")
+        )
+
+    audio_files = []
+    if AudioFile is not None:
+        audio_files = list(AudioFile.objects.filter(is_active=True).order_by("audio_code"))
+        for audio in audio_files:
+            try:
+                audio.file_available = bool(audio.file and audio.file.storage.exists(audio.file.name))
+            except Exception:
+                audio.file_available = False
+
+    recent_logs = []
+    if BroadcastLog is not None:
+        recent_logs = list(
+            BroadcastLog.objects.select_related("speaker", "audio_file")
+            .order_by("-created_at")[:12]
+        )
+
+    playback_mode, playback_mode_label, playback_mode_is_live = get_playback_mode_display()
+    speaker_areas = sorted({(speaker.area or "未設定") for speaker in speakers})
+
+    context = {
+        "station_name": station_name,
+        "speakers": speakers,
+        "speaker_areas": speaker_areas,
+        "audio_files": audio_files,
+        "recent_broadcast_logs": recent_logs,
+        "active_speaker_count": len(speakers),
+        "available_audio_count": sum(1 for audio in audio_files if audio.file_available),
+        "broadcast_playback_mode": playback_mode,
+        "broadcast_playback_mode_label": playback_mode_label,
+        "broadcast_playback_mode_is_live": playback_mode_is_live,
+        "can_process_events": can_process_events(request.user),
+    }
+    return render(request, "dashboard/station_broadcast.html", context)
+
+
+@login_required
 def device_list(request):
     """站區設備清單：唯讀顯示攝影機與廣播喇叭設定。"""
     cameras = []

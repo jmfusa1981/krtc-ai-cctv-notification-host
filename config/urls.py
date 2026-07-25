@@ -29,6 +29,7 @@ urlpatterns = [
 
     # Pages
     path("dashboard/", include("apps.dashboard.urls")),
+    path("dashboard/settings/", include("apps.settings_app.urls")),
 
     # APIs
     path("api/cameras/", include("apps.cameras.urls")),
@@ -36,7 +37,6 @@ urlpatterns = [
     path("api/ai/", include("apps.ai_bridge.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/records/", include("apps.records.urls")),
-    path("api/settings/", include("apps.settings_app.urls")),
 ]
 
 

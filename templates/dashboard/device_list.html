@@ -6,46 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>設備清單｜KRTC AI CCTV 通報主機</title>
     <link rel="stylesheet" href="{% static 'css/device_list.css' %}">
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
 </head>
 <body>
     <div class="device-page-shell">
-        <header class="device-topbar">
-            <div class="device-brand">
-                <img src="{% static 'img/KRTC_logo.png' %}" alt="高雄捷運" class="device-logo">
-                <div>
-                    <div class="device-system-title">{{ station_name|default:"站區名" }} 通報主機</div>
-                    <div class="device-page-title">設備清單</div>
-                </div>
-            </div>
-
-            <nav class="device-actions dashboard-style-actions" aria-label="系統功能導覽">
-                <div class="nav-group nav-group-primary">
-                    <a href="{% url 'dashboard:event_snapshot_list' %}" class="device-nav-button nav-cyan">事件快照</a>
-                    <span class="device-nav-button nav-cyan is-disabled" aria-disabled="true">事件紀錄</span>
-                </div>
-
-                <span class="nav-divider" aria-hidden="true"></span>
-
-                <div class="nav-group nav-group-secondary">
-                    <span class="device-nav-button nav-blue is-disabled" aria-disabled="true">站區廣播系統</span>
-                    <a href="{% url 'dashboard:monitor' %}" class="device-nav-button nav-blue">即時監視牆</a>
-                </div>
-
-                <span class="nav-divider" aria-hidden="true"></span>
-
-                <div class="nav-group nav-group-system">
-                    <a href="/admin/" class="device-nav-button nav-navy">系統設定</a>
-                </div>
-
-                <div class="nav-spacer" aria-hidden="true"></div>
-
-                <a href="{% url 'dashboard:home' %}" class="device-nav-button nav-home">主頁面</a>
-                <form method="post" action="{% url 'logout' %}" class="logout-form">
-                    {% csrf_token %}
-                    <button type="submit" class="device-nav-button nav-navy nav-logout">登出</button>
-                </form>
-            </nav>
-        </header>
+        {% include "dashboard/includes/system_header.html" with current_page="devices" page_title="設備清單" %}
 
         <section class="device-summary-grid" aria-label="設備統計">
             <article class="summary-card">
@@ -159,3 +124,4 @@
     <script src="{% static 'js/device_list.js' %}"></script>
 </body>
 </html>
+

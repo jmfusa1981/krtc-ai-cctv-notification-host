@@ -1,0 +1,161 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>事件紀錄｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/event_record_list.css' %}">
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+</head>
+<body>
+    <div class="record-shell">
+        {% include "dashboard/includes/system_header.html" with current_page="records" page_title="事件紀錄" %}
+
+        <section class="record-banner">
+            <h1>事件紀錄查詢</h1>
+        </section>
+
+        <main class="record-main">
+            <form method="get" class="filter-panel" id="recordFilterForm">
+                <div class="filter-grid">
+                    <label>
+                        <span>開始時間</span>
+                        <input type="datetime-local" name="start_at" value="{{ start_at }}">
+                    </label>
+                    <label>
+                        <span>結束時間</span>
+                        <input type="datetime-local" name="end_at" value="{{ end_at }}">
+                    </label>
+                    <label>
+                        <span>事件類型</span>
+                        <select name="event_type">
+                            <option value="">全部</option>
+                            {% for value, label in event_type_choices %}
+                                <option value="{{ value }}" {% if selected_event_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span>攝影機編號</span>
+                        <select name="camera">
+                            <option value="">全部</option>
+                            {% for camera in cameras %}
+                                <option value="{{ camera.id }}" {% if selected_camera == camera.id|stringformat:'s' %}selected{% endif %}>{{ camera.camera_code }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span>區域</span>
+                        <select name="area">
+                            <option value="">全部</option>
+                            {% for area_name in areas %}
+                                <option value="{{ area_name }}" {% if selected_area == area_name %}selected{% endif %}>{{ area_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span>AI 模型</span>
+                        <select name="ai_model">
+                            <option value="">全部</option>
+                            {% for model in ai_models %}
+                                <option value="{{ model.id }}" {% if selected_ai_model == model.id|stringformat:'s' %}selected{% endif %}>{{ model }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span>來源推論主機</span>
+                        <select name="source_host">
+                            <option value="">全部</option>
+                            {% for host in source_hosts %}
+                                <option value="{{ host }}" {% if selected_source_host == host %}selected{% endif %}>{{ host }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="keyword-field">
+                        <span>關鍵字搜尋</span>
+                        <input type="search" name="q" value="{{ keyword }}" placeholder="事件編號、攝影機、區域、主機或說明">
+                    </label>
+                </div>
+
+                <div class="filter-actions">
+                    <button type="submit" class="action-button action-primary">查詢</button>
+                    <a href="{% url 'dashboard:event_record_list' %}" class="action-button action-secondary">清除條件</a>
+                    <span class="action-spacer"></span>
+                    <button type="button" class="action-button action-export" data-export-url="{% url 'dashboard:export_event_records_csv' %}">匯出 CSV</button>
+                    <button type="button" class="action-button action-export" data-export-url="{% url 'dashboard:export_event_records_excel' %}">匯出 Excel</button>
+                </div>
+            </form>
+
+            <section class="record-table-panel">
+                <div class="table-scroll">
+                    <table class="record-table">
+                        <thead>
+                            <tr>
+                                <th>事件編號</th>
+                                <th>發生時間</th>
+                                <th>事件類型</th>
+                                <th>攝影機編號</th>
+                                <th>區域</th>
+                                <th>處理狀態</th>
+                                <th>AI 模型</th>
+                                <th>來源推論主機</th>
+                                <th>事件說明</th>
+                                <th>快照</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for event in page_obj %}
+                                <tr>
+                                    <td class="event-id">{{ event.id }}</td>
+                                    <td class="event-time">{{ event.detected_at|date:"Y-m-d H:i:s" }}</td>
+                                    <td>{{ event.get_event_type_display }}</td>
+                                    <td>{{ event.camera.camera_code }}</td>
+                                    <td>{{ event.camera.area|default:"—" }}</td>
+                                    <td><span class="status-badge status-{{ event.status }}">{{ event.get_status_display }}</span></td>
+                                    <td>{{ event.ai_model|default:"—" }}</td>
+                                    <td class="source-host">{{ event.source_host|default:"—" }}</td>
+                                    <td class="description-cell" title="{{ event.description }}">{{ event.description|default:"—"|truncatechars:70 }}</td>
+                                    <td>
+                                        {% if event.record_snapshot_url %}
+                                            <button type="button" class="snapshot-button" data-snapshot-url="{{ event.record_snapshot_url }}" data-snapshot-title="事件 {{ event.id }}｜{{ event.get_event_type_display }}">查看</button>
+                                        {% else %}
+                                            <span class="no-snapshot">無快照</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="10" class="empty-row">目前沒有符合查詢條件的事件紀錄。</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if page_obj.paginator.num_pages > 1 %}
+                    <nav class="pagination" aria-label="事件紀錄分頁">
+                        {% if page_obj.has_previous %}
+                            <a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page_obj.previous_page_number }}">上一頁</a>
+                        {% endif %}
+                        <span>第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 頁</span>
+                        {% if page_obj.has_next %}
+                            <a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page_obj.next_page_number }}">下一頁</a>
+                        {% endif %}
+                    </nav>
+                {% endif %}
+            </section>
+        </main>
+    </div>
+
+    <dialog class="snapshot-dialog" id="snapshotDialog">
+        <div class="dialog-header">
+            <strong id="snapshotDialogTitle">事件快照</strong>
+            <button type="button" id="snapshotDialogClose" aria-label="關閉">×</button>
+        </div>
+        <div class="dialog-content">
+            <img id="snapshotDialogImage" alt="事件快照大圖">
+        </div>
+    </dialog>
+
+    <script src="{% static 'js/event_record_list.js' %}"></script>
+</body>
+</html>

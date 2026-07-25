@@ -188,7 +188,7 @@ LOGOUT_REDIRECT_URL = "/login/"
 # when BROADCAST_PLAYBACK_MODE=pjsip is explicitly set in the local .env.
 BROADCAST_PLAYBACK_MODE = os.getenv(
     "BROADCAST_PLAYBACK_MODE",
-    "simulation",
+    "pjsip",
 ).strip().lower()
 
 BROADCAST_PLAY_AFTER_DIAL_DELAY_SECONDS = 1

@@ -18,33 +18,80 @@ body {
 
 .monitor-toolbar {
     min-height: 64px;
-    padding: 10px 20px;
+    padding: 8px 14px;
     background: #0f172a;
     border-bottom: 1px solid #1e293b;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    gap: 14px;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
-.monitor-title h1 {
+.monitor-brand {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: 0 1 auto;
+}
+
+.monitor-logo {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    flex: 0 0 34px;
+}
+
+.monitor-title {
     margin: 0;
-    font-size: 20px;
-    color: #f8fafc;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    line-height: 1;
 }
 
-.monitor-title p {
-    margin: 4px 0 0;
-    font-size: 12px;
-    color: #94a3b8;
+.station-name {
+    color: #f8fafc;
+    font-size: 24px;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.page-name {
+    color: #f8fafc;
+    font-size: 22px;
+    font-weight: 800;
+    flex-shrink: 0;
 }
 
 .monitor-actions {
+    min-width: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
     justify-content: flex-end;
+    gap: 10px;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
+    overflow: hidden;
+}
+
+.toolbar-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 26px;
+    margin: 0 5px;
+    background: rgba(148, 163, 184, 0.28);
+    flex: 0 0 1px;
 }
 
 .operator-badge {
@@ -52,79 +99,22 @@ body {
     align-items: center;
     justify-content: center;
     min-height: 34px;
-    padding: 0 12px;
+    max-width: 140px;
+    padding: 0 10px;
     border-radius: 8px;
     background: #1e293b;
     color: #cbd5e1;
     border: 1px solid #334155;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     white-space: nowrap;
-}
-
-.layout-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.layout-controls input,
-.layout-controls select,
-.layout-controls button {
-    height: 34px;
-    border: 1px solid #475569;
-    border-radius: 8px;
-    background: #1e293b;
-    color: #e2e8f0;
-    font: inherit;
-    font-size: 10px;
-}
-
-.layout-controls input {
-    width: 108px;
-    padding: 0 9px;
-    outline: none;
-}
-
-.layout-controls input:focus,
-.layout-controls select:focus {
-    border-color: #2563eb;
-}
-
-.layout-controls select {
-    max-width: 120px;
-    padding: 0 7px;
-}
-
-.layout-controls button {
-    padding: 0 9px;
-    cursor: pointer;
-    font-weight: 800;
-}
-
-.layout-controls button:hover:not(:disabled) {
-    border-color: #3b82f6;
-    background: #1d4ed8;
-}
-
-.layout-controls button:disabled {
-    cursor: not-allowed;
-    opacity: 0.36;
-}
-
-.layout-controls span {
-    max-width: 110px;
     overflow: hidden;
-    color: #60a5fa;
-    font-size: 10px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
-.carousel-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+.operator-badge strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #ffffff;
 }
 
 .carousel-controls button,
@@ -140,7 +130,7 @@ body {
 }
 
 .carousel-controls button {
-    padding: 0 11px;
+    padding: 0 10px;
     cursor: pointer;
 }
 
@@ -156,22 +146,18 @@ body {
 }
 
 .carousel-controls select {
-    padding: 0 8px;
+    width: 68px;
+    padding: 0 7px;
     cursor: pointer;
     outline: none;
 }
 
 .carousel-controls span {
-    min-width: 52px;
+    min-width: 34px;
     color: #64748b;
     font-size: 10px;
+    text-align: center;
     white-space: nowrap;
-}
-
-.camera-group-navigation {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
 }
 
 .camera-group-navigation button {
@@ -197,16 +183,17 @@ body {
 }
 
 .camera-group-navigation span {
-    min-width: 48px;
+    min-width: 46px;
     color: #94a3b8;
     font-size: 11px;
     font-weight: 800;
     text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 .grid-mode-buttons {
-    display: flex;
-    gap: 8px;
+    display: inline-flex;
+    gap: 6px;
 }
 
 .grid-mode-btn {
@@ -226,18 +213,28 @@ body {
     border-color: #2563eb;
 }
 
+.monitor-datetime {
+    min-width: 146px;
+    color: #bfdbfe;
+    font-size: 12px;
+    font-weight: 400;
+    text-align: center;
+    letter-spacing: 0.2px;
+    font-variant-numeric: tabular-nums;
+}
+
 .back-dashboard-link,
 .logout-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     min-height: 34px;
-    padding: 0 14px;
+    padding: 0 12px;
     border-radius: 8px;
     background: #f8fafc;
     color: #0f172a;
     text-decoration: none;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     border: 1px solid #f8fafc;
     cursor: pointer;
@@ -247,6 +244,10 @@ body {
 .back-dashboard-link:hover,
 .logout-button:hover {
     background: #e2e8f0;
+}
+
+.account-toolbar-group {
+    gap: 12px;
 }
 
 .logout-form {
@@ -881,43 +882,81 @@ body {
     padding: 24px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1700px) {
     .monitor-toolbar {
-        height: auto;
-        padding: 14px;
-        align-items: flex-start;
-        flex-direction: column;
+        gap: 10px;
+        padding-left: 12px;
+        padding-right: 10px;
+    }
+
+    .station-name {
+        max-width: 118px;
+        font-size: 20px;
+    }
+
+    .page-name {
+        font-size: 19px;
+    }
+
+    .monitor-logo {
+        width: 30px;
+        height: 30px;
+        flex-basis: 30px;
     }
 
     .monitor-actions {
-        width: 100%;
-        justify-content: flex-start;
-        flex-wrap: wrap;
+        gap: 7px;
     }
 
-    .monitor-grid {
-        height: calc(100vh - 168px);
+    .toolbar-group {
+        gap: 5px;
     }
 
-    .monitor-grid.grid-9,
-    .monitor-grid.grid-16 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .account-toolbar-group {
+        gap: 10px;
+    }
+
+    .monitor-datetime {
+        min-width: 138px;
+        font-size: 11px;
+    }
+
+    .operator-label {
+        display: none;
+    }
+
+    .operator-badge {
+        max-width: 92px;
     }
 }
 
-@media (max-width: 600px) {
-    .monitor-grid.grid-4,
-    .monitor-grid.grid-9,
-    .monitor-grid.grid-16 {
-        grid-template-columns: repeat(1, minmax(0, 1fr));
+@media (max-width: 1450px) {
+    .station-name {
+        max-width: 90px;
     }
 
-    .monitor-grid {
-        height: auto;
-        min-height: calc(100vh - 180px);
+    .camera-tree-toggle {
+        padding: 0 9px;
+        font-size: 11px;
     }
 
-    .monitor-camera-card {
-        min-height: 240px;
+    .carousel-controls span {
+        display: none;
+    }
+
+    .monitor-datetime {
+        min-width: 124px;
+    }
+}
+
+@media (max-width: 1200px) {
+    .monitor-toolbar {
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .monitor-brand,
+    .monitor-actions {
+        flex-shrink: 0;
     }
 }
