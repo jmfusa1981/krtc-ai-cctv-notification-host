@@ -1,0 +1,236 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>KRTC AI CCTV 通報主機</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+</head>
+
+<body
+    data-dashboard-live-state-url="{% url 'dashboard:dashboard_live_state_api' %}"
+    data-process-pending-broadcast-url="{% url 'notifications:process_pending_broadcast_logs_api' %}"
+    data-confirm-event-url-prefix="/api/events/"
+    data-manual-broadcast-url-prefix="/api/notifications/broadcast/event/"
+    data-can-process-events="{{ can_process_events|yesno:'true,false' }}"
+    data-broadcast-playback-mode="{{ broadcast_playback_mode }}"
+    data-broadcast-playback-mode-label="{{ broadcast_playback_mode_label }}"
+    data-broadcast-playback-is-live="{{ broadcast_playback_mode_is_live|yesno:'true,false' }}"
+>
+    <div class="dashboard-shell">
+        {% include "dashboard/includes/system_header.html" with current_page="dashboard" show_dashboard_status=True %}
+
+        <section class="summary-strip">
+            <div class="latest-event-summary">
+                <div class="summary-kicker latest-event-kicker">
+                    最新事件
+                </div>
+
+                {% with latest_event=recent_events.0 %}
+                    {% if latest_event %}
+                        <div class="latest-event-title" id="latestEventType">
+                            {% if latest_event.get_event_type_display %}
+                                {{ latest_event.get_event_type_display }}
+                            {% else %}
+                                {{ latest_event.event_type }}
+                            {% endif %}
+                        </div>
+                        <div class="latest-event-meta">
+                            <span id="latestEventCamera">
+                                {% if latest_event.camera %}
+                                    {{ latest_event.camera.camera_code }}｜{{ latest_event.camera.name }}
+                                {% else %}
+                                    未指定攝影機
+                                {% endif %}
+                            </span>
+                            <span id="latestEventTime">{{ latest_event.created_at|date:"Y-m-d H:i:s" }}</span>
+                        </div>
+                    {% else %}
+                        <div class="latest-event-title" id="latestEventType">目前無事件</div>
+                        <div class="latest-event-meta">
+                            <span id="latestEventCamera">系統正在等待 AI 推論事件</span>
+                            <span id="latestEventTime">--</span>
+                        </div>
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            <div class="metric-row">
+                <div class="metric-card">
+                    <span>站區攝影機</span>
+                    <strong id="stationCameraCount">{{ station_camera_count }}</strong>
+                    <small>台運行中</small>
+                </div>
+
+                <div class="metric-card">
+                    <span>站區廣播喇叭</span>
+                    <strong>{{ active_speakers }}</strong>
+                    <small>台啟用</small>
+                </div>
+
+                <div
+                    class="metric-card crowd-flow-metric {% if crowd_flow_summary.is_abnormal %}is-abnormal{% else %}is-normal{% endif %}"
+                    id="crowdFlowMetric"
+                >
+                    <span>人流統計</span>
+
+                    <strong
+                        class="metric-text"
+                        id="crowdFlowValue"
+                    >
+                        {% if crowd_flow_summary.is_abnormal %}
+                            異常
+                        {% elif crowd_flow_summary.count != None %}
+                            {{ crowd_flow_summary.count }}
+                        {% else %}
+                            --
+                        {% endif %}
+                    </strong>
+
+                    <small id="crowdFlowSummary">
+                        {% if crowd_flow_summary.count != None %}
+                            目前 {{ crowd_flow_summary.count }} 人｜{{ crowd_flow_summary.range_label }}
+                        {% else %}
+                            尚無人流統計資料｜{{ crowd_flow_summary.range_label }}
+                        {% endif %}
+                    </small>
+                </div>
+
+                <div
+                    class="metric-card inference-host-metric {% if inference_host_summary.is_abnormal %}is-abnormal{% else %}is-normal{% endif %}"
+                    id="inferenceHostMetric"
+                >
+                    <span>站區推論主機狀態</span>
+
+                    <strong
+                        class="metric-text"
+                        id="inferenceHostStatus"
+                    >
+                        {{ inference_host_summary.status_label }}
+                    </strong>
+
+                    <small id="inferenceHostDetail">
+                        {{ inference_host_summary.detail_label }}
+                    </small>
+                </div>
+
+                <div
+                    class="metric-card event-warning-metric"
+                    id="eventWarningMetric"
+                >
+                    <span>事件警示</span>
+
+                    <div
+                        class="event-warning-light"
+                        id="eventWarningLight"
+                        role="status"
+                        aria-live="polite"
+                        aria-label="事件警示燈待命"
+                    >
+                        <span class="event-warning-core"></span>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <main class="workspace-grid">
+            <aside class="panel event-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>近期 AI 事件</h2>
+                        <p>點擊事件可切換影像與詳細資料</p>
+                    </div>
+                    <div class="event-panel-tools">
+                        <button type="button" id="eventCarouselButton" class="carousel-button">輪播中</button>
+                        <span class="panel-count" id="eventListCount">{{ recent_events|length }}</span>
+                    </div>
+                </div>
+                <div class="event-list" id="eventList"></div>
+            </aside>
+
+            <section class="panel camera-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>事件影像</h2>
+                        <p>即時畫面、事件快照與錄影連結</p>
+                    </div>
+                    <div id="dashboardPollingStatus" class="polling-status">資料更新：等待中</div>
+                </div>
+
+                <div class="media-toolbar" role="tablist" aria-label="事件影像模式">
+                    <button type="button" class="media-mode-button is-active" data-media-mode="live">即時畫面</button>
+                    <button type="button" class="media-mode-button" data-media-mode="snapshot">事件快照</button>
+                    <button type="button" class="media-mode-button" data-media-mode="video">事件錄影</button>
+                </div>
+
+                <div class="primary-camera-stage" id="primaryCameraStage"></div>
+
+                <div class="camera-thumbnail-strip" id="cameraGrid"></div>
+            </section>
+
+            <aside class="panel detail-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>事件詳細資料</h2>
+                        <p>來源與處理狀態</p>
+                    </div>
+                </div>
+
+                <div class="detail-scroll">
+                    <section class="detail-section">
+                        <h3 id="detailEventType">尚未選取事件</h3>
+                        <dl class="detail-list">
+                            <div><dt>本站事件編號</dt><dd id="detailEventId">--</dd></div>
+                            <div><dt>處理狀態</dt><dd id="detailEventStatus">--</dd></div>
+                            <div><dt>來源推論主機</dt><dd id="detailInferenceHost">尚未提供</dd></div>
+                            <div><dt>攝影機</dt><dd id="detailCamera">--</dd></div>
+                            <div><dt>區域</dt><dd id="detailLocation">尚未提供</dd></div>
+                            <div><dt>偵測時間</dt><dd id="detailDetectedAt">--</dd></div>
+                            <div><dt>匯入時間</dt><dd id="detailCreatedAt">--</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="detail-section">
+                        <h3>事件操作</h3>
+                        <div class="detail-actions">
+                            <button type="button" class="action-button action-primary" id="detailConfirmButton" disabled>確認事件</button>
+                            <button type="button" class="action-button action-danger" id="detailCloseButton" disabled>解除事件</button>
+                            <button type="button" class="action-button action-warning" id="detailBroadcastButton" disabled>手動廣播</button>
+                        </div>
+                        <div class="detail-action-message" id="detailActionMessage"></div>
+                    </section>
+
+                    <section class="detail-section">
+                        <div class="detail-section-heading">
+                            <h3>近期廣播任務</h3>
+                            <button type="button" id="processPendingBroadcastButton" class="compact-button">處理待播放任務</button>
+                        </div>
+                        <div id="processBroadcastStatus" class="process-broadcast-status">尚未執行播放處理</div>
+                        <div class="broadcast-log-list" id="broadcastLogTableBody"></div>
+                    </section>
+                </div>
+            </aside>
+        </main>
+
+        <footer class="footer-strip">
+            <span>聲音提示：待命</span>
+            <span>警示燈：待命</span>
+            <span>系統版本：v2.1</span>
+        </footer>
+    </div>
+
+    <aside class="dashboard-action-toast" id="dashboardActionToast" role="status" aria-live="polite" hidden>
+        <div>
+            <strong id="dashboardActionToastTitle">系統通知</strong>
+            <span id="dashboardActionToastMessage"></span>
+        </div>
+        <button type="button" id="dashboardActionToastClose" aria-label="關閉通知">×</button>
+    </aside>
+
+    <script src="{% static 'js/dashboard.js' %}"></script>
+</body>
+</html>
+

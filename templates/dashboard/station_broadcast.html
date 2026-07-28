@@ -1,0 +1,265 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>站區廣播系統｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/station_broadcast.css' %}?v=1">
+</head>
+<body>
+<div class="broadcast-shell">
+    {% include "dashboard/includes/system_header.html" with current_page="broadcast" page_title="站區廣播系統" %}
+
+    <section class="broadcast-banner">
+        <div>
+            <h1>站區廣播系統</h1>
+            <p>選擇本站 IP Speaker 與預錄音檔，執行單站手動廣播。</p>
+        </div>
+        <span class="mode-badge {% if broadcast_playback_mode_is_live %}is-live{% else %}is-test{% endif %}">
+            {% if broadcast_playback_mode_is_live %}廣播模式{% else %}測試模式{% endif %}
+        </span>
+    </section>
+
+    <section class="summary-grid">
+        <article><span>可用 Speaker</span><strong>{{ active_speaker_count }}</strong></article>
+        <article><span>可用音檔</span><strong>{{ available_audio_count }}/{{ audio_files|length }}</strong></article>
+        <article><span>播放模式</span><strong class="mode-text">{{ broadcast_playback_mode_label }}</strong></article>
+        <article><span>最近紀錄</span><strong>{{ recent_broadcast_logs|length }}</strong></article>
+    </section>
+
+    <main class="broadcast-layout">
+        <section class="control-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>手動預錄廣播</h2>
+                    <p>支援單一、區域或本站全部 Speaker。多顆 Speaker 會使用獨立 SIP/RTP Port 平行播放。</p>
+                </div>
+            </div>
+
+            {% if can_process_events %}
+            <form id="manualBroadcastForm" data-submit-url="{% url 'notifications:manual_station_broadcast_api' %}">
+                {% csrf_token %}
+                <div class="form-grid">
+                    <label>
+                        <span>廣播範圍</span>
+                        <select id="broadcastScope">
+                            <option value="single">單一 Speaker</option>
+                            <option value="area">目前區域全部 Speaker</option>
+                            <option value="all">本站全部 Speaker</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>廣播區域</span>
+                        <select id="areaFilter">
+                            <option value="">全部區域</option>
+                            {% for area in speaker_areas %}<option value="{{ area }}">{{ area }}</option>{% endfor %}
+                        </select>
+                    </label>
+                    <label class="full-width">
+                        <span>IP Speaker</span>
+                        <select id="speakerSelect" required>
+                            <option value="">請選擇 Speaker</option>
+                            {% for speaker in speakers %}
+                                <option value="{{ speaker.id }}" data-area="{{ speaker.area|default:'未設定' }}" data-status="{{ speaker.status }}">
+                                    {{ speaker.speaker_code }}｜{{ speaker.name }}｜{{ speaker.area|default:"未設定" }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="full-width">
+                        <span>預錄音檔</span>
+                        <select id="audioSelect" required>
+                            <option value="">請選擇音檔</option>
+                            {% for audio in audio_files %}
+                                <option value="{{ audio.id }}" {% if not audio.file_available %}disabled{% endif %}>
+                                    {{ audio.audio_code }}｜{{ audio.name }}{% if not audio.file_available %}｜檔案遺失{% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <label class="volume-control">
+                    <span>播放音量：<strong id="manualVolumeValue">100%</strong></span>
+                    <input type="range" id="manualVolume" min="0" max="200" value="100" step="5">
+                </label>
+
+                <div class="selection-preview" id="selectionPreview">
+                    <strong>尚未選擇播放目標</strong>
+                    <span>請先選擇 Speaker 與音檔。</span>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="secondary-button" id="clearSelectionButton">清除選擇</button>
+                    <button type="submit" class="primary-button" id="broadcastSubmitButton" disabled>開始廣播</button>
+                </div>
+            </form>
+            {% else %}
+                <div class="permission-notice">目前帳號沒有執行廣播的權限。</div>
+            {% endif %}
+        </section>
+
+        <aside class="status-panel">
+            <h2>播放狀態</h2>
+            <div id="broadcastStatus" class="broadcast-status is-idle">
+                <strong>待命中</strong>
+                <span>尚未送出廣播任務。</span>
+            </div>
+            <dl>
+                <div><dt>後端模式</dt><dd>{{ broadcast_playback_mode }}</dd></div>
+                <div><dt>執行方式</dt><dd>單顆同步／多顆平行執行</dd></div>
+                <div><dt>安全限制</dt><dd>同一 Speaker 同時間僅允許一筆任務；單次最多 16 顆</dd></div>
+            </dl>
+        </aside>
+    </main>
+
+
+    <section class="live-microphone-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>即時人聲廣播</h2>
+                <p>使用本通報主機的 Windows 麥克風，透過 PJSIP 即時傳送至 1～{{ live_microphone_max_speakers }} 顆實體 Speaker。</p>
+            </div>
+            <span id="liveMicrophoneBadge" class="live-status-badge is-idle">待命</span>
+        </div>
+
+        {% if can_process_events %}
+        <form id="liveMicrophoneForm"
+              data-start-url="{% url 'notifications:start_live_microphone_broadcast_api' %}"
+              data-stop-url="{% url 'notifications:stop_live_microphone_broadcast_api' %}"
+              data-status-url="{% url 'notifications:live_microphone_broadcast_status_api' %}"
+              data-max-speakers="{{ live_microphone_max_speakers }}">
+            {% csrf_token %}
+            <div class="live-microphone-grid">
+                <label>
+                    <span>即時廣播 Speaker（可複選，最多 {{ live_microphone_max_speakers }} 顆）</span>
+                    <select id="liveSpeakerSelect" multiple size="5" required>
+                        {% for speaker in speakers %}
+                        <option value="{{ speaker.id }}">{{ speaker.speaker_code }}｜{{ speaker.name }}｜{{ speaker.area|default:"未設定" }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <div class="live-microphone-info">
+                    <strong>現場操作方式</strong>
+                    <span>按下開始後，直接對 Windows 預設麥克風說話。</span>
+                    <span>最長 {{ live_microphone_max_duration_seconds }} 秒後自動停止。</span>
+                    <span>進行中不可啟動其他人聲廣播；所選 Speaker 會套用忙碌防護。</span>
+                </div>
+            </div>
+            <label class="volume-control">
+                <span>麥克風廣播音量：<strong id="liveVolumeValue">100%</strong></span>
+                <input type="range" id="liveVolume" min="0" max="200" value="100" step="5">
+            </label>
+            <div id="liveMicrophoneStatus" class="live-microphone-status is-idle">
+                <strong>尚未開始</strong><span>請選擇 Speaker，再按下開始人聲廣播。</span>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="danger-button" id="liveStopButton" disabled>停止人聲廣播</button>
+                <button type="submit" class="primary-button" id="liveStartButton" disabled>開始人聲廣播</button>
+            </div>
+        </form>
+        {% else %}
+        <div class="permission-notice">目前帳號沒有執行人聲廣播的權限。</div>
+        {% endif %}
+    </section>
+
+    <section class="schedule-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>排程廣播</h2>
+                <p>提供單次與每日固定時間播放預錄音檔；排程執行器需保持運作。</p>
+            </div>
+        </div>
+
+        {% if can_process_events %}
+        <form id="broadcastScheduleForm" data-create-url="{% url 'notifications:create_broadcast_schedule_api' %}">
+            {% csrf_token %}
+            <div class="schedule-form-grid">
+                <label><span>排程名稱</span><input type="text" name="name" maxlength="100" required></label>
+                <label><span>排程類型</span>
+                    <select name="schedule_type" id="scheduleType" required>
+                        <option value="once">單次</option>
+                        <option value="daily">每日</option>
+                    </select>
+                </label>
+                <label id="runAtField"><span>單次執行時間</span><input type="datetime-local" name="run_at" id="scheduleRunAt"></label>
+                <label id="dailyTimeField" hidden><span>每日執行時間</span><input type="time" name="daily_time" id="scheduleDailyTime"></label>
+                <label><span>預錄音檔</span>
+                    <select name="audio_file" required>
+                        <option value="">請選擇音檔</option>
+                        {% for audio in audio_files %}{% if audio.file_available %}<option value="{{ audio.id }}">{{ audio.audio_code }}｜{{ audio.name }}</option>{% endif %}{% endfor %}
+                    </select>
+                </label>
+                <label class="schedule-speakers"><span>播放 Speaker（可複選）</span>
+                    <select name="speakers" multiple size="5" required>
+                        {% for speaker in speakers %}<option value="{{ speaker.id }}">{{ speaker.speaker_code }}｜{{ speaker.name }}</option>{% endfor %}
+                    </select>
+                </label>
+                <label><span>播放音量 (%)</span><input type="number" name="volume_percent" min="0" max="200" value="100" required></label>
+                <label class="schedule-active"><input type="checkbox" name="is_active" checked> <span>建立後立即啟用</span></label>
+            </div>
+            <div id="scheduleFormStatus" class="schedule-form-status"></div>
+            <div class="form-actions"><button type="submit" class="primary-button">建立排程</button></div>
+        </form>
+        {% endif %}
+
+        <div class="table-scroll schedule-table-wrap">
+            <table>
+                <thead><tr><th>名稱</th><th>類型</th><th>音檔</th><th>Speaker</th><th>音量</th><th>下次執行</th><th>狀態</th><th>操作</th></tr></thead>
+                <tbody>
+                {% for schedule in broadcast_schedules %}
+                    <tr>
+                        <td>{{ schedule.name }}</td>
+                        <td>{{ schedule.get_schedule_type_display }}</td>
+                        <td>{{ schedule.audio_file.audio_code }}</td>
+                        <td>{% for speaker in schedule.speakers.all %}{{ speaker.speaker_code }}{% if not forloop.last %}、{% endif %}{% endfor %}</td>
+                        <td>{{ schedule.volume_percent }}%</td>
+                        <td>{{ schedule.next_run_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                        <td>{% if schedule.is_active %}<span class="status-tag status-success">啟用</span>{% else %}<span class="status-tag status-skipped">停用</span>{% endif %}</td>
+                        <td class="schedule-actions">
+                            {% if can_process_events %}
+                            <button type="button" class="secondary-button schedule-toggle" data-url="{% url 'notifications:toggle_broadcast_schedule_api' schedule.id %}">{% if schedule.is_active %}停用{% else %}啟用{% endif %}</button>
+                            <button type="button" class="secondary-button schedule-delete" data-url="{% url 'notifications:delete_broadcast_schedule_api' schedule.id %}">刪除</button>
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                {% empty %}<tr><td colspan="8" class="empty-row">目前沒有排程。</td></tr>{% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="log-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>最近廣播紀錄</h2>
+                <p>顯示本站最近 12 筆播放結果。</p>
+            </div>
+            <button type="button" class="secondary-button" id="refreshPageButton">重新整理</button>
+        </div>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>時間</th><th>狀態</th><th>Speaker</th><th>音檔</th><th>來源</th><th>訊息</th></tr></thead>
+                <tbody>
+                {% for log in recent_broadcast_logs %}
+                    <tr>
+                        <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+                        <td><span class="status-tag status-{{ log.status }}">{{ log.get_status_display }}</span></td>
+                        <td>{{ log.speaker.speaker_code|default:"—" }}</td>
+                        <td>{{ log.audio_file.audio_code|default:"—" }}</td>
+                        <td>{% if log.request_payload.source == "station_broadcast_console" %}手動廣播{% elif log.request_payload.source == "broadcast_schedule" %}排程廣播{% elif log.request_payload.source == "live_microphone" %}即時人聲{% elif log.event_id %}事件觸發{% else %}系統{% endif %}</td>
+                        <td class="message-cell">{{ log.message|default:"—" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6" class="empty-row">目前沒有廣播紀錄。</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+<script src="{% static 'js/station_broadcast.js' %}?v=4"></script>
+</body>
+</html>

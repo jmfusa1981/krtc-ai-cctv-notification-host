@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Django
+*.sqlite3
+db.sqlite3
+media/
+staticfiles/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# OpenCV / Camera temp files
+*.avi
+*.mp4
+*.mjpeg
+*.jpg
+*.png
+
+# Except documentation images if needed
+!docs/images/
+!docs/images/*.png
+!docs/images/*.jpg
+# Local dashboard update and backup folders
+_update_v2_*/
+_backup_v2_*/
+
+# Third-party PJSIP source/build
+pjproject/
+
+# Temporary development scripts
+APPLY_PHASE2.ps1
+apply_event_records_feature.ps1

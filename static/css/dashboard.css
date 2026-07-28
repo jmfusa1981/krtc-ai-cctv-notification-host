@@ -1,0 +1,2063 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    --bg: #e9eef5;
+    --panel: #ffffff;
+    --panel-border: #d8e0ea;
+    --navy: #0f1f3d;
+    --navy-2: #172b55;
+    --text: #10213c;
+    --muted: #64748b;
+    --blue: #2563eb;
+    --green: #16a34a;
+    --yellow: #d97706;
+    --red: #dc2626;
+    --shadow: 0 8px 20px rgba(15, 31, 61, 0.08);
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+.dashboard-shell {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    gap: 10px;
+    width: 100%;
+    height: 100vh;
+    padding: 12px;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 58px;
+    padding: 0 4px;
+    gap: 16px;
+}
+
+.brand-title {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.brand-subtitle {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.topbar-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.playback-mode-badge,
+.topbar-chip,
+.topbar-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 13px;
+    border-radius: 9px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.playback-mode-badge {
+    gap: 7px;
+}
+
+.playback-mode-badge.is-live {
+    color: #991b1b;
+    border-color: #f87171;
+    background: #fff1f2;
+}
+
+.playback-mode-badge.is-simulation {
+    color: #1e3a8a;
+    border-color: #60a5fa;
+    background: #eff6ff;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.topbar-chip {
+    gap: 5px;
+}
+
+.topbar-chip span {
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.topbar-button {
+    background: var(--navy);
+    border-color: var(--navy);
+    color: #fff;
+    cursor: pointer;
+}
+
+.topbar-button:hover {
+    background: var(--navy-2);
+}
+
+.topbar-button-dark {
+    background: #081426;
+}
+
+.logout-form {
+    margin: 0;
+}
+
+.live-warning {
+    padding: 8px 12px;
+    border: 1px solid #fca5a5;
+    border-radius: 9px;
+    background: #fff1f2;
+    color: #991b1b;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.summary-strip {
+    display: grid;
+    grid-template-columns: minmax(420px, 1.3fr) minmax(760px, 2.7fr);
+    min-height: 106px;
+    overflow: hidden;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--navy), var(--navy-2));
+    color: #fff;
+    box-shadow: var(--shadow);
+}
+
+.latest-event-summary {
+    min-width: 0;
+    padding: 14px 18px;
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.summary-kicker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #bfdbfe;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.system-live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.latest-event-title {
+    margin-top: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 23px;
+    font-weight: 800;
+}
+
+.latest-event-meta {
+    display: flex;
+    gap: 14px;
+    margin-top: 7px;
+    color: #cbd5e1;
+    font-size: 12px;
+}
+
+.metric-row {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.metric-card {
+    display: grid;
+    align-content: center;
+    min-width: 0;
+    padding: 12px 14px;
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.metric-card:last-child {
+    border-right: 0;
+}
+
+.metric-card span {
+    color: #a8bad6;
+    font-size: 11px;
+}
+
+.metric-card strong {
+    margin-top: 5px;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.metric-card small {
+    margin-top: 4px;
+    color: #dbeafe;
+    font-size: 10px;
+}
+
+.metric-card .metric-text {
+    font-size: 16px;
+}
+
+.workspace-grid {
+    display: grid;
+    grid-template-columns: 340px minmax(760px, 1fr) 420px;
+    gap: 10px;
+    min-height: 0;
+}
+
+.panel {
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 62px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.panel-header h2 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.panel-header p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.panel-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: #e8eef8;
+    color: var(--navy);
+    font-weight: 800;
+}
+
+.event-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.event-list {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.event-item {
+    margin-bottom: 8px;
+    padding: 11px 12px;
+    border: 1px solid #dbe3ed;
+    border-radius: 10px;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: 0.15s ease;
+}
+
+.event-item:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
+.event-item.selected-ai-event {
+    border-color: var(--red);
+    background: #fff1f2;
+    box-shadow: inset 3px 0 0 var(--red);
+}
+
+.event-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.event-card-top h3 {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+.event-item p {
+    margin: 7px 0 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.event-card-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 9px;
+    color: #7c8aa0;
+    font-size: 10px;
+}
+
+.event-status-tag,
+.camera-status,
+.broadcast-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 3px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.status-new,
+.status-processing,
+.broadcast-status-pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-confirmed,
+.status-online,
+.broadcast-status-success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.status-closed,
+.status-offline,
+.status-error,
+.broadcast-status-failed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.status-false_alarm,
+.status-maintenance,
+.broadcast-status-skipped {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.camera-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) 132px;
+}
+
+.polling-status {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.polling-status.error {
+    color: var(--red);
+}
+
+.primary-camera-stage {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+    background: #020617;
+}
+
+.primary-camera-stage img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #020617;
+}
+
+.primary-camera-overlay {
+    position: absolute;
+    inset: auto 0 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px;
+    background: linear-gradient(transparent, rgba(2, 6, 23, 0.92));
+    color: #fff;
+}
+
+.primary-camera-overlay h3 {
+    margin: 0;
+    font-size: 22px;
+}
+
+.primary-camera-overlay p {
+    margin: 5px 0 0;
+    color: #cbd5e1;
+    font-size: 12px;
+}
+
+.empty-camera-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: #cbd5e1;
+}
+
+.empty-camera-stage span {
+    margin-top: 8px;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.primary-camera-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: #e2e8f0;
+    background: #020617;
+}
+
+.primary-camera-error span {
+    margin-top: 7px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.camera-thumbnail-strip {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 9px;
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.camera-thumbnail {
+    flex: 0 0 200px;
+    overflow: hidden;
+    padding: 0;
+    border: 1px solid #dbe3ed;
+    border-radius: 9px;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.camera-thumbnail.selected-event-camera-card {
+    border-color: var(--red);
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.18);
+}
+
+.camera-thumbnail-screen {
+    position: relative;
+    height: 80px;
+    overflow: hidden;
+    background: #020617;
+}
+
+.camera-thumbnail-screen img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.thumbnail-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #cbd5e1;
+    background: rgba(2, 6, 23, 0.86);
+    font-size: 12px;
+}
+
+.thumbnail-overlay.hidden {
+    display: none;
+}
+
+.thumbnail-overlay small {
+    margin-top: 4px;
+    color: #94a3b8;
+    font-size: 10px;
+}
+
+.camera-thumbnail-info {
+    display: grid;
+    padding: 6px 8px;
+}
+
+.camera-thumbnail-info strong {
+    font-size: 11px;
+}
+
+.camera-thumbnail-info span {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.detail-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px 12px 14px;
+}
+
+.detail-section {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fbfdff;
+}
+
+.detail-section h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+}
+
+.detail-list {
+    margin: 0;
+}
+
+.detail-list > div {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.detail-list > div:last-child {
+    border-bottom: 0;
+}
+
+.detail-list dt {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.detail-list dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.detail-actions {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 7px;
+}
+
+.action-button,
+.compact-button {
+    min-height: 34px;
+    border: 0;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.action-button:disabled,
+.compact-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.action-primary {
+    background: var(--blue);
+}
+
+.action-danger {
+    background: var(--red);
+}
+
+.action-warning {
+    background: #f59e0b;
+    color: #422006;
+}
+
+.detail-action-message,
+.process-broadcast-status {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.45;
+}
+
+.detail-action-message.success,
+.process-broadcast-status.success {
+    color: var(--green);
+}
+
+.detail-action-message.error,
+.process-broadcast-status.error {
+    color: var(--red);
+}
+
+.detail-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.compact-button {
+    min-height: 30px;
+    padding: 0 9px;
+    background: var(--navy);
+}
+
+.broadcast-log-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.broadcast-log-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.broadcast-log-item > div {
+    display: grid;
+    min-width: 0;
+}
+
+.broadcast-log-item strong {
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.broadcast-log-item span {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 9px;
+}
+
+.broadcast-status-playing {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.footer-strip {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 18px;
+    min-height: 26px;
+    padding: 0 4px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
+.empty-state {
+    padding: 16px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 9px;
+    background: #f8fafc;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.dashboard-action-toast {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    width: min(460px, calc(100vw - 32px));
+    min-height: 68px;
+    padding: 12px 14px;
+    border: 1px solid #d97706;
+    border-radius: 12px;
+    background: #fffbeb;
+    color: #422006;
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.24);
+}
+
+.dashboard-action-toast[hidden] {
+    display: none;
+}
+
+.dashboard-action-toast.is-success {
+    border-color: #16a34a;
+    background: #f0fdf4;
+    color: #14532d;
+}
+
+.dashboard-action-toast.is-error {
+    border-color: #dc2626;
+    background: #fef2f2;
+    color: #7f1d1d;
+}
+
+.dashboard-action-toast > div:first-child {
+    display: grid;
+    gap: 4px;
+}
+
+.dashboard-action-toast span {
+    font-size: 11px;
+}
+
+.toast-actions button {
+    width: 30px;
+    height: 30px;
+    border: 1px solid currentColor;
+    border-radius: 7px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+@media (max-width: 1600px) {
+    .workspace-grid {
+        grid-template-columns: 310px minmax(650px, 1fr) 380px;
+    }
+
+    .summary-strip {
+        grid-template-columns: minmax(360px, 1.2fr) minmax(680px, 2.8fr);
+    }
+}
+
+@media (max-width: 1366px) {
+    body {
+        overflow: auto;
+    }
+
+    .dashboard-shell {
+        min-width: 1280px;
+        height: auto;
+        min-height: 100vh;
+    }
+
+    .workspace-grid {
+        min-height: 700px;
+    }
+}
+
+/* =========================================================
+   KRTC AI CCTV 通報主機 Dashboard v2.5
+   - 1920 x 1080 桌面版
+   - 頁首三區配置
+   - 中央功能按鈕強制單列
+   - 右側狀態、日期時間、登出強制單列
+   ========================================================= */
+
+.dashboard-shell {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+
+/* ---------- 頁首整體配置 ---------- */
+
+.topbar {
+    display: grid;
+    grid-template-columns:
+        minmax(400px, 0.95fr)
+        minmax(780px, 1.75fr)
+        minmax(440px, 0.95fr);
+    align-items: center;
+    gap: 14px;
+    min-height: 98px;
+    padding: 10px 14px;
+    border: 1px solid #d8e0ea;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 6px 18px rgba(15, 31, 61, 0.07);
+}
+
+.topbar-brand-zone,
+.topbar-navigation-zone,
+.topbar-control-zone {
+    min-width: 0;
+}
+
+.topbar-brand-zone {
+    display: flex;
+    align-items: center;
+}
+
+.topbar-navigation-zone,
+.topbar-control-zone {
+    padding-left: 16px;
+    border-left: 1px solid #dbe3ed;
+}
+
+
+/* ---------- 左側：Logo 與動態站名 ---------- */
+
+.brand-block {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-width: 0;
+}
+
+.brand-logo {
+    display: block;
+    flex: 0 0 auto;
+    width: 138px;
+    height: 104px;
+    object-fit: contain;
+}
+
+.brand-title {
+    overflow: hidden;
+    color: var(--text);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* ---------- 中央：系統功能單列 ---------- */
+
+.topbar-navigation-zone {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-zone-label {
+    flex: 0 0 auto;
+    margin: 0;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+
+.function-nav-row {
+    display: flex;
+    flex: 1 1 auto;
+    flex-flow: row nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.function-nav-group {
+    display: flex;
+    flex: 0 0 auto;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 7px;
+    padding: 0;
+    border: 0;
+    white-space: nowrap;
+}
+
+.function-nav-divider {
+    display: block;
+    width: 1px;
+    height: 28px;
+    flex: 0 0 1px;
+    margin: 0 2px;
+    background: #cbd5e1;
+}
+
+.quick-nav-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 0 11px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 800;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.quick-nav-button:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.quick-nav-button-broadcast {
+    border-color: #a7c7ee;
+    background: #f3f8fe;
+}
+
+.quick-nav-button-monitor {
+    border-color: var(--navy);
+    background: var(--navy);
+    color: #ffffff;
+}
+
+.quick-nav-button-monitor:hover {
+    border-color: var(--navy-2);
+    background: var(--navy-2);
+    color: #ffffff;
+}
+
+.quick-nav-button-settings {
+    border-color: #94a3b8;
+    background: #ffffff;
+}
+
+
+/* ---------- 右側：模式、日期時間與登出 ---------- */
+
+.topbar-control-zone {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.topbar-control-row {
+    display: flex;
+    flex: 1 1 auto;
+    flex-flow: row nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 28px;
+    width: 100%;
+    white-space: nowrap;
+}
+
+.playback-mode-badge {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 38px;
+    padding: 0 13px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.playback-mode-badge.is-healthy {
+    border-color: #86efac;
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.playback-mode-badge.is-healthy .status-dot {
+    background: #16a34a;
+    box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.14);
+}
+
+.playback-mode-badge.is-test {
+    border-color: #f87171;
+    background: #fff1f2;
+    color: #991b1b;
+}
+
+.playback-mode-badge.is-test .status-dot {
+    background: #dc2626;
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14);
+}
+
+.topbar-clock {
+    flex: 0 0 auto;
+    min-width: 210px;
+    color: #334155;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.25;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.logout-form {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.topbar-button-logout {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 78px;
+    min-height: 36px;
+    padding: 0 13px;
+    border: 1px solid #94a3b8;
+    border-radius: 9px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.topbar-button-logout:hover {
+    border-color: #64748b;
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+
+/* ---------- 事件輪播 ---------- */
+
+.event-panel-tools {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.carousel-button {
+    min-height: 28px;
+    padding: 0 8px;
+    border: 1px solid #93c5fd;
+    border-radius: 7px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.carousel-button.is-paused {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+    color: #64748b;
+}
+
+
+/* ---------- 中央媒體切換 ---------- */
+
+.camera-panel {
+    grid-template-rows: auto auto minmax(0, 1fr) 132px;
+}
+
+.media-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.media-mode-button {
+    min-height: 28px;
+    padding: 0 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.media-mode-button.is-active {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.media-unavailable,
+.video-link-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 30px;
+    color: #cbd5e1;
+    background: #020617;
+    text-align: center;
+}
+
+.media-unavailable span,
+.video-link-stage span {
+    margin-top: 8px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.video-open-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    margin-top: 14px;
+    padding: 0 16px;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+
+/* ---------- 1750px 以下 ---------- */
+
+@media (max-width: 1750px) {
+    .topbar {
+        grid-template-columns:
+            minmax(350px, 0.9fr)
+            minmax(690px, 1.65fr)
+            minmax(390px, 0.9fr);
+        gap: 10px;
+        padding: 9px 11px;
+    }
+
+    .brand-block {
+        gap: 14px;
+    }
+
+    .brand-logo {
+        width: 116px;
+        height: 88px;
+    }
+
+    .brand-title {
+        font-size: 23px;
+    }
+
+    .topbar-navigation-zone {
+        gap: 9px;
+        padding-left: 12px;
+    }
+
+    .function-nav-row {
+        gap: 7px;
+    }
+
+    .function-nav-group {
+        gap: 5px;
+    }
+
+    .quick-nav-button {
+        padding: 0 8px;
+        font-size: 10px;
+    }
+
+    .topbar-control-zone {
+        padding-left: 12px;
+    }
+
+    .topbar-control-row {
+        gap: 18px;
+    }
+
+    .topbar-clock {
+        min-width: 180px;
+        font-size: 13px;
+    }
+}
+
+
+/* ---------- 1500px 以下 ---------- */
+
+@media (max-width: 1500px) {
+    .topbar {
+        grid-template-columns:
+            minmax(310px, 0.82fr)
+            minmax(630px, 1.6fr)
+            minmax(350px, 0.9fr);
+    }
+
+    .brand-logo {
+        width: 102px;
+        height: 78px;
+    }
+
+    .brand-title {
+        font-size: 21px;
+    }
+
+    .topbar-zone-label {
+        font-size: 10px;
+    }
+
+    .quick-nav-button {
+        padding: 0 6px;
+        font-size: 9px;
+    }
+
+    .topbar-control-row {
+        gap: 14px;
+    }
+
+    .playback-mode-badge {
+        padding: 0 10px;
+        font-size: 11px;
+    }
+
+    .topbar-clock {
+        min-width: 165px;
+        font-size: 12px;
+    }
+}
+
+
+/* v2.6：頁首按鈕細部調整 */
+
+/* 中央區塊移除文字標題後，功能列直接置中對齊 */
+.topbar-navigation-zone {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+/* 左側三個按鈕維持原樣式，只放大字體 */
+.function-nav-group:first-of-type .quick-nav-button {
+    font-size: 13px;
+}
+
+/* 站區廣播系統與即時監視牆使用相同深色主按鈕 */
+.quick-nav-button-broadcast,
+.quick-nav-button-monitor {
+    border-color: var(--navy);
+    background: var(--navy);
+    color: #ffffff;
+}
+
+.quick-nav-button-broadcast:hover,
+.quick-nav-button-monitor:hover {
+    border-color: var(--navy-2);
+    background: var(--navy-2);
+    color: #ffffff;
+}
+
+/* 右側區塊移除左側分隔線 */
+.topbar-control-zone {
+    border-left: 0;
+    padding-left: 0;
+}
+
+/* 登出按鈕改為與即時監視牆相同樣式 */
+.topbar-button-logout {
+    border-color: var(--navy);
+    background: var(--navy);
+    color: #ffffff;
+}
+
+.topbar-button-logout:hover {
+    border-color: var(--navy-2);
+    background: var(--navy-2);
+    color: #ffffff;
+}
+
+@media (max-width: 1750px) {
+    .function-nav-group:first-of-type .quick-nav-button {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 1500px) {
+    .function-nav-group:first-of-type .quick-nav-button {
+        font-size: 11px;
+    }
+}
+
+
+/* v2.7：中央導覽左分隔線與藍色按鈕 */
+
+/* 移除中央功能區最左側分隔線 */
+.topbar-navigation-zone {
+    border-left: 0;
+    padding-left: 0;
+}
+
+/* 設備清單、事件快照、事件紀錄改用高雄捷運識別藍 */
+.function-nav-group:first-of-type .quick-nav-button {
+    border-color: #00a0e9;
+    background: #00a0e9;
+    color: #ffffff;
+}
+
+.function-nav-group:first-of-type .quick-nav-button:hover {
+    border-color: #008dce;
+    background: #008dce;
+    color: #ffffff;
+}
+
+.function-nav-group:first-of-type .quick-nav-button:focus-visible {
+    outline: 3px solid rgba(0, 160, 233, 0.25);
+    outline-offset: 2px;
+}
+
+
+/* v2.8：中央第二組藍色與系統設定 Navy */
+
+/* 站區廣播系統、即時監視牆改用高雄捷運深藍識別色 */
+.function-nav-group:nth-of-type(2) .quick-nav-button {
+    border-color: #0068b7;
+    background: #0068b7;
+    color: #ffffff;
+}
+
+.function-nav-group:nth-of-type(2) .quick-nav-button:hover {
+    border-color: #00569a;
+    background: #00569a;
+    color: #ffffff;
+}
+
+.function-nav-group:nth-of-type(2) .quick-nav-button:focus-visible {
+    outline: 3px solid rgba(0, 104, 183, 0.24);
+    outline-offset: 2px;
+}
+
+/* 系統設定改為與登出相同的 Navy 樣式 */
+.quick-nav-button-settings {
+    border-color: var(--navy);
+    background: var(--navy);
+    color: #ffffff;
+}
+
+.quick-nav-button-settings:hover {
+    border-color: var(--navy-2);
+    background: var(--navy-2);
+    color: #ffffff;
+}
+
+.quick-nav-button-settings:focus-visible {
+    outline: 3px solid rgba(15, 31, 61, 0.22);
+    outline-offset: 2px;
+}
+
+
+/* v2.9：狀態列、人流統計與事件警示燈 */
+
+/* 狀態列改為與「即時監視牆」相同的高雄捷運深藍 */
+.summary-strip {
+    background: #0068b7;
+}
+
+.latest-event-summary {
+    border-right-color: rgba(255, 255, 255, 0.18);
+}
+
+.metric-card {
+    border-right-color: rgba(255, 255, 255, 0.18);
+}
+
+/* 人流統計 */
+.crowd-flow-metric .metric-text {
+    font-size: 20px;
+}
+
+.crowd-flow-metric.is-normal .metric-text {
+    color: #ffffff;
+}
+
+.crowd-flow-metric.is-abnormal {
+    background: rgba(127, 29, 29, 0.34);
+}
+
+.crowd-flow-metric.is-abnormal .metric-text {
+    color: #fecaca;
+    font-size: 20px;
+    font-weight: 900;
+}
+
+.crowd-flow-metric.is-abnormal #crowdFlowStatus,
+.crowd-flow-metric.is-abnormal #crowdFlowRange {
+    color: #fee2e2;
+}
+
+/* 事件警示燈 */
+.event-warning-metric {
+    justify-items: center;
+    text-align: center;
+}
+
+.event-warning-light {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 46px;
+    margin-top: 5px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.35);
+    box-shadow:
+        inset 0 0 12px rgba(15, 23, 42, 0.55),
+        0 0 0 4px rgba(255, 255, 255, 0.06);
+}
+
+.event-warning-core {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #64748b;
+    box-shadow:
+        inset 0 2px 4px rgba(255, 255, 255, 0.22),
+        0 0 8px rgba(100, 116, 139, 0.4);
+}
+
+.event-warning-light.is-active {
+    border-color: #fecaca;
+    background: rgba(127, 29, 29, 0.55);
+    box-shadow:
+        inset 0 0 12px rgba(127, 29, 29, 0.7),
+        0 0 0 5px rgba(248, 113, 113, 0.18),
+        0 0 20px rgba(239, 68, 68, 0.85);
+}
+
+.event-warning-light.is-active .event-warning-core {
+    background: #ef4444;
+    box-shadow:
+        inset 0 2px 4px rgba(255, 255, 255, 0.45),
+        0 0 8px #ef4444,
+        0 0 18px #dc2626;
+    animation: event-warning-pulse 1s ease-in-out infinite;
+}
+
+@keyframes event-warning-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.48;
+        transform: scale(0.82);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .event-warning-light.is-active .event-warning-core {
+        animation: none;
+    }
+}
+
+
+/* v2.10：狀態列欄位重新排序 */
+
+/*
+狀態列順序：
+1. 站區攝影機
+2. 廣播喇叭
+3. 待播放任務
+4. 人流統計
+5. 近期事件
+6. 事件警示燈
+*/
+.metric-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.event-warning-metric {
+    min-width: 0;
+}
+
+
+/* v2.11：精簡狀態列與放大事件警示燈 */
+
+/*
+狀態列剩餘欄位：
+1. 站區攝影機
+2. 廣播喇叭
+3. 人流統計
+4. 事件警示燈
+*/
+.metric-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.event-warning-metric {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    text-align: center;
+}
+
+/* 警示燈改為橢圓形並放大 */
+.event-warning-light {
+    width: 92px;
+    height: 46px;
+    margin-top: 8px;
+    border-radius: 999px;
+}
+
+.event-warning-core {
+    width: 62px;
+    height: 22px;
+    border-radius: 999px;
+}
+
+.event-warning-light.is-active .event-warning-core {
+    animation: event-warning-pulse 1s ease-in-out infinite;
+}
+
+
+/* v2.12：狀態列字體與警示燈尺寸調整 */
+
+/* 所有狀態卡標題放大並改為白色 */
+.metric-card > span {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+/* 站區攝影機與戰區廣播喇叭數字放大 */
+.metric-card > strong {
+    font-size: 30px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+/* 卡片下方單位說明保持清楚可讀 */
+.metric-card > small {
+    color: #eaf4ff;
+    font-size: 11px;
+}
+
+/* 人流統計主值進一步放大 */
+.crowd-flow-metric .metric-text {
+    font-size: 30px;
+    font-weight: 900;
+}
+
+/* 異常時主值使用更明顯的紅色 */
+.crowd-flow-metric.is-abnormal .metric-text {
+    color: #ffb4b4;
+    font-size: 30px;
+    font-weight: 900;
+}
+
+/* 人流摘要改為單列 */
+#crowdFlowSummary {
+    display: block;
+    margin-top: 7px;
+    color: #f8fbff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+/* 異常時摘要仍維持單列，不重複顯示「異常」 */
+.crowd-flow-metric.is-abnormal #crowdFlowSummary {
+    color: #ffe0e0;
+}
+
+/* 事件警示燈標題放大、白色 */
+.event-warning-metric > span {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+/* 警示燈再加寬、放大 */
+.event-warning-light {
+    width: 132px;
+    height: 54px;
+    margin-top: 10px;
+    border-radius: 999px;
+}
+
+.event-warning-core {
+    width: 92px;
+    height: 26px;
+    border-radius: 999px;
+}
+
+/* 畫面較窄時保持比例 */
+@media (max-width: 1750px) {
+    .metric-card > span,
+    .event-warning-metric > span {
+        font-size: 13px;
+    }
+
+    .metric-card > strong,
+    .crowd-flow-metric .metric-text,
+    .crowd-flow-metric.is-abnormal .metric-text {
+        font-size: 27px;
+    }
+
+    .event-warning-light {
+        width: 116px;
+        height: 50px;
+    }
+
+    .event-warning-core {
+        width: 80px;
+        height: 24px;
+    }
+}
+
+
+/* v2.13：最新事件與推論主機狀態 */
+
+/* 第一區塊標題改為「最新事件」 */
+.latest-event-kicker {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+}
+
+/* 新增推論主機狀態後，右側改為五欄 */
+.metric-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* 推論主機狀態 */
+.inference-host-metric > span {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.inference-host-metric .metric-text {
+    margin-top: 7px;
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1.15;
+    white-space: nowrap;
+}
+
+.inference-host-metric > small {
+    margin-top: 7px;
+    overflow: hidden;
+    color: #eaf4ff;
+    font-size: 11px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.inference-host-metric.is-normal .metric-text {
+    color: #d1fae5;
+}
+
+.inference-host-metric.is-abnormal {
+    background: rgba(127, 29, 29, 0.34);
+}
+
+.inference-host-metric.is-abnormal .metric-text {
+    color: #ffb4b4;
+}
+
+.inference-host-metric.is-abnormal > small {
+    color: #ffe0e0;
+}
+
+@media (max-width: 1750px) {
+    .latest-event-kicker,
+    .inference-host-metric > span {
+        font-size: 13px;
+    }
+
+    .inference-host-metric .metric-text {
+        font-size: 18px;
+    }
+
+    .inference-host-metric > small {
+        font-size: 10px;
+    }
+}
+
+
+/* v2.14：本機事件警報聲控制 */
+
+.local-alarm-control {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid #0068b7;
+    border-radius: 9px;
+    background: #0068b7;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.local-alarm-control:hover {
+    border-color: #00569a;
+    background: #00569a;
+}
+
+.local-alarm-control.is-locked {
+    border-color: #d97706;
+    background: #f59e0b;
+    color: #422006;
+}
+
+.local-alarm-control.is-disabled {
+    border-color: #94a3b8;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.local-alarm-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+
+@media (max-width: 1750px) {
+    .local-alarm-control {
+        padding: 0 9px;
+        font-size: 11px;
+    }
+}
+
+
+/* v2.15：顯示本機警報聲按鈕與 3 秒 polling */
+
+.topbar-control-row {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+    min-width: 0;
+    overflow: visible;
+}
+
+.local-alarm-control {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex: 0 0 auto;
+    min-width: 126px;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid #0068b7;
+    border-radius: 9px;
+    background: #0068b7;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.local-alarm-control:hover {
+    border-color: #00569a;
+    background: #00569a;
+}
+
+.local-alarm-control.is-locked {
+    border-color: #d97706;
+    background: #f59e0b;
+    color: #422006;
+}
+
+.local-alarm-control.is-disabled {
+    border-color: #94a3b8;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+@media (max-width: 1750px) {
+    .topbar {
+        grid-template-columns:
+            minmax(330px, 0.85fr)
+            minmax(660px, 1.5fr)
+            minmax(535px, 1.15fr);
+    }
+
+    .topbar-control-row {
+        gap: 11px;
+    }
+
+    .local-alarm-control {
+        min-width: 112px;
+        padding: 0 9px;
+        font-size: 11px;
+    }
+
+    .topbar-clock {
+        min-width: 166px;
+        font-size: 12px;
+    }
+}
+
+
+/* v2.16：移除警報聲按鈕與更新事件警示標題 */
+
+/* 本機警報聲仍保留自動播放功能，但不顯示控制按鈕 */
+.local-alarm-control {
+    display: none !important;
+}
+
+/* 右上角恢復為模式、日期時間、登出 */
+@media (max-width: 1750px) {
+    .topbar {
+        grid-template-columns:
+            minmax(350px, 0.9fr)
+            minmax(690px, 1.65fr)
+            minmax(390px, 0.9fr);
+    }
+}
+
+
+/* v2.17：事件警示燈加寬 */
+.event-warning-light {
+    width: 168px;
+}
+
+.event-warning-core {
+    width: 124px;
+}
+
+@media (max-width: 1750px) {
+    .event-warning-light {
+        width: 146px;
+    }
+
+    .event-warning-core {
+        width: 104px;
+    }
+}
+
+
+/* v2.18：主頁與功能頁統一版型高度 */
+.topbar {
+    height: 108px;
+    min-height: 108px;
+    max-height: 108px;
+}
+.summary-strip {
+    height: 128px;
+    min-height: 128px;
+    max-height: 128px;
+}
+/* =========================================================
+   KRTC Dashboard header logo and event warning light override
+   ========================================================= */
+
+/* Dashboard 左上角品牌區 */
+.topbar-brand-zone {
+    display: flex;
+    align-items: center;
+    min-width: 360px;
+    height: 100%;
+}
+
+.topbar-brand-zone .brand-block {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    height: 100%;
+}
+
+.topbar-brand-zone .brand-logo {
+    display: block;
+    width: 118px;
+    height: 88px;
+    flex: 0 0 118px;
+    object-fit: contain;
+    object-position: center;
+}
+
+.topbar-brand-zone .brand-title {
+    margin: 0;
+    color: #10213c;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+/* 事件警示燈外層 */
+.event-alert-light,
+.event-warning-light,
+.warning-light,
+.alert-light {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 若燈心是獨立 HTML 元素，套用此設定 */
+.event-alert-light-core,
+.event-warning-light-core,
+.warning-light-core,
+.alert-light-core,
+.light-core {
+    width: 132px !important;
+    height: 28px !important;
+    min-width: 132px;
+    min-height: 28px;
+    border-radius: 999px;
+    background:
+        linear-gradient(
+            180deg,
+            rgba(244, 96, 117, 0.96) 0%,
+            rgba(192, 55, 76, 0.96) 48%,
+            rgba(145, 38, 57, 0.98) 100%
+        );
+    box-shadow:
+        0 0 9px rgba(255, 94, 118, 0.95),
+        0 0 20px rgba(255, 94, 118, 0.72),
+        inset 0 2px 4px rgba(255, 255, 255, 0.26),
+        inset 0 -3px 5px rgba(91, 18, 34, 0.45);
+}
+
+/* 若燈心是 ::before 偽元素，套用此設定 */
+.event-alert-light::before,
+.event-warning-light::before,
+.warning-light::before,
+.alert-light::before {
+    width: 132px !important;
+    height: 28px !important;
+    border-radius: 999px;
+}
+
+/* 警示觸發狀態 */
+.event-alert-light.is-active .event-alert-light-core,
+.event-warning-light.is-active .event-warning-light-core,
+.warning-light.is-active .warning-light-core,
+.alert-light.is-active .alert-light-core,
+.event-alert-light.active .event-alert-light-core,
+.event-warning-light.active .event-warning-light-core {
+    background:
+        linear-gradient(
+            180deg,
+            #ff778d 0%,
+            #ed3150 48%,
+            #b81434 100%
+        );
+    box-shadow:
+        0 0 12px rgba(255, 79, 107, 1),
+        0 0 28px rgba(255, 79, 107, 0.92),
+        0 0 45px rgba(255, 79, 107, 0.58),
+        inset 0 2px 5px rgba(255, 255, 255, 0.35),
+        inset 0 -4px 6px rgba(91, 13, 30, 0.5);
+}
+
+/* 小於 1600px 時稍微縮小，避免擠壓 */
+@media (max-width: 1600px) {
+    .topbar-brand-zone {
+        min-width: 320px;
+    }
+
+    .topbar-brand-zone .brand-logo {
+        width: 104px;
+        height: 78px;
+        flex-basis: 104px;
+    }
+
+    .topbar-brand-zone .brand-title {
+        font-size: 22px;
+    }
+
+    .event-alert-light-core,
+    .event-warning-light-core,
+    .warning-light-core,
+    .alert-light-core,
+    .light-core,
+    .event-alert-light::before,
+    .event-warning-light::before,
+    .warning-light::before,
+    .alert-light::before {
+        width: 118px !important;
+        height: 26px !important;
+    }
+}
