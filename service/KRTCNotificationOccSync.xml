@@ -1,0 +1,26 @@
+<service>
+  <id>KRTCNotificationOccSync</id>
+  <name>KRTC AI CCTV Notification OCC Sync</name>
+  <description>KRTC AI CCTV PAO to OCC Heartbeat and Synchronization Service</description>
+
+  <executable>cmd.exe</executable>
+  <arguments>/c "C:\KRTC\NotificationHost\service\start_occ_sync.cmd"</arguments>
+
+  <workingdirectory>C:\KRTC\NotificationHost\app</workingdirectory>
+
+  <startmode>Automatic</startmode>
+
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+
+  <resetfailure>1 hour</resetfailure>
+  <stoptimeout>30 sec</stoptimeout>
+
+  <logpath>C:\KRTC\NotificationHost\logs</logpath>
+
+  <log mode="roll">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+</service>

@@ -1,0 +1,97 @@
+{% load static %}
+<header class="system-header system-header--{{ current_page|default:'page' }}">
+    <div class="system-header__brand">
+        <img
+            src="{% static 'img/KRTC_logo.png' %}"
+            alt="高雄捷運"
+            class="system-header__logo"
+        >
+        <div class="system-header__titles">
+            <div class="system-header__system-title">
+                {{ station_name|default:"站區名" }} 通報主機
+            </div>
+            {% if page_title %}
+                <div class="system-header__page-title">{{ page_title }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <nav class="system-header__nav" aria-label="系統功能導覽">
+        <div class="system-header__nav-group">
+            {% if current_page != "devices" %}
+                <a href="{% url 'dashboard:device_list' %}" class="system-header__button system-header__button--cyan">設備清單</a>
+            {% endif %}
+            {% if current_page != "snapshots" %}
+                <a href="{% url 'dashboard:event_snapshot_list' %}" class="system-header__button system-header__button--cyan">事件快照</a>
+            {% endif %}
+            {% if current_page != "records" %}
+                <a href="{% url 'dashboard:event_record_list' %}" class="system-header__button system-header__button--cyan">事件紀錄</a>
+            {% endif %}
+        </div>
+
+        <span class="system-header__divider" aria-hidden="true"></span>
+
+        <div class="system-header__nav-group">
+            {% if current_page != "broadcast" %}
+                <a href="{% url 'dashboard:station_broadcast' %}" class="system-header__button system-header__button--blue">站區廣播系統</a>
+            {% endif %}
+            {% if current_page != "monitor" %}
+                <a href="{% url 'dashboard:monitor' %}" class="system-header__button system-header__button--blue">即時監視牆</a>
+            {% endif %}
+        </div>
+
+        <span class="system-header__divider" aria-hidden="true"></span>
+
+        <div class="system-header__nav-group">
+            {% if current_page != "settings" %}
+                <a href="{% url 'settings_app:station_settings' %}" class="system-header__button system-header__button--navy">系統設定</a>
+            {% endif %}
+            {% if can_manage_accounts_global and current_page != "users" %}
+                <a href="{% url 'settings_app:user_management' %}" class="system-header__button system-header__button--navy">使用者管理</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="system-header__controls">
+        {% if show_dashboard_status %}
+            {% if not hide_mode_badge %}
+                <div
+                    class="system-header__mode-badge {% if broadcast_playback_mode_is_live %}is-live{% else %}is-test{% endif %}"
+                    id="broadcastPlaybackModeBadge"
+                    title="目前後端模式：{{ broadcast_playback_mode_label|default:'未設定' }}"
+                >
+                    <span class="system-header__status-dot"></span>
+                    <strong>
+                        {% if broadcast_playback_mode_is_live %}
+                            廣播模式
+                        {% else %}
+                            測試模式
+                        {% endif %}
+                    </strong>
+                </div>
+            {% endif %}
+            {% if show_home_button %}
+                <a href="{% url 'dashboard:home' %}" class="system-header__button system-header__button--home">主頁面</a>
+            {% endif %}
+            <span class="system-header__user" title="目前登入角色與帳號">{{ current_user_display|default:request.user.username }}</span>
+            <time
+                class="system-header__clock"
+                id="systemDateTime"
+                data-server-time="{% now 'c' %}"
+            >{% now "Y/m/d H:i:s" %}</time>
+        {% else %}
+            <a href="{% url 'dashboard:home' %}" class="system-header__button system-header__button--home">主頁面</a>
+            <span class="system-header__user" title="目前登入角色與帳號">{{ current_user_display|default:request.user.username }}</span>
+            <time
+                class="system-header__clock"
+                id="systemDateTime"
+                data-server-time="{% now 'c' %}"
+            >{% now "Y/m/d H:i:s" %}</time>
+        {% endif %}
+
+        <form method="post" action="{% url 'logout' %}" class="system-header__logout-form">
+            {% csrf_token %}
+            <button type="submit" class="system-header__button system-header__button--logout">登出</button>
+        </form>
+    </div>
+</header>

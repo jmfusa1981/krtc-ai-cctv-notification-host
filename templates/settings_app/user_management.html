@@ -1,0 +1,77 @@
+﻿{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>使用者管理｜KRTC AI CCTV</title>
+  <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=8.0">
+</head>
+<body>
+<div class="settings-shell">
+  {% include "dashboard/includes/system_header.html" with current_page="users" page_title="使用者管理" show_dashboard_status=True hide_mode_badge=True show_home_button=True %}
+  <section class="settings-page-heading">
+    <div>
+      <h1>使用者管理</h1>
+      <p>僅供系統管理員管理前台帳號。Superuser 不會顯示，也不能由此頁建立或修改。</p>
+    </div>
+    <div class="settings-actions">
+      <a class="primary-button" href="{% url 'settings_app:user_new' %}">新增使用者</a>
+    </div>
+  </section>
+
+  {% if settings_saved %}<div class="notice notice-success">使用者資料已儲存。</div>{% endif %}
+
+  <main class="settings-content">
+    <section class="settings-panel is-active">
+      <div class="panel-heading">
+        <div>
+          <h2>前台使用者</h2>
+          <p>可指派 Operator、Maintainer、Administrator。移除採停用方式，以保留操作紀錄關聯。</p>
+        </div>
+        <span class="card-badge">{{ frontend_users|length }} USERS</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>帳號</th><th>顯示名稱</th><th>Email</th><th>角色</th><th>狀態</th><th>最後登入</th><th>管理</th></tr></thead>
+          <tbody>
+          {% for account in frontend_users %}
+            <tr>
+              <td class="code">{{ account.username }}</td>
+              <td>{{ account.first_name|default:"—" }}</td>
+              <td>{{ account.email|default:"—" }}</td>
+              <td><span class="status">{{ account.frontend_role }}</span></td>
+              <td><span class="status {% if account.is_active %}status-online{% else %}status-offline{% endif %}">{{ account.is_active|yesno:"啟用,已移除" }}</span></td>
+              <td>{{ account.last_login|date:"Y-m-d H:i:s"|default:"尚未登入" }}</td>
+              <td>
+                <div class="row-actions">
+                  <a class="test-button" href="{% url 'settings_app:user_edit' account.id %}">編輯</a>
+                  {% if account.id != request.user.id %}
+                    {% if account.is_active %}
+                    <form method="post" action="{% url 'settings_app:user_remove' account.id %}" onsubmit="return confirm('確定要移除此使用者？帳號將停用但保留歷史紀錄。');">
+                      {% csrf_token %}<button class="test-button" type="submit">移除</button>
+                    </form>
+                    {% else %}
+                    <form method="post" action="{% url 'settings_app:user_toggle' account.id %}">
+                      {% csrf_token %}<button class="test-button" type="submit">恢復</button>
+                    </form>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="empty">目前沒有一般使用者帳號。</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="settings-footer">最後載入時間：{{ server_time|date:"Y-m-d H:i:s" }}</footer>
+</div>
+</body>
+</html>
+

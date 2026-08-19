@@ -1,0 +1,5 @@
+{% extends "admin/change_form.html" %}
+{% block object-tools-items %}
+  {{ block.super }}
+  <li><a href="{% url 'superuser_usb_manager' %}">Superuser USB Key 管理</a></li>
+{% endblock %}

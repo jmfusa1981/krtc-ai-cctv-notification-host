@@ -1,0 +1,64 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if object %}編輯{% else %}新增{% endif %}{{ management_title }}｜KRTC AI CCTV</title>
+  <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=8.0">
+</head>
+<body>
+<div class="settings-shell management-page-shell">
+  {% if return_to == 'broadcast' %}
+    {% include "dashboard/includes/system_header.html" with current_page="broadcast" page_title="站區廣播系統" %}
+  {% else %}
+    {% include "dashboard/includes/system_header.html" with current_page="settings" page_title="系統設定" %}
+  {% endif %}
+  <section class="settings-page-heading management-heading">
+    <div>
+      <p class="eyebrow">OPERATION MANAGEMENT</p>
+      <h1>{% if object %}編輯{% else %}新增{% endif %}{{ management_title }}</h1>
+      <p>此頁為正式維運介面，不需要進入 Django 開發者後台。</p>
+    </div>
+    <a class="admin-link management-return" href="{% if return_to == 'broadcast' %}{% url 'dashboard:station_broadcast' %}#auto-broadcast-rules{% elif return_url_name %}{% url return_url_name %}{% else %}{% url 'settings_app:station_settings' %}?tab={{ return_tab }}{% endif %}">返回{{ management_plural }}</a>
+  </section>
+
+  <main class="management-form-card">
+    <div class="panel-heading">
+      <div><h2>{{ management_title }}資料</h2><p>請確認代碼、連線資訊及啟用狀態後儲存。</p></div>
+      <span class="card-badge">{% if object %}EDIT{% else %}NEW{% endif %}</span>
+    </div>
+    <form method="post" enctype="multipart/form-data" class="management-model-form management-kind-{{ kind }}" novalidate>
+      {% csrf_token %}
+      {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
+      {% if form.non_field_errors %}<div class="notice notice-error">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="management-form-grid">
+        {% for field in form %}
+          <label class="management-field management-field-{{ field.name }}{% if field.field.widget.input_type == 'checkbox' %} management-switch-field{% endif %}">
+            <span>{{ field.label }}{% if field.field.required %}<b class="required-mark">*</b>{% endif %}</span>
+            {{ field }}
+            {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+            {% if field.errors %}<div class="field-errors">{{ field.errors }}</div>{% endif %}
+          </label>
+        {% endfor %}
+      </div>
+      <div class="management-form-actions">
+        {% if object and kind == "broadcast-rule" %}
+          <button
+            type="submit"
+            class="danger-button"
+            formaction="{% url 'settings_app:manage_remove' kind object.id %}"
+            formmethod="post"
+            formnovalidate
+            onclick="return confirm('確定要刪除這條廣播規則？此操作會移除規則設定，但不會刪除既有廣播紀錄。');"
+          >刪除規則</button>
+        {% endif %}
+        <a href="{% if return_to == 'broadcast' %}{% url 'dashboard:station_broadcast' %}#auto-broadcast-rules{% elif return_url_name %}{% url return_url_name %}{% else %}{% url 'settings_app:station_settings' %}?tab={{ return_tab }}{% endif %}" class="test-button">取消</a>
+        <button type="submit" class="primary-button">{% if kind == "broadcast-rule" %}儲存規則{% else %}儲存{{ management_title }}{% endif %}</button>
+      </div>
+    </form>
+  </main>
+</div>
+</body>
+</html>

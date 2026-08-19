@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>KRTC AI CCTV 通報主機 Dashboard</title>
+    <style>
+        :root {
+            --bg-main: #020617;
+            --bg-panel: #0f172a;
+            --bg-card: #111827;
+            --bg-card-soft: #1e293b;
+            --border: #334155;
+            --text-main: #f8fafc;
+            --text-soft: #cbd5e1;
+            --text-muted: #94a3b8;
+            --blue: #2563eb;
+            --green: #16a34a;
+            --orange: #f97316;
+            --red: #dc2626;
+            --yellow: #eab308;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, "Microsoft JhengHei", sans-serif;
+            background: var(--bg-main);
+            color: var(--text-main);
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            height: 64px;
+            padding: 0 24px;
+            background: #020617;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .brand-subtitle {
+            margin-top: 4px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .system-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            color: var(--text-soft);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            background: var(--green);
+            box-shadow: 0 0 10px rgba(22, 163, 74, 0.8);
+        }
+
+        .main {
+            padding: 20px 24px 28px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .summary-card {
+            background: var(--bg-card-soft);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            min-height: 96px;
+        }
+
+        .summary-label {
+            font-size: 13px;
+            color: var(--text-soft);
+            margin-bottom: 10px;
+        }
+
+        .summary-number {
+            font-size: 30px;
+            line-height: 1;
+            font-weight: 700;
+        }
+
+        .summary-caption {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .text-orange {
+            color: var(--orange);
+        }
+
+        .text-red {
+            color: var(--red);
+        }
+
+        .text-green {
+            color: var(--green);
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.55fr) minmax(360px, 0.85fr);
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            height: 44px;
+            padding: 0 16px;
+            background: var(--bg-card-soft);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .panel-subtitle {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+
+        .panel-body {
+            padding: 16px;
+        }
+
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .camera-tile {
+            min-height: 245px;
+            background: #020617;
+            border: 1px solid #1f2937;
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .camera-screen {
+            position: relative;
+            flex: 1;
+            min-height: 190px;
+            background:
+                linear-gradient(135deg, rgba(37, 99, 235, 0.12), transparent 45%),
+                radial-gradient(circle at center, rgba(15, 23, 42, 0.2), #020617 70%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .camera-screen::before {
+            content: "";
+            position: absolute;
+            inset: 14px;
+            border: 1px dashed rgba(148, 163, 184, 0.35);
+            border-radius: 8px;
+        }
+
+        .camera-placeholder {
+            z-index: 1;
+            text-align: center;
+            line-height: 1.8;
+        }
+
+        .camera-meta {
+            height: 54px;
+            padding: 10px 12px;
+            border-top: 1px solid #1f2937;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .camera-name {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .camera-area {
+            margin-top: 4px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .event-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .event-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .event-card.alert {
+            border-color: rgba(220, 38, 38, 0.75);
+            background: rgba(127, 29, 29, 0.2);
+        }
+
+        .event-card-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .event-type {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .event-time {
+            color: var(--text-muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .event-desc {
+            color: var(--text-soft);
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .event-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .lower-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            padding: 10px 10px;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        th {
+            color: var(--text-soft);
+            background: #0b1120;
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            color: #fff;
+            background: #475569;
+        }
+
+        .badge-new {
+            background: var(--blue);
+        }
+
+        .badge-processing {
+            background: var(--orange);
+        }
+
+        .badge-confirmed,
+        .badge-normal,
+        .badge-active {
+            background: var(--green);
+        }
+
+        .badge-dismissed,
+        .badge-closed {
+            background: #475569;
+        }
+
+        .badge-abnormal {
+            background: var(--red);
+        }
+
+        .empty-message {
+            color: var(--text-muted);
+            padding: 18px 0;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .small-muted {
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        @media (max-width: 1180px) {
+            .summary-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 780px) {
+            .summary-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .camera-grid,
+            .lower-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .topbar {
+                height: auto;
+                padding: 14px 16px;
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .main {
+                padding: 14px;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="app-shell">
+    <header class="topbar">
+        <div>
+            <div class="brand-title">KRTC AI CCTV 通報主機 Dashboard</div>
+            <div class="brand-subtitle">Monitoring Console / Camera / Event / Crowd Flow</div>
+        </div>
+
+        <div class="system-status">
+            <span class="status-dot"></span>
+            <span>System Online</span>
+            <span class="small-muted">Django Database Mode</span>
+        </div>
+    </header>
+
+    <main class="main">
+        <section class="summary-grid">
+            <div class="summary-card">
+                <div class="summary-label">攝影機數量</div>
+                <div class="summary-number">{{ camera_count }}</div>
+                <div class="summary-caption">Registered cameras</div>
+            </div>
+
+            <div class="summary-card">
+                <div class="summary-label">事件總數</div>
+                <div class="summary-number">{{ event_count }}</div>
+                <div class="summary-caption">Total event records</div>
+            </div>
+
+            <div class="summary-card">
+                <div class="summary-label">New 事件</div>
+                <div class="summary-number text-orange">{{ new_event_count }}</div>
+                <div class="summary-caption">Waiting for handling</div>
+            </div>
+
+            <div class="summary-card">
+                <div class="summary-label">人流異常紀錄</div>
+                <div class="summary-number text-red">{{ abnormal_crowd_count }}</div>
+                <div class="summary-caption">Out of configured range</div>
+            </div>
+
+            <div class="summary-card">
+                <div class="summary-label">最新人流數</div>
+                {% if latest_crowd_record %}
+                    <div class="summary-number {% if latest_crowd_record.is_abnormal %}text-red{% else %}text-green{% endif %}">
+                        {{ latest_crowd_record.count }}
+                    </div>
+                    <div class="summary-caption">
+                        {{ latest_crowd_record.camera }}
+                    </div>
+                {% else %}
+                    <div class="summary-number">-</div>
+                    <div class="summary-caption">No crowd record</div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="dashboard-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <span>Camera 影像監控區</span>
+                    <span class="panel-subtitle">RTSP / MJPEG stream placeholder</span>
+                </div>
+
+                <div class="panel-body">
+                    {% if camera_tiles %}
+                        <div class="camera-grid">
+                            {% for camera in camera_tiles %}
+                                <div class="camera-tile">
+                                    <div class="camera-screen">
+                                        <div class="camera-placeholder">
+                                            <div>Live Stream Placeholder</div>
+                                            <div>下一階段串接 IP Camera 影像</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="camera-meta">
+                                        <div>
+                                            <div class="camera-name">{{ camera.name }}</div>
+                                            <div class="camera-area">{{ camera.area }}</div>
+                                        </div>
+                                        <span class="badge badge-normal">Online</span>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="empty-message">目前尚無 Camera 資料。</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <aside class="panel">
+                <div class="panel-header">
+                    <span>最新事件通報</span>
+                    <span class="panel-subtitle">Top 8</span>
+                </div>
+
+                <div class="panel-body">
+                    {% if latest_events %}
+                        <div class="event-list">
+                            {% for event in latest_events %}
+                                <div class="event-card {% if event.status == 'new' %}alert{% endif %}">
+                                    <div class="event-card-top">
+                                        <div class="event-type">{{ event.get_event_type_display }}</div>
+                                        <div class="event-time">{{ event.detected_at|date:"H:i:s" }}</div>
+                                    </div>
+
+                                    <div class="event-desc">
+                                        {% if event.description %}
+                                            {{ event.description }}
+                                        {% else %}
+                                            無事件說明
+                                        {% endif %}
+                                    </div>
+
+                                    <div class="event-meta">
+                                        <span>{{ event.camera }}</span>
+                                        <span>
+                                            <span class="badge badge-{{ event.status }}">
+                                                {{ event.get_status_display }}
+                                            </span>
+                                        </span>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="empty-message">目前尚無事件資料。</div>
+                    {% endif %}
+                </div>
+            </aside>
+        </section>
+
+        <section class="lower-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <span>Camera 清單</span>
+                    <span class="panel-subtitle">Database records</span>
+                </div>
+
+                <div class="panel-body">
+                    {% if cameras %}
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>名稱</th>
+                                    <th>區域</th>
+                                    <th>建立時間</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for camera in cameras %}
+                                    <tr>
+                                        <td>{{ camera.id }}</td>
+                                        <td>{{ camera.name }}</td>
+                                        <td>{{ camera.area }}</td>
+                                        <td>{{ camera.created_at|date:"Y-m-d H:i:s" }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="empty-message">目前尚無 Camera 資料。</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <span>人流正常範圍設定</span>
+                    <span class="panel-subtitle">Active settings</span>
+                </div>
+
+                <div class="panel-body">
+                    {% if active_crowd_settings %}
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>設定名稱</th>
+                                    <th>攝影機</th>
+                                    <th>正常範圍</th>
+                                    <th>狀態</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for setting in active_crowd_settings %}
+                                    <tr>
+                                        <td>{{ setting.name }}</td>
+                                        <td>{{ setting.camera }}</td>
+                                        <td>{{ setting.min_count }} - {{ setting.max_count }}</td>
+                                        <td>
+                                            {% if setting.is_active %}
+                                                <span class="badge badge-active">啟用</span>
+                                            {% else %}
+                                                <span class="badge">停用</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <div class="empty-message">目前尚無啟用中的人流正常範圍設定。</div>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <span>最新人流統計紀錄</span>
+                <span class="panel-subtitle">Latest records</span>
+            </div>
+
+            <div class="panel-body">
+                {% if latest_crowd_records %}
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>攝影機</th>
+                                <th>人流數量</th>
+                                <th>是否異常</th>
+                                <th>紀錄時間</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in latest_crowd_records %}
+                                <tr>
+                                    <td>{{ record.id }}</td>
+                                    <td>{{ record.camera }}</td>
+                                    <td>{{ record.count }}</td>
+                                    <td>
+                                        {% if record.is_abnormal %}
+                                            <span class="badge badge-abnormal">異常</span>
+                                        {% else %}
+                                            <span class="badge badge-normal">正常</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ record.recorded_at|date:"Y-m-d H:i:s" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <div class="empty-message">目前尚無人流統計紀錄。</div>
+                {% endif %}
+            </div>
+        </section>
+    </main>
+</div>
+</body>
+</html>
