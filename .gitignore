@@ -11,4 +11,3 @@ backups/
 logs/
 runtime/
 *.key
-*.key
