@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
     color: #13233d;
     background: #edf2f7;
@@ -738,3 +738,126 @@ td > small,
     background: #eef7ff;
     border-color: #5fa7df;
 }
+
+
+/* V6.4.6.5: local-device action consistency */
+.panel-heading > .primary-button,
+.speaker-section-title > .primary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    padding: 0 22px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 8px;
+    background: #0a4f86;
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none !important;
+    white-space: nowrap;
+}
+
+.panel-heading > a.primary-button:link,
+.panel-heading > a.primary-button:visited,
+.panel-heading > a.primary-button:hover,
+.panel-heading > a.primary-button:active {
+    color: #fff;
+    text-decoration: none !important;
+}
+
+.speaker-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.speaker-section-title h3 {
+    margin: 0;
+}
+
+
+/* V6.4.6.6: camera delete action consistency */
+.row-actions .camera-delete-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 54px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    margin: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+
+/* V6.4.6.8: local-device section action alignment */
+.camera-section-title,
+.speaker-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.camera-section-title {
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.camera-section-title h3,
+.speaker-section-title h3 {
+    margin: 0;
+}
+
+.camera-section-title > .primary-button,
+.speaker-section-title > .primary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    padding: 0 22px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 8px;
+    background: #0a4f86;
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none !important;
+    white-space: nowrap;
+}
+
+.speaker-section-title {
+    margin-top: 20px;
+    margin-bottom: 8px;
+}
+
+/* KRTC V6.5.1 user-management visual convergence */
+.user-management-page .settings-content {
+    margin-top: 10px;
+    border-radius: 14px;
+}
+
+.user-management-page .settings-page-heading .primary-button,
+.user-management-page .settings-page-heading .primary-button:link,
+.user-management-page .settings-page-heading .primary-button:visited,
+.user-management-page .settings-page-heading .primary-button:hover,
+.user-management-page .settings-page-heading .primary-button:active {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none !important;
+}
+

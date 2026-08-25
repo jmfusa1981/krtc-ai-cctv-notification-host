@@ -85,7 +85,7 @@ class SpeakerDeviceForm(forms.ModelForm):
         fields = [
             "speaker_code", "name", "area", "location_note",
             "network_mode", "ip_address", "port", "username",
-            "preferred_codec", "is_active",
+            "preferred_codec", "deployment_state", "health_monitor_enabled", "is_active",
         ]
         widgets = {
             "speaker_code": forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
@@ -97,6 +97,8 @@ class SpeakerDeviceForm(forms.ModelForm):
             "port": forms.NumberInput(attrs={"class": "form-control", "min": 1, "max": 65535}),
             "username": forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
             "preferred_codec": forms.Select(attrs={"class": "form-control"}),
+            "deployment_state": forms.Select(attrs={"class": "form-control"}),
+            "health_monitor_enabled": forms.CheckboxInput(),
             "is_active": forms.CheckboxInput(),
         }
 

@@ -2,6 +2,18 @@
     box-sizing: border-box;
 }
 
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 body {
     margin: 0;
     font-family: Arial, "Microsoft JhengHei", sans-serif;
@@ -33,15 +45,31 @@ body {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 12px;
     flex: 0 1 auto;
 }
 
+.monitor-logo-badge {
+    width: 58px;
+    height: 58px;
+    flex: 0 0 58px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08));
+    border: 1px solid rgba(191, 219, 254, 0.28);
+    box-shadow:
+        0 8px 22px rgba(2, 6, 23, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
 .monitor-logo {
-    width: 34px;
-    height: 34px;
+    width: 46px;
+    height: 46px;
     object-fit: contain;
-    flex: 0 0 34px;
+    flex: 0 0 46px;
+    filter: drop-shadow(0 2px 8px rgba(96, 165, 250, 0.18));
 }
 
 .monitor-title {
@@ -55,15 +83,16 @@ body {
 
 .station-name {
     color: #f8fafc;
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     overflow: hidden;
     text-overflow: ellipsis;
+    letter-spacing: 0.01em;
 }
 
 .page-name {
-    color: #f8fafc;
-    font-size: 22px;
+    color: #e2e8f0;
+    font-size: 23px;
     font-weight: 800;
     flex-shrink: 0;
 }
@@ -193,24 +222,80 @@ body {
 
 .grid-mode-buttons {
     display: inline-flex;
-    gap: 6px;
+    gap: 8px;
 }
 
 .grid-mode-btn {
-    min-width: 38px;
-    height: 34px;
+    position: relative;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    padding: 0;
     border: 1px solid #475569;
     background: #1e293b;
     color: #cbd5e1;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
-    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.grid-mode-btn:hover {
+    border-color: #60a5fa;
+    color: #eff6ff;
+    transform: translateY(-1px);
+}
+
+.grid-mode-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.26);
 }
 
 .grid-mode-btn.active {
-    background: #2563eb;
+    background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
     color: #ffffff;
     border-color: #2563eb;
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.32);
+}
+
+.grid-mode-icon {
+    display: grid;
+    width: 18px;
+    height: 18px;
+    gap: 2px;
+}
+
+.grid-mode-icon span {
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    border-radius: 2px;
+    background: currentColor;
+    opacity: 0.92;
+}
+
+.grid-mode-icon--1 {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+}
+
+.grid-mode-icon--4 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.grid-mode-icon--9 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 1.5px;
+}
+
+.grid-mode-icon--16 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 1px;
 }
 
 .monitor-datetime {
@@ -891,17 +976,24 @@ body {
 
     .station-name {
         max-width: 118px;
-        font-size: 20px;
+        font-size: 22px;
     }
 
     .page-name {
-        font-size: 19px;
+        font-size: 20px;
+    }
+
+    .monitor-logo-badge {
+        width: 50px;
+        height: 50px;
+        flex-basis: 50px;
+        border-radius: 14px;
     }
 
     .monitor-logo {
-        width: 30px;
-        height: 30px;
-        flex-basis: 30px;
+        width: 40px;
+        height: 40px;
+        flex-basis: 40px;
     }
 
     .monitor-actions {
@@ -1040,12 +1132,12 @@ body {
 
 @media (max-width: 1500px) {
     .monitor-toolbar {
-        grid-template-columns: minmax(230px, auto) minmax(0, 1fr) auto;
+        grid-template-columns: minmax(250px, auto) minmax(0, 1fr) auto;
         gap: 10px;
     }
 
     .monitor-toolbar-center .monitor-actions {
-        transform: translateX(12px);
+        transform: translateX(8px);
         gap: 6px;
     }
 
@@ -1058,3 +1150,324 @@ body {
         font-size: 11px;
     }
 }
+
+
+/* KRTC V6.4.5.5 - Monitor toolbar polish */
+.monitor-brand {
+    position: relative;
+    min-height: 52px;
+    padding: 5px 14px 5px 7px;
+    border: 1px solid rgba(96, 165, 250, 0.16);
+    border-radius: 14px;
+    background:
+        linear-gradient(90deg, rgba(30, 64, 175, 0.17), rgba(15, 23, 42, 0.08) 68%, transparent);
+    box-shadow: inset 3px 0 0 rgba(59, 130, 246, 0.72);
+}
+
+.monitor-brand::after {
+    content: "";
+    position: absolute;
+    left: 70px;
+    bottom: 7px;
+    width: 42px;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #60a5fa, rgba(96, 165, 250, 0));
+    opacity: 0.78;
+}
+
+.monitor-logo-badge {
+    position: relative;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.06) 58%),
+        rgba(15, 23, 42, 0.38);
+    border-color: rgba(147, 197, 253, 0.38);
+    box-shadow:
+        0 8px 20px rgba(2, 6, 23, 0.36),
+        0 0 0 1px rgba(37, 99, 235, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.monitor-logo-badge::before {
+    content: "";
+    position: absolute;
+    inset: -35% 45% auto -25%;
+    height: 80%;
+    transform: rotate(-18deg);
+    background: rgba(255, 255, 255, 0.11);
+    pointer-events: none;
+}
+
+.monitor-logo {
+    position: relative;
+    z-index: 1;
+}
+
+.monitor-title {
+    gap: 8px;
+}
+
+.station-name {
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+}
+
+.page-name {
+    position: relative;
+    padding-left: 10px;
+    color: #dbeafe;
+    font-weight: 700;
+}
+
+.page-name::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 12%;
+    bottom: 12%;
+    width: 1px;
+    background: rgba(147, 197, 253, 0.34);
+}
+
+.grid-mode-buttons {
+    padding: 3px;
+    border: 1px solid rgba(71, 85, 105, 0.72);
+    border-radius: 12px;
+    background: rgba(2, 6, 23, 0.30);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.grid-mode-btn {
+    border-color: transparent;
+    background: transparent;
+    color: #94a3b8;
+    box-shadow: none;
+}
+
+.grid-mode-btn:hover {
+    border-color: rgba(96, 165, 250, 0.32);
+    background: rgba(30, 64, 175, 0.22);
+    color: #e0f2fe;
+    box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.06);
+}
+
+.grid-mode-btn:active {
+    transform: translateY(0) scale(0.96);
+}
+
+.grid-mode-btn.active {
+    border-color: rgba(96, 165, 250, 0.88);
+    background:
+        linear-gradient(180deg, #3b82f6 0%, #2563eb 54%, #1d4ed8 100%);
+    color: #ffffff;
+    box-shadow:
+        0 6px 15px rgba(37, 99, 235, 0.30),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -1px 0 rgba(30, 64, 175, 0.40);
+}
+
+.grid-mode-btn.active::after {
+    content: "";
+    position: absolute;
+    left: 9px;
+    right: 9px;
+    bottom: 3px;
+    height: 2px;
+    border-radius: 999px;
+    background: #bfdbfe;
+    opacity: 0.92;
+}
+
+.grid-mode-icon {
+    transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.grid-mode-btn:hover .grid-mode-icon {
+    transform: scale(1.06);
+}
+
+.grid-mode-btn.active .grid-mode-icon {
+    transform: scale(1.04);
+}
+
+.grid-mode-icon span {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+@media (max-width: 1700px) {
+    .monitor-brand {
+        padding-right: 10px;
+    }
+
+    .monitor-brand::after {
+        left: 61px;
+        width: 34px;
+    }
+}
+
+@media (max-width: 1450px) {
+    .monitor-brand {
+        padding-left: 5px;
+        padding-right: 8px;
+    }
+
+    .page-name {
+        padding-left: 7px;
+    }
+}
+
+/* KRTC V6.4.5.6 - Monitor logo light badge */
+.monitor-logo-badge {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+    border-color: rgba(203, 213, 225, 0.96);
+    box-shadow:
+        0 10px 22px rgba(2, 6, 23, 0.18),
+        0 0 0 1px rgba(226, 232, 240, 0.85),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.monitor-logo-badge::before {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(226, 232, 240, 0.12));
+}
+
+.monitor-logo {
+    filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.10));
+}
+
+/* KRTC V6.4.5.7 - Monitor logo scale */
+.monitor-logo {
+    width: 50px;
+    height: 50px;
+    flex-basis: 50px;
+}
+
+@media (max-width: 1700px) {
+    .monitor-logo {
+        width: 44px;
+        height: 44px;
+        flex-basis: 44px;
+    }
+}
+
+/* KRTC V6.4.5.8 V2 - hidden developer USB entry */
+.developer-logo-entry {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    text-decoration: none;
+    outline: none;
+}
+
+.developer-logo-entry .monitor-logo-badge {
+    cursor: pointer;
+}
+
+.developer-logo-entry:focus-visible .monitor-logo-badge {
+    box-shadow:
+        0 0 0 3px rgba(96, 165, 250, 0.30),
+        0 10px 22px rgba(2, 6, 23, 0.18),
+        0 0 0 1px rgba(226, 232, 240, 0.85),
+        inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.developer-logo-entry.usb-denied .monitor-logo-badge {
+    animation: krtc-usb-denied-logo 0.48s ease-in-out 2;
+}
+
+@keyframes krtc-usb-denied-logo {
+    0%, 100% {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+        border-color: rgba(203, 213, 225, 0.96);
+        box-shadow:
+            0 10px 22px rgba(2, 6, 23, 0.18),
+            0 0 0 1px rgba(226, 232, 240, 0.85),
+            inset 0 1px 0 rgba(255, 255, 255, 0.92);
+        transform: scale(1);
+    }
+    50% {
+        background: linear-gradient(180deg, rgba(255, 241, 242, 0.99), rgba(254, 226, 226, 0.98));
+        border-color: rgba(239, 68, 68, 0.96);
+        box-shadow:
+            0 0 0 3px rgba(239, 68, 68, 0.20),
+            0 0 24px rgba(239, 68, 68, 0.48),
+            inset 0 1px 0 rgba(255, 255, 255, 0.90);
+        transform: scale(1.045);
+    }
+}
+
+/* KRTC V6.4.5.10 - Monitor Wall Viewport Fit */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body {
+    overscroll-behavior: none;
+}
+
+.monitor-wall-layout {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    max-height: 100vh;
+    max-height: 100dvh;
+    overflow: hidden;
+}
+
+.monitor-toolbar {
+    flex: 0 0 auto;
+}
+
+.monitor-content {
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+}
+
+.camera-sidebar {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.camera-tree-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.monitor-grid {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+.monitor-slot,
+.monitor-camera-card,
+.monitor-camera-screen {
+    min-height: 0;
+}
+
+/* Grid owns the remaining viewport height; no page-level scrolling is allowed. */
+.monitor-grid.grid-1,
+.monitor-grid.grid-4,
+.monitor-grid.grid-9,
+.monitor-grid.grid-16 {
+    height: 100%;
+    min-height: 0;
+}
+

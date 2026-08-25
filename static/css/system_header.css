@@ -256,3 +256,10 @@
 
 /* KRTC unified header user weight */
 .system-header__user { font-weight: 400 !important; }
+
+/* KRTC V6.4.5.9 - System Log header subtitle typography alignment */
+.system-header--system_log .system-header__page-title,
+.system-header--system-log .system-header__page-title {
+    font-weight: 400;
+}
+

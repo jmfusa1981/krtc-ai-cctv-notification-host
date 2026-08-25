@@ -469,3 +469,56 @@ class CrowdFlowRecord(models.Model):
 
     def __str__(self):
         return f"{self.camera} - {self.count}"
+
+class ZoneCountState(models.Model):
+    """Latest zone-count state received from an inference host.
+
+    This is current-state telemetry from GET /api/notify/zone_counts, not an
+    event/history table. One row is kept per inference_host + camera_id + roi_id.
+    """
+
+    inference_host = models.ForeignKey(
+        "ai_bridge.InferenceHost",
+        on_delete=models.CASCADE,
+        related_name="zone_count_states",
+        verbose_name="推論主機",
+    )
+    camera = models.ForeignKey(
+        "cameras.Camera",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="zone_count_states",
+        verbose_name="本站攝影機",
+    )
+    source_camera_id = models.CharField(max_length=100, verbose_name="來源 Camera ID")
+    station = models.CharField(max_length=100, blank=True, default="", verbose_name="站別")
+    roi_id = models.CharField(max_length=255, verbose_name="Zone 標籤")
+    count = models.PositiveIntegerField(default=0, verbose_name="目前人數")
+    threshold = models.PositiveIntegerField(null=True, blank=True, verbose_name="壅塞閾值")
+    source_updated_at = models.DateTimeField(null=True, blank=True, verbose_name="來源更新時間")
+    received_at = models.DateTimeField(default=timezone.now, verbose_name="PAO 接收時間")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新時間")
+
+    class Meta:
+        verbose_name = "Zone count state"
+        verbose_name_plural = "Zone count states"
+        ordering = ["inference_host__host_code", "source_camera_id", "roi_id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["inference_host", "source_camera_id", "roi_id"],
+                name="uq_zone_count_host_camera_roi",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["inference_host", "source_camera_id"], name="idx_zone_host_camera"),
+            models.Index(fields=["source_updated_at"], name="idx_zone_updated"),
+        ]
+
+    @property
+    def is_abnormal(self):
+        return self.threshold is not None and self.count >= self.threshold
+
+    def __str__(self):
+        return f"{self.inference_host.host_code} / {self.source_camera_id} / {self.roi_id}: {self.count}"
+

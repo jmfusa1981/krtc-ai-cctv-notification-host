@@ -1,4 +1,4 @@
-﻿:root {
+:root {
     --navy: #102a43;
     --blue: #0e5aa7;
     --cyan: #5fbde9;
@@ -444,3 +444,56 @@ body {
 .recording-download-content .recording-file-info code { border: 1px solid #d8e2eb; background: #f6f9fb; color: #183f63; }
 .recording-download-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
 /* KRTC V5.17.7 EVENT RECORDING UI END */
+
+
+/* KRTC V6.4.6.1 - Event Records viewport fit */
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+}
+
+.record-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.record-shell > .system-header,
+.record-shell > .record-banner {
+    flex: 0 0 auto;
+}
+
+.record-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+    overflow: hidden;
+}
+
+.record-main > .filter-panel {
+    flex: 0 0 auto;
+}
+
+.record-table-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.record-table-panel > .table-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+}
+
+.record-table-panel > .pagination {
+    flex: 0 0 auto;
+}

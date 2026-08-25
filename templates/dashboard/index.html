@@ -94,21 +94,19 @@
                 >
                     <div class="area-flow-header">
                         <span>區域人流</span>
-                        <small id="areaFlowPageStatus" aria-live="polite">{{ crowd_flow_items|length }} 台上線</small>
+                        <small id="areaFlowPageStatus" aria-live="polite">{{ crowd_flow_items|length }} 個區域</small>
                     </div>
 
                     <div
                         class="area-flow-grid"
                         id="areaFlowGrid"
-                        aria-label="上線攝影機區域人流資訊"
+                        aria-label="區域人流資訊"
                     >
                         {% for item in crowd_flow_items|slice:":3" %}
-                            <div class="area-flow-cell{% if item.is_abnormal %} is-abnormal{% endif %}">
-                                <span class="area-flow-camera">{{ item.camera_code }}</span>
-                                <span class="area-flow-area" title="{{ item.camera_area }}">{{ item.camera_area|default:"未設定區域" }}</span>
-                                <strong class="area-flow-count">
-                                    {% if item.count is not None %}{{ item.count }} 人{% else %}--{% endif %}
-                                </strong>
+                            <div class="area-flow-cell{% if item.is_abnormal %} is-abnormal{% endif %}" title="{{ item.camera_code }}">
+                                <span class="area-flow-camera">{{ item.zone_label|default:"未命名區域" }}</span>
+                                <span class="area-flow-area">{{ item.camera_code }}</span>
+                                <strong class="area-flow-count">{{ item.count }} 人</strong>
                             </div>
                         {% empty %}
                             {% for _ in "123" %}
@@ -179,16 +177,24 @@
                     <div id="dashboardPollingStatus" class="polling-status">資料更新：等待中</div>
                 </div>
 
-                <div class="media-main-layout">
-                    <div class="media-toolbar media-toolbar--vertical" role="tablist" aria-label="事件影像模式">
+                <div class="event-media-workspace">
+                    <div
+                        class="camera-thumbnail-strip camera-thumbnail-rail"
+                        id="cameraGrid"
+                        aria-label="事件攝影機清單"
+                    ></div>
+
+                    <div class="primary-camera-stage" id="primaryCameraStage"></div>
+
+                    <div
+                        class="media-toolbar media-toolbar--vertical media-mode-rail"
+                        role="tablist"
+                        aria-label="事件影像模式"
+                    >
                         <button type="button" class="media-mode-button is-active" data-media-mode="live">即時畫面</button>
                         <button type="button" class="media-mode-button" data-media-mode="snapshot">事件快照</button>
                     </div>
-
-                    <div class="primary-camera-stage" id="primaryCameraStage"></div>
                 </div>
-
-                <div class="camera-thumbnail-strip" id="cameraGrid"></div>
             </section>
 
             <aside class="panel detail-panel">
@@ -230,7 +236,7 @@
         <footer class="footer-strip">
             <span>聲音提示：待命</span>
             <span>警示燈：待命</span>
-            <span>系統版本：v2.1</span>
+            <span>系統版本：{{ system_version }}</span>
         </footer>
     </div>
 

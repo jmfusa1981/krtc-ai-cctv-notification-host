@@ -31,6 +31,17 @@ class SpeakerDevice(models.Model):
         (STATUS_UNKNOWN, "Unknown"),
     ]
 
+    DEPLOYMENT_PLANNED = "planned"
+    DEPLOYMENT_DEPLOYED = "deployed"
+    DEPLOYMENT_MAINTENANCE = "maintenance"
+    DEPLOYMENT_RETIRED = "retired"
+    DEPLOYMENT_CHOICES = [
+        (DEPLOYMENT_PLANNED, "Planned / Not Installed"),
+        (DEPLOYMENT_DEPLOYED, "Deployed"),
+        (DEPLOYMENT_MAINTENANCE, "Maintenance"),
+        (DEPLOYMENT_RETIRED, "Retired"),
+    ]
+
     PROTOCOL_HTTP = "http"
     PROTOCOL_HTTPS = "https"
     PROTOCOL_SIP = "sip"
@@ -159,6 +170,20 @@ class SpeakerDevice(models.Model):
         verbose_name="Is Active",
     )
 
+    deployment_state = models.CharField(
+        max_length=20,
+        choices=DEPLOYMENT_CHOICES,
+        default=DEPLOYMENT_PLANNED,
+        verbose_name="Deployment State",
+        help_text="未實體安裝時請維持 Planned；只有 Deployed 才可進入健康監測。",
+    )
+
+    health_monitor_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Health Monitor Enabled",
+        help_text="只有 Deployed 且啟用監測時，探測失敗才會寫入 System Log。",
+    )
+
     last_checked_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -194,6 +219,14 @@ class SpeakerDevice(models.Model):
         if self.protocol == self.PROTOCOL_SIP and self.username and self.ip_address:
             self.sip_uri = f"sip:{self.username}@{self.ip_address}:{self.port or 5060}"
         super().save(*args, **kwargs)
+
+    @property
+    def health_monitor_active(self):
+        return bool(
+            self.is_active
+            and self.health_monitor_enabled
+            and self.deployment_state == self.DEPLOYMENT_DEPLOYED
+        )
 
     @property
     def endpoint_base_url(self):

@@ -19,7 +19,7 @@
     <div>
       <p class="eyebrow">OPERATION MANAGEMENT</p>
       <h1>{% if object %}編輯{% else %}新增{% endif %}{{ management_title }}</h1>
-      <p>此頁為正式維運介面，不需要進入 Django 開發者後台。</p>
+      <p>建立或更新本站維運設定資料。</p>
     </div>
     <a class="admin-link management-return" href="{% if return_to == 'broadcast' %}{% url 'dashboard:station_broadcast' %}#auto-broadcast-rules{% elif return_url_name %}{% url return_url_name %}{% else %}{% url 'settings_app:station_settings' %}?tab={{ return_tab }}{% endif %}">返回{{ management_plural }}</a>
   </section>

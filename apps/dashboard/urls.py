@@ -1,3 +1,4 @@
+from .developer_entry import developer_entry
 from django.urls import path
 
 from .event_records import (
@@ -5,6 +6,7 @@ from .event_records import (
     export_event_records_csv,
     export_event_records_excel,
 )
+from .system_logs import system_log_list
 from .views import (
     dashboard_home,
     dashboard_live_state_api,
@@ -18,10 +20,12 @@ from .views import (
 app_name = "dashboard"
 
 urlpatterns = [
+    path("developer-entry/", developer_entry, name="developer_entry"),
     path("", dashboard_home, name="home"),
     path("devices/", device_list, name="device_list"),
     path("snapshots/", event_snapshot_list, name="event_snapshot_list"),
     path("records/", event_record_list, name="event_record_list"),
+    path("system-log/", system_log_list, name="system_log_list"),
     path(
         "records/export/csv/",
         export_event_records_csv,

@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 _start_lock = threading.Lock()
 _scheduler_started = False
+_scheduler_thread = None
 
 
 def _is_runserver_worker():
@@ -107,7 +108,7 @@ def _scheduler_loop(interval_seconds):
 
 
 def start_scheduler_for_current_process():
-    global _scheduler_started
+    global _scheduler_started, _scheduler_thread
 
     if not getattr(settings, "BROADCAST_SCHEDULER_AUTOSTART", True):
         return False
@@ -128,5 +129,10 @@ def start_scheduler_for_current_process():
             daemon=True,
         )
         thread.start()
+        _scheduler_thread = thread
         _scheduler_started = True
         return True
+
+
+def scheduler_thread_alive() -> bool:
+    return bool(_scheduler_thread and _scheduler_thread.is_alive())

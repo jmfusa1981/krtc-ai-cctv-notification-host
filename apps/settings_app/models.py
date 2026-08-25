@@ -66,7 +66,19 @@ class UIConfiguration(models.Model):
 
     SINGLETON_PK = 1
 
+    LOGIN_THEME_CHOICES = [
+        ("dark", "Dark Mode"),
+        ("bright", "Bright Mode"),
+    ]
+
     id = models.PositiveSmallIntegerField(primary_key=True, default=SINGLETON_PK, editable=False)
+    login_theme = models.CharField(
+        max_length=20,
+        choices=LOGIN_THEME_CHOICES,
+        default="dark",
+        verbose_name="登入框主題",
+        help_text="Dark Mode 為深色登入框；Bright Mode 為亮色半透明登入框。",
+    )
     login_background_enabled = models.BooleanField(default=False, verbose_name="啟用登入背景圖片")
     login_background = models.FileField(
         upload_to="ui/login/",

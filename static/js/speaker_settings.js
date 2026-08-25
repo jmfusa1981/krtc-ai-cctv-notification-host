@@ -8,15 +8,16 @@
     area: byId("speaker-area"), location_note: byId("speaker-location-note"),
     network_mode: byId("speaker-network-mode"), ip_address: byId("speaker-ip-address"),
     port: byId("speaker-port"), username: byId("speaker-username"),
-    preferred_codec: byId("speaker-codec"), is_active: byId("speaker-active")
+    preferred_codec: byId("speaker-codec"), deployment_state: byId("speaker-deployment-state"),
+    health_monitor_enabled: byId("speaker-health-monitor"), is_active: byId("speaker-active")
   };
   const errors = byId("speaker-form-errors");
   function openModal(data = null) {
-    form.reset(); fields.id.value = ""; fields.port.value = "5060"; fields.is_active.checked = true;
+    form.reset(); fields.id.value = ""; fields.port.value = "5060"; fields.deployment_state.value = "planned"; fields.health_monitor_enabled.checked = false; fields.is_active.checked = true;
     byId("speaker-modal-title").textContent = data ? `編輯 ${data.speaker_code}` : "新增 Speaker";
     if (data) Object.entries(fields).forEach(([key, element]) => {
       if (!(key in data)) return;
-      if (key === "is_active") element.checked = Boolean(data[key]); else element.value = data[key] ?? "";
+      if (key === "is_active" || key === "health_monitor_enabled") element.checked = Boolean(data[key]); else element.value = data[key] ?? "";
     });
     errors.hidden = true; errors.textContent = ""; modal.hidden = false;
   }

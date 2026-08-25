@@ -1,4 +1,4 @@
-﻿* {
+* {
     box-sizing: border-box;
 }
 
@@ -3175,3 +3175,139 @@ textarea {
     line-height: 1.35 !important;
 }
 /* KRTC V5.13 BLUE INFO BAR VISUAL CONSISTENCY END */
+
+/* KRTC V6.3 - Dashboard Event Viewer three-column layout */
+.camera-panel {
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.event-media-workspace {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr) 112px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #f8fafc;
+}
+
+.event-media-workspace .primary-camera-stage {
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+}
+
+.camera-thumbnail-strip.camera-thumbnail-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    min-width: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px;
+    border-top: 0;
+    background: #f8fafc;
+}
+
+.camera-thumbnail-rail .camera-thumbnail {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+}
+
+.camera-thumbnail-rail .camera-thumbnail-screen {
+    height: 76px;
+}
+
+.media-toolbar.media-mode-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 10px;
+    min-width: 0;
+    min-height: 0;
+    padding: 12px 10px;
+    border: 0;
+    background: #f8fafc;
+}
+
+.media-mode-rail .media-mode-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 6px;
+    white-space: normal;
+}
+
+@media (max-width: 1600px) {
+    .event-media-workspace {
+        grid-template-columns: 156px minmax(0, 1fr) 104px;
+    }
+
+    .camera-thumbnail-strip.camera-thumbnail-rail {
+        padding: 8px;
+    }
+
+    .camera-thumbnail-rail .camera-thumbnail-screen {
+        height: 68px;
+    }
+
+    .media-toolbar.media-mode-rail {
+        padding: 10px 8px;
+        gap: 8px;
+    }
+}
+
+/* KRTC V6.3.1 - Dashboard viewer typography and snapshot overlay refinement */
+
+/* Event Image panel heading follows the same typography as Recent AI Events. */
+.camera-panel > .panel-header h2 {
+    margin: 0;
+    font-size: 17px;
+    line-height: normal;
+    font-weight: 700;
+}
+
+.camera-panel > .panel-header p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: normal;
+    font-weight: 400;
+}
+
+/* Move existing Event Snapshot overlay from lower-left to upper-left. */
+.primary-camera-overlay {
+    inset: 0 0 auto 0;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 14px 18px 22px;
+    background: linear-gradient(
+        180deg,
+        rgba(2, 6, 23, 0.86) 0%,
+        rgba(2, 6, 23, 0.48) 58%,
+        rgba(2, 6, 23, 0) 100%
+    );
+}
+
+.primary-camera-overlay h3 {
+    margin: 0;
+    font-size: 17px;
+    line-height: 1.35;
+    font-weight: 700;
+}
+
+.primary-camera-overlay p {
+    display: none !important;
+}
+
+/* Right-side Live / Snapshot buttons use Event Detail-style typography. */
+.media-mode-rail .media-mode-button {
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.35;
+    font-weight: 700;
+    letter-spacing: 0;
+}

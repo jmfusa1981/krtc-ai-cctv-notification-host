@@ -18,6 +18,9 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.notifications.services import get_broadcast_playback_mode
+from apps.accounts.permissions import hidden_forbidden_response
+from apps.station_api.security_audit import record_security_audit
+from apps.notifications.speaker_health import clear_speaker_fault_if_monitoring_disabled, record_speaker_probe_result
 from .forms import (
     AIModelForm, AudioFileForm, BroadcastRuleForm, BroadcastScheduleForm, CameraForm,
     FrontendUserForm, InferenceCameraMappingForm, InferenceHostForm, SpeakerDeviceForm,
@@ -131,7 +134,7 @@ def _audio_file_health(audio):
 def station_settings(request):
     """單站通報主機系統設定與診斷頁。"""
     if not _is_settings_editor(request.user):
-        raise PermissionDenied("目前帳號沒有系統設定存取權限。")
+        return hidden_forbidden_response()
     local_settings = StationLocalSettings.load()
     if request.method == "POST":
         if not _is_settings_editor(request.user):
@@ -141,6 +144,7 @@ def station_settings(request):
             local_settings = form.save(commit=False)
             local_settings.config_version += 1
             local_settings.save()
+            record_security_audit(action="STATION_SETTINGS_UPDATED", result="success", request=request, user=request.user, detail="Station local settings updated")
             return redirect(f"{reverse('settings_app:station_settings')}?saved=1")
     else:
         form = StationLocalSettingsForm(instance=local_settings)
@@ -192,6 +196,8 @@ def station_settings(request):
     speakers = list(SpeakerDevice.objects.all().order_by("speaker_code")) if SpeakerDevice else []
     for speaker in speakers:
         speaker.status_label_zh = STATUS_LABELS.get(speaker.status, "未知")
+        speaker.deployment_label_zh = {"planned": "未部署", "deployed": "已部署", "maintenance": "維護中", "retired": "已退役"}.get(speaker.deployment_state, speaker.get_deployment_state_display())
+        speaker.monitor_label_zh = "監測中" if speaker.health_monitor_active else "不監測"
 
     audio_files = list(AudioFile.objects.all().order_by("audio_code")) if AudioFile else []
     audio_health_by_id = {}
@@ -236,8 +242,8 @@ def station_settings(request):
 
     active_camera_count = sum(1 for item in cameras if item.is_active)
     online_camera_count = sum(1 for item in cameras if item.is_active and item.status == "online")
-    active_speaker_count = sum(1 for item in speakers if item.is_active)
-    online_speaker_count = sum(1 for item in speakers if item.is_active and item.status == "online")
+    active_speaker_count = sum(1 for item in speakers if item.health_monitor_active)
+    online_speaker_count = sum(1 for item in speakers if item.health_monitor_active and item.status == "online")
     mapped_active_camera_count = sum(1 for item in cameras if item.is_active and item.mapping_count > 0)
     unmapped_active_cameras = [item for item in cameras if item.is_active and item.mapping_count == 0]
     healthy_mapping_count = sum(1 for item in mappings if item.health_ok)
@@ -254,7 +260,7 @@ def station_settings(request):
         if camera.is_active and camera.mapping_count == 0:
             initial_issues.append(f"攝影機 {camera.camera_code}：尚未建立推論映射")
     for speaker in speakers:
-        if speaker.is_active and speaker.status != "online":
+        if speaker.health_monitor_active and speaker.status != "online":
             initial_issues.append(f"IP Speaker {speaker.speaker_code}：{speaker.status_label_zh}")
     for audio in audio_files:
         if audio.is_active and not audio.health_ok:
@@ -333,6 +339,14 @@ def test_inference_host(request):
     return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "tested_at": timezone.localtime(now).strftime("%Y-%m-%d %H:%M:%S")})
 
 
+def _save_camera_probe_state(camera, ok):
+    camera.status = "online" if ok else "offline"
+    camera.is_online = bool(ok)
+    camera.last_checked_at = timezone.now()
+    camera.save(update_fields=["status", "is_online", "last_checked_at"])
+    return timezone.localtime(camera.last_checked_at).strftime("%Y-%m-%d %H:%M:%S")
+
+
 @login_required
 @require_POST
 def test_camera(request):
@@ -340,20 +354,40 @@ def test_camera(request):
     payload = _json_body(request)
     camera = get_object_or_404(Camera, pk=payload.get("id"))
     if not camera.rtsp_url:
-        return JsonResponse({"success": False, "message": "攝影機尚未設定串流 URL。", "elapsed_ms": 0})
+        tested_at = _save_camera_probe_state(camera, False)
+        return JsonResponse({
+            "success": False,
+            "message": "攝影機尚未設定串流 URL。",
+            "elapsed_ms": 0,
+            "status": "offline",
+            "status_label": "離線",
+            "tested_at": tested_at,
+        })
 
     parsed = urlparse(camera.rtsp_url)
     host = parsed.hostname
     if not host:
-        return JsonResponse({"success": False, "message": "串流 URL 格式無效。", "elapsed_ms": 0})
+        tested_at = _save_camera_probe_state(camera, False)
+        return JsonResponse({
+            "success": False,
+            "message": "串流 URL 格式無效。",
+            "elapsed_ms": 0,
+            "status": "offline",
+            "status_label": "離線",
+            "tested_at": tested_at,
+        })
     default_ports = {"rtsp": 554, "http": 80, "https": 443}
     port = parsed.port or default_ports.get(parsed.scheme.lower(), 554)
     ok, elapsed_ms, message = _tcp_probe(host, port)
-    camera.status = "online" if ok else "offline"
-    camera.is_online = ok
-    camera.last_checked_at = timezone.now()
-    camera.save(update_fields=["status", "is_online", "last_checked_at"])
-    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "tested_at": timezone.localtime(camera.last_checked_at).strftime("%Y-%m-%d %H:%M:%S")})
+    tested_at = _save_camera_probe_state(camera, ok)
+    return JsonResponse({
+        "success": ok,
+        "message": message,
+        "elapsed_ms": elapsed_ms,
+        "status": "online" if ok else "offline",
+        "status_label": "連線正常" if ok else "離線",
+        "tested_at": tested_at,
+    })
 
 
 @login_required
@@ -366,7 +400,14 @@ def test_speaker(request):
     speaker.status = "online" if ok else "offline"
     speaker.last_checked_at = timezone.now()
     speaker.save(update_fields=["status", "last_checked_at", "updated_at"])
-    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "tested_at": timezone.localtime(speaker.last_checked_at).strftime("%Y-%m-%d %H:%M:%S")})
+    system_log_action = "skipped"
+    try:
+        system_log_action = record_speaker_probe_result(speaker, ok, message)
+    except Exception:
+        pass
+    if not speaker.health_monitor_active:
+        message = f"{message}（目前未啟用 Speaker System Log 健康監測）"
+    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "system_log_action": system_log_action, "monitoring_enabled": speaker.health_monitor_active, "tested_at": timezone.localtime(speaker.last_checked_at).strftime("%Y-%m-%d %H:%M:%S")})
 
 
 @login_required
@@ -432,6 +473,10 @@ def save_speaker(request):
         )
 
     speaker = form.save()
+    try:
+        clear_speaker_fault_if_monitoring_disabled(speaker)
+    except Exception:
+        pass
     return JsonResponse({
         "success": True,
         "message": f"{speaker.speaker_code} 已儲存。",
@@ -448,9 +493,26 @@ def save_speaker(request):
             "preferred_codec": speaker.preferred_codec,
             "preferred_codec_label": speaker.get_preferred_codec_display(),
             "sip_uri": speaker.resolved_sip_uri,
+            "deployment_state": speaker.deployment_state,
+            "health_monitor_enabled": speaker.health_monitor_enabled,
+            "health_monitor_active": speaker.health_monitor_active,
             "is_active": speaker.is_active,
         },
     })
+
+
+@login_required
+@require_POST
+def delete_speaker(request, speaker_id):
+    """Delete an IP speaker from station-local configuration."""
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    SpeakerDevice = get_model_or_none("notifications", "SpeakerDevice")
+    speaker = get_object_or_404(SpeakerDevice, pk=speaker_id)
+    speaker.delete()
+    return _settings_scroll_redirect("devices", request.POST.get("return_scroll_y"))
+
+
 
 MANAGEMENT_REGISTRY = {
     "inference-host": {
@@ -516,7 +578,7 @@ def _management_config(kind):
 def manage_object(request, kind, object_id=None):
     """Create or edit operational configuration without exposing Django admin."""
     if not _is_settings_editor(request.user):
-        raise PermissionDenied("目前帳號沒有修改系統設定的權限。")
+        return hidden_forbidden_response()
 
     config = _management_config(kind)
     if kind in {"ai-model", "camera-mapping"} and not _can_manage_ai_settings(request.user):
@@ -563,6 +625,17 @@ def manage_object(request, kind, object_id=None):
     })
 
 
+def _settings_scroll_redirect(tab, raw_scroll_y=None):
+    try:
+        scroll_y = max(0, int(float(raw_scroll_y or 0)))
+    except (TypeError, ValueError):
+        scroll_y = 0
+    url = f"{reverse('settings_app:station_settings')}?saved=1&tab={tab}"
+    if scroll_y:
+        url += f"&scroll_y={scroll_y}"
+    return redirect(url)
+
+
 @login_required
 @require_POST
 def remove_object(request, kind, object_id):
@@ -570,14 +643,14 @@ def remove_object(request, kind, object_id):
     if not _is_settings_editor(request.user):
         raise PermissionDenied("目前帳號沒有修改系統設定的權限。")
     config = _management_config(kind)
-    if kind != "broadcast-rule":
+    if kind not in {"broadcast-rule", "camera", "inference-host"}:
         raise PermissionDenied("此設定類型不支援在維運頁刪除。")
     Model = get_model_or_none(*config["model"])
     instance = get_object_or_404(Model, pk=object_id)
     instance.delete()
     if kind == "broadcast-rule" and request.POST.get("return_to") == "broadcast":
         return redirect(f"{reverse('dashboard:station_broadcast')}?saved=1#auto-broadcast-rules")
-    return redirect(f"{reverse('settings_app:station_settings')}?saved=1&tab={config['tab']}")
+    return _settings_scroll_redirect(config["tab"], request.POST.get("return_scroll_y"))
 
 
 @login_required
@@ -602,7 +675,7 @@ def toggle_object(request, kind, object_id):
 @login_required
 def user_management(request):
     if not _can_manage_accounts(request.user):
-        raise PermissionDenied("只有系統管理員或 Superuser 可以管理使用者。")
+        return hidden_forbidden_response()
 
     users = list(
         get_user_model().objects.filter(is_superuser=False)
@@ -636,12 +709,13 @@ def remove_user(request, object_id):
         return JsonResponse({"success": False, "message": "不可移除目前登入帳號。"}, status=400)
     user.is_active = False
     user.save(update_fields=["is_active"])
+    record_security_audit(action="USER_DISABLED", result="success", request=request, user=request.user, detail=f"Disabled user {user.username}", metadata={"target_username": user.username})
     return redirect(reverse("settings_app:user_management"))
 
 @login_required
 def manage_user(request, object_id=None):
     if not _can_manage_accounts(request.user):
-        raise PermissionDenied("只有 Administrator 或 Superuser 可以管理帳號。")
+        return hidden_forbidden_response()
     User = get_user_model()
     instance = get_object_or_404(User, pk=object_id, is_superuser=False) if object_id else None
     if request.method == "POST":
@@ -657,9 +731,18 @@ def manage_user(request, object_id=None):
             password = form.cleaned_data.get("password")
             if password:
                 user.set_password(password)
+            created = instance is None
             user.save()
             role_group, _ = Group.objects.get_or_create(name=form.cleaned_data["role"])
             user.groups.set([role_group])
+            record_security_audit(
+                action="USER_CREATED" if created else "USER_UPDATED",
+                result="success",
+                request=request,
+                user=request.user,
+                detail=f"{'Created' if created else 'Updated'} user {user.username}",
+                metadata={"target_username": user.username, "target_role": role_group.name, "target_active": user.is_active},
+            )
             return redirect(f"{reverse('settings_app:user_management')}?saved=1")
     else:
         form = FrontendUserForm(user_instance=instance)
@@ -685,4 +768,12 @@ def toggle_user(request, object_id):
         return JsonResponse({"success": False, "message": "不可停用目前登入帳號。"}, status=400)
     user.is_active = not user.is_active
     user.save(update_fields=["is_active"])
+    record_security_audit(
+        action="USER_ENABLED" if user.is_active else "USER_DISABLED",
+        result="success",
+        request=request,
+        user=request.user,
+        detail=f"{'Enabled' if user.is_active else 'Disabled'} user {user.username}",
+        metadata={"target_username": user.username},
+    )
     return redirect(reverse("settings_app:user_management"))

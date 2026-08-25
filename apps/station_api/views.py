@@ -14,7 +14,8 @@ from apps.notifications.models import SpeakerDevice
 from apps.settings_app.models import StationLocalSettings
 
 from .auth import require_occ_token
-from .models import ConfigurationAuditLog, InferenceHostConfiguration, OccSyncState
+from .fault_catalog import FAULT_CATALOG, FAULT_CATALOG_VERSION, SYSTEM_LOG_SCHEMA_VERSION
+from .models import ConfigurationAuditLog, DeviceFaultChange, DeviceFaultLog, InferenceHostConfiguration, OccSyncState
 
 
 def _iso(value):
@@ -108,6 +109,133 @@ def devices(request):
     speaker_items = list(SpeakerDevice.objects.values("speaker_code", "name", "area", "status", "is_active"))
     return JsonResponse({**_identity(), "cameras": camera_items, "speakers": speaker_items})
 
+
+@require_GET
+@require_occ_token
+def device_faults(request):
+    """Incremental, read-only PAO device fault feed for OCC."""
+
+    try:
+        limit = min(max(int(request.GET.get("limit", 200)), 1), 500)
+    except ValueError:
+        return JsonResponse({"detail": "limit must be an integer."}, status=400)
+
+    try:
+        since_id = max(int(request.GET.get("since_id", 0)), 0)
+    except ValueError:
+        return JsonResponse({"detail": "since_id must be an integer."}, status=400)
+
+    status_filter = (request.GET.get("status") or "").strip()
+    if status_filter and status_filter not in {
+        DeviceFaultLog.STATUS_ACTIVE,
+        DeviceFaultLog.STATUS_RECOVERED,
+    }:
+        return JsonResponse(
+            {"detail": "status must be active or recovered."},
+            status=400,
+        )
+
+    queryset = DeviceFaultLog.objects.filter(id__gt=since_id)
+    if status_filter:
+        queryset = queryset.filter(status=status_filter)
+
+    rows = list(queryset.order_by("id")[:limit])
+
+    items = [
+        {
+            "id": item.id,
+            "occurred_at": _iso(item.occurred_at),
+            "last_seen_at": _iso(item.last_seen_at),
+            "recovered_at": _iso(item.recovered_at),
+            "station_code": item.station_code,
+            "station_name": item.station_name,
+            "device_type": item.device_type,
+            "device_code": item.device_code,
+            "device_name": item.device_name,
+            "area": item.area,
+            "fault_code": item.fault_code,
+            "fault_description": item.fault_description,
+            "severity": item.severity,
+            "status": item.status,
+            "occurrence_count": item.occurrence_count,
+        }
+        for item in rows
+    ]
+
+    next_since_id = items[-1]["id"] if items else since_id
+
+    return JsonResponse(
+        {
+            **_identity(),
+            "count": len(items),
+            "since_id": since_id,
+            "next_since_id": next_since_id,
+            "items": items,
+        }
+    )
+
+
+@require_GET
+@require_occ_token
+def device_fault_changes(request):
+    """Append-only OCC System Log change feed. Cursor is DeviceFaultChange.id."""
+    try:
+        limit = min(max(int(request.GET.get("limit", 200)), 1), 500)
+    except ValueError:
+        return JsonResponse({"detail": "limit must be an integer."}, status=400)
+    try:
+        since_id = max(int(request.GET.get("since_id", 0)), 0)
+    except ValueError:
+        return JsonResponse({"detail": "since_id must be an integer."}, status=400)
+    rows = list(DeviceFaultChange.objects.filter(id__gt=since_id).order_by("id")[:limit])
+    items = [{
+        "change_id": item.id,
+        "change_type": item.change_type,
+        "changed_at": _iso(item.changed_at),
+        "source_fault_id": item.source_fault_id,
+        "occurred_at": _iso(item.occurred_at),
+        "last_seen_at": _iso(item.last_seen_at),
+        "recovered_at": _iso(item.recovered_at),
+        "station_code": item.station_code,
+        "station_name": item.station_name,
+        "device_type": item.device_type,
+        "device_code": item.device_code,
+        "device_name": item.device_name,
+        "area": item.area,
+        "fault_code": item.fault_code,
+        "fault_description": item.fault_description,
+        "severity": item.severity,
+        "status": item.status,
+        "occurrence_count": item.occurrence_count,
+    } for item in rows]
+    next_since_id = items[-1]["change_id"] if items else since_id
+    return JsonResponse({
+        **_identity(),
+        "schema_version": SYSTEM_LOG_SCHEMA_VERSION,
+        "fault_catalog_version": FAULT_CATALOG_VERSION,
+        "cursor_type": "device_fault_change_id",
+        "count": len(items),
+        "since_id": since_id,
+        "next_since_id": next_since_id,
+        "items": items,
+    })
+
+
+@require_GET
+@require_occ_token
+def device_fault_catalog(request):
+    items = [{
+        "fault_code": code,
+        "device_type": spec["device_type"],
+        "severity": spec["severity"],
+        "title": spec["title"],
+    } for code, spec in sorted(FAULT_CATALOG.items())]
+    return JsonResponse({
+        **_identity(),
+        "schema_version": SYSTEM_LOG_SCHEMA_VERSION,
+        "fault_catalog_version": FAULT_CATALOG_VERSION,
+        "items": items,
+    })
 
 @require_GET
 @require_occ_token
@@ -227,4 +355,43 @@ def configuration_apply(request):
         "model_code": model.model_code,
         "config_version": config.config_version,
         "applied_at": _iso(config.applied_at),
+    })
+
+
+@require_GET
+@require_occ_token
+def audit_log_changes(request):
+    """Append-only read-only security audit feed for OCC. Cursor is SecurityAuditLog.id."""
+    from .models import SecurityAuditLog
+    try:
+        limit = min(max(int(request.GET.get("limit", 200)), 1), 500)
+    except ValueError:
+        return JsonResponse({"detail": "limit must be an integer."}, status=400)
+    try:
+        since_id = max(int(request.GET.get("since_id", 0)), 0)
+    except ValueError:
+        return JsonResponse({"detail": "since_id must be an integer."}, status=400)
+    rows = list(SecurityAuditLog.objects.filter(id__gt=since_id).order_by("id")[:limit])
+    items = [{
+        "audit_id": item.id,
+        "occurred_at": _iso(item.occurred_at),
+        "username": item.username,
+        "display_name": item.display_name,
+        "role": item.role,
+        "action": item.action,
+        "result": item.result,
+        "auth_method": item.auth_method,
+        "client_ip": item.client_ip,
+        "detail": item.detail,
+        "metadata": item.metadata,
+    } for item in rows]
+    next_since_id = items[-1]["audit_id"] if items else since_id
+    return JsonResponse({
+        **_identity(),
+        "schema_version": "1.0",
+        "cursor_type": "security_audit_log_id",
+        "count": len(items),
+        "since_id": since_id,
+        "next_since_id": next_since_id,
+        "items": items,
     })

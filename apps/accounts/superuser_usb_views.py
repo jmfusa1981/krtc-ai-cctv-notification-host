@@ -1,17 +1,18 @@
 from django.contrib import admin, messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponseForbidden
 from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from apps.accounts.usb_key import create_or_register_master_key, list_removable_drives, verify_trusted_key
+from apps.accounts.permissions import hidden_forbidden_response
 from apps.settings_app.models import UIConfiguration
+from apps.station_api.security_audit import record_security_audit
 
 
 @login_required
 def superuser_usb_manager(request):
     if not request.user.is_superuser:
-        return HttpResponseForbidden("此功能僅限 Superuser 使用。", content_type="text/plain; charset=utf-8")
+        return hidden_forbidden_response()
 
     config = UIConfiguration.load()
 
@@ -24,6 +25,7 @@ def superuser_usb_manager(request):
                 result = create_or_register_master_key(drive)
             except Exception as exc:
                 messages.error(request, f"USB Key 建立／登錄失敗：{exc}")
+                record_security_audit(action="USB_KEY_REGISTER_FAILED", result="failed", request=request, user=request.user, auth_method="PASSWORD+USB", detail=str(exc))
             else:
                 config.superuser_usb_required = True
                 config.superuser_usb_token_sha256 = result["token_sha256"]
@@ -35,13 +37,16 @@ def superuser_usb_manager(request):
                 ])
                 verb = "建立" if result["created"] else "登錄"
                 messages.success(request, f"已{verb} KRTC Master USB Key：{result['key_id']}。USB 二次驗證已啟用。")
+                record_security_audit(action="USB_KEY_REGISTERED", result="success", request=request, user=request.user, auth_method="PASSWORD+USB", metadata={"key_id": result.get("key_id", "")})
 
         elif action == "verify":
             ok, info = verify_trusted_key(config.superuser_usb_token_sha256)
             if ok:
                 messages.success(request, f"USB Key 驗證成功：{info.get('key_id') or 'KRTC Master Key'} ({info.get('drive')})")
+                record_security_audit(action="USB_VERIFY_SUCCESS", result="success", request=request, user=request.user, auth_method="PASSWORD+USB", metadata={"key_id": info.get("key_id", "")})
             else:
                 messages.error(request, "未找到目前主機已信任的 USB Key。")
+                record_security_audit(action="USB_VERIFY_FAILED", result="failed", request=request, user=request.user, auth_method="PASSWORD+USB", detail="Trusted USB key not found")
 
         elif action == "disable":
             config.superuser_usb_required = False
@@ -53,6 +58,7 @@ def superuser_usb_manager(request):
                 "superuser_usb_key_id", "superuser_usb_updated_at", "updated_at",
             ])
             messages.warning(request, "此主機的 Superuser USB 二次驗證已停用。USB 內的 Master Key 檔案未刪除。")
+            record_security_audit(action="USB_KEY_DISABLED", result="success", request=request, user=request.user, auth_method="PASSWORD+USB")
 
         return redirect("superuser_usb_manager")
 

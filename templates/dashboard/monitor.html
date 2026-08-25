@@ -13,11 +13,31 @@
     <div class="monitor-wall-layout">
         <header class="monitor-toolbar">
             <div class="monitor-brand">
-                <img
-                    src="{% static 'img/KRTC_logo.png' %}"
-                    alt="KRTC Logo"
-                    class="monitor-logo"
-                >
+                {% if request.user.is_superuser %}
+
+                <a href="{% url 'dashboard:developer_entry' %}" class="developer-logo-entry" data-developer-entry aria-label="開發者後台">
+
+                    <div class="monitor-logo-badge">
+                    <img
+                        src="{% static 'img/KRTC_logo.png' %}"
+                        alt="KRTC Logo"
+                        class="monitor-logo"
+                    >
+                </div>
+
+                </a>
+
+                {% else %}
+
+                <div class="monitor-logo-badge">
+                    <img
+                        src="{% static 'img/KRTC_logo.png' %}"
+                        alt="KRTC Logo"
+                        class="monitor-logo"
+                    >
+                </div>
+
+                {% endif %}
                 <h1 class="monitor-title">
                     <span class="station-name">{{ station_name|default:"站區名" }}</span>
                     <span class="page-name">即時監視牆</span>
@@ -58,10 +78,35 @@
                     <span class="toolbar-divider" aria-hidden="true"></span>
 
                     <div class="toolbar-group grid-mode-buttons" role="group" aria-label="畫面分割">
-                        <button type="button" class="grid-mode-btn" data-grid="1" title="單畫面">1</button>
-                        <button type="button" class="grid-mode-btn active" data-grid="4" title="四分割">4</button>
-                        <button type="button" class="grid-mode-btn" data-grid="9" title="九分割">9</button>
-                        <button type="button" class="grid-mode-btn" data-grid="16" title="十六分割">16</button>
+                        <button type="button" class="grid-mode-btn" data-grid="1" title="單畫面" aria-label="單畫面">
+                            <span class="grid-mode-icon grid-mode-icon--1" aria-hidden="true">
+                                <span></span>
+                            </span>
+                            <span class="sr-only">單畫面</span>
+                        </button>
+                        <button type="button" class="grid-mode-btn active" data-grid="4" title="四分割" aria-label="四分割">
+                            <span class="grid-mode-icon grid-mode-icon--4" aria-hidden="true">
+                                <span></span><span></span><span></span><span></span>
+                            </span>
+                            <span class="sr-only">四分割</span>
+                        </button>
+                        <button type="button" class="grid-mode-btn" data-grid="9" title="九分割" aria-label="九分割">
+                            <span class="grid-mode-icon grid-mode-icon--9" aria-hidden="true">
+                                <span></span><span></span><span></span>
+                                <span></span><span></span><span></span>
+                                <span></span><span></span><span></span>
+                            </span>
+                            <span class="sr-only">九分割</span>
+                        </button>
+                        <button type="button" class="grid-mode-btn" data-grid="16" title="十六分割" aria-label="十六分割">
+                            <span class="grid-mode-icon grid-mode-icon--16" aria-hidden="true">
+                                <span></span><span></span><span></span><span></span>
+                                <span></span><span></span><span></span><span></span>
+                                <span></span><span></span><span></span><span></span>
+                                <span></span><span></span><span></span><span></span>
+                            </span>
+                            <span class="sr-only">十六分割</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -215,5 +260,51 @@
     </div>
 
     <script src="{% static 'js/monitor.js' %}"></script>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const krtcDeveloperEntry = true;
+        const entry = document.querySelector("[data-developer-entry]");
+        if (!entry) {
+            return;
+        }
+
+        let busy = false;
+        entry.addEventListener("click", async function (event) {
+            event.preventDefault();
+            if (busy) {
+                return;
+            }
+            busy = true;
+
+            try {
+                const response = await fetch(entry.href, {
+                    method: "GET",
+                    headers: {"Accept": "application/json"},
+                    credentials: "same-origin",
+                    cache: "no-store"
+                });
+                const payload = await response.json().catch(function () { return {}; });
+
+                if (response.ok && payload.ok === true && payload.redirect) {
+                    window.location.assign(payload.redirect);
+                    return;
+                }
+            } catch (error) {
+                // Deliberately silent: failed authorization is represented only by the logo pulse.
+            } finally {
+                busy = false;
+            }
+
+            entry.classList.remove("usb-denied");
+            void entry.offsetWidth;
+            entry.classList.add("usb-denied");
+            window.setTimeout(function () {
+                entry.classList.remove("usb-denied");
+            }, 1100);
+        });
+    });
+    </script>
+
 </body>
 </html>

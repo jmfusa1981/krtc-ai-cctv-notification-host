@@ -20,6 +20,11 @@ class AiBridgeConfig(AppConfig):
 
             start_inference_polling()
 
+        if getattr(settings, "ZONE_COUNT_POLL_AUTOSTART", True):
+            from apps.ai_bridge.background_zone_counts import start_zone_count_polling
+
+            start_zone_count_polling()
+
         if getattr(settings, "INFERENCE_WS_AUTOSTART", False):
             from apps.ai_bridge.background_websocket import (
                 start_inference_websocket_listener,
@@ -38,6 +43,7 @@ class AiBridgeConfig(AppConfig):
             "shell",
             "test",
             "poll_inference_hosts",
+            "poll_zone_counts",
             "run_inference_listener",
             "run_occ_sync_service",
             "sync_occ_once",

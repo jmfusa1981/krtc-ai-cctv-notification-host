@@ -7,6 +7,7 @@
     <title>事件快照｜KRTC AI CCTV 通報主機</title>
     <link rel="stylesheet" href="{% static 'css/event_snapshot_list.css' %}">
     <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/back_to_top.css' %}">
 </head>
 <body>
     <div class="snapshot-shell">
@@ -100,5 +101,8 @@
     </dialog>
 
     <script src="{% static 'js/event_snapshot_list.js' %}"></script>
+
+    <button type="button" class="krtc-back-to-top" data-krtc-back-to-top aria-label="回到頂端">Top</button>
+    <script src="{% static 'js/back_to_top.js' %}"></script>
 </body>
 </html>

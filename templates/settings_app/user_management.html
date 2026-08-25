@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
   <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=8.0">
 </head>
-<body>
+<body class="user-management-page">
 <div class="settings-shell">
   {% include "dashboard/includes/system_header.html" with current_page="users" page_title="使用者管理" show_dashboard_status=True hide_mode_badge=True show_home_button=True %}
   <section class="settings-page-heading">
@@ -27,7 +27,7 @@
     <section class="settings-panel is-active">
       <div class="panel-heading">
         <div>
-          <h2>前台使用者</h2>
+          <h2>授權使用者</h2>
           <p>可指派 Operator、Maintainer、Administrator。移除採停用方式，以保留操作紀錄關聯。</p>
         </div>
         <span class="card-badge">{{ frontend_users|length }} USERS</span>

@@ -23,10 +23,14 @@ class SpeakerDeviceAdmin(admin.ModelAdmin):
         "protocol",
         "sip_uri",
         "status",
+        "deployment_state",
+        "health_monitor_enabled",
         "is_active",
         "last_checked_at",
     )
     list_filter = (
+        "deployment_state",
+        "health_monitor_enabled",
         "status",
         "protocol",
         "network_mode",

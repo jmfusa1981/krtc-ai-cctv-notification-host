@@ -12,11 +12,12 @@ logger = logging.getLogger(__name__)
 
 _start_lock = threading.Lock()
 _started = False
+_thread = None
 
 
 def start_inference_polling() -> bool:
     """Start the inference-host polling loop once in the Django process."""
-    global _started
+    global _started, _thread
 
     with _start_lock:
         if _started:
@@ -29,7 +30,12 @@ def start_inference_polling() -> bool:
             daemon=True,
         )
         thread.start()
+        _thread = thread
         return True
+
+
+def inference_polling_thread_alive() -> bool:
+    return bool(_thread and _thread.is_alive())
 
 
 def _run_polling_command() -> None:

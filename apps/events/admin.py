@@ -4,6 +4,7 @@ from .models import (
     EventRecordingEvidence,
     CrowdFlowSetting,
     CrowdFlowRecord,
+    ZoneCountState,
 )
 
 
@@ -117,3 +118,40 @@ class CrowdFlowRecordAdmin(admin.ModelAdmin):
     )
 
     ordering = ("-recorded_at", "-created_at")
+
+@admin.register(ZoneCountState)
+class ZoneCountStateAdmin(admin.ModelAdmin):
+    list_display = (
+        "inference_host",
+        "source_camera_id",
+        "roi_id",
+        "count",
+        "threshold",
+        "source_updated_at",
+        "received_at",
+    )
+    list_filter = ("inference_host", "station")
+    search_fields = ("source_camera_id", "roi_id", "station", "camera__camera_code", "camera__name")
+    readonly_fields = (
+        "inference_host",
+        "camera",
+        "source_camera_id",
+        "station",
+        "roi_id",
+        "count",
+        "threshold",
+        "source_updated_at",
+        "received_at",
+        "updated_at",
+    )
+    ordering = ("inference_host__host_code", "source_camera_id", "roi_id")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+

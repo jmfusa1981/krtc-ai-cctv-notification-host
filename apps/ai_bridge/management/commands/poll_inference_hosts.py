@@ -10,6 +10,8 @@ from django.db import close_old_connections
 from django.utils import timezone
 
 from apps.ai_bridge.models import InferenceConnectionState, InferenceHost
+from apps.station_api.device_faults import recover_device_fault, report_device_fault
+from apps.station_api.models import DeviceFaultLog
 from apps.ai_bridge.services.event_importer import (
     EventImporter,
     ImportSummary,
@@ -351,6 +353,25 @@ class Command(BaseCommand):
 
             host.save(update_fields=update_fields)
 
+            if not skip_health_check:
+                try:
+                    fault_code = (
+                        "INFERENCE_HEALTH_BAD_STATUS"
+                        if str(exc).startswith("Health 狀態異常")
+                        else "INFERENCE_HEALTH_UNAVAILABLE"
+                    )
+                    report_device_fault(
+                        device_type=DeviceFaultLog.DEVICE_INFERENCE_HOST,
+                        device_code=host.host_code,
+                        device_name=host.name,
+                        area="",
+                        fault_code=fault_code,
+                        fault_description=str(exc)[:500],
+                        severity=DeviceFaultLog.SEVERITY_CRITICAL,
+                    )
+                except Exception:
+                    pass
+
             self.stdout.write(
                 self.style.ERROR(
                     f"  FAILED：{exc}"
@@ -376,6 +397,21 @@ class Command(BaseCommand):
                 update_fields.append("application_version")
 
         host.save(update_fields=update_fields)
+
+        if not skip_health_check:
+            try:
+                recover_device_fault(
+                    device_type=DeviceFaultLog.DEVICE_INFERENCE_HOST,
+                    device_code=host.host_code,
+                    fault_code="INFERENCE_HEALTH_UNAVAILABLE",
+                )
+                recover_device_fault(
+                    device_type=DeviceFaultLog.DEVICE_INFERENCE_HOST,
+                    device_code=host.host_code,
+                    fault_code="INFERENCE_HEALTH_BAD_STATUS",
+                )
+            except Exception:
+                pass
 
         items = payload.get("items", [])
 

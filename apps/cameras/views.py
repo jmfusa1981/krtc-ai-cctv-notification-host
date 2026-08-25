@@ -4,7 +4,11 @@ import cv2
 from django.http import Http404, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 
+from apps.station_api.device_faults import recover_device_fault, report_device_fault
+from apps.station_api.models import DeviceFaultLog
+
 from .models import Camera
+from .stream_pool import acquire_camera_stream
 
 
 def camera_list_api(request):
@@ -51,63 +55,34 @@ def camera_list_api(request):
 
 def generate_mjpeg_frames(camera, profile="wall"):
     """
-    Read RTSP stream from an IP camera and yield MJPEG frames.
+    Yield MJPEG frames from a shared RTSP capture.
 
-    The monitor wall uses bounded output profiles for 1 / 4 / 9 / 16
-    layouts so that each grid size balances image detail and loading speed.
+    The shared capture remains alive for 15 seconds after the last browser
+    client disconnects, so a user who leaves and returns to the monitor wall
+    within the grace period can resume without reopening the RTSP channel.
     """
 
-    rtsp_url = camera.rtsp_url
-
-    if not rtsp_url:
+    if not camera.rtsp_url:
         return
 
     profiles = {
-        "single": {
-            "fps": 15,
-            "max_width": 1280,
-            "jpeg_quality": 80,
-        },
-        "grid4": {
-            "fps": 12,
-            "max_width": 960,
-            "jpeg_quality": 78,
-        },
-        "grid9": {
-            "fps": 8,
-            "max_width": 640,
-            "jpeg_quality": 65,
-        },
-        "grid16": {
-            "fps": 6,
-            "max_width": 480,
-            "jpeg_quality": 60,
-        },
+        "single": {"fps": 15, "max_width": 1280, "jpeg_quality": 80},
+        "grid4": {"fps": 12, "max_width": 960, "jpeg_quality": 78},
+        "grid9": {"fps": 8, "max_width": 640, "jpeg_quality": 65},
+        "grid16": {"fps": 6, "max_width": 480, "jpeg_quality": 60},
     }
     stream_profile = profiles.get(profile, profiles["grid4"])
     frame_interval = 1.0 / stream_profile["fps"]
-
-    cap = cv2.VideoCapture(rtsp_url)
-
-    if not cap.isOpened():
-        cap.release()
-        return
-
-    # Keep the decoder buffer small when the backend supports it.  For a
-    # monitoring wall, the newest frame is more useful than old buffered data.
-    try:
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    except Exception:
-        pass
-
+    shared_stream = acquire_camera_stream(camera.id, camera.rtsp_url)
+    last_version = 0
     next_frame_at = time.monotonic()
 
     try:
         while True:
-            success, frame = cap.read()
-
-            if not success:
-                time.sleep(0.1)
+            last_version, frame = shared_stream.wait_for_frame(last_version, timeout=2.0)
+            if frame is None:
+                if shared_stream.stopped:
+                    return
                 continue
 
             now = time.monotonic()
@@ -117,7 +92,6 @@ def generate_mjpeg_frames(camera, profile="wall"):
 
             frame_height, frame_width = frame.shape[:2]
             max_width = stream_profile["max_width"]
-
             if frame_width > max_width:
                 scale = max_width / float(frame_width)
                 resized_height = max(1, int(frame_height * scale))
@@ -132,21 +106,17 @@ def generate_mjpeg_frames(camera, profile="wall"):
                 frame,
                 [cv2.IMWRITE_JPEG_QUALITY, stream_profile["jpeg_quality"]],
             )
-
             if not encode_success:
                 continue
 
-            frame_bytes = buffer.tobytes()
-
             yield (
                 b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n" +
-                frame_bytes +
-                b"\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n"
+                + buffer.tobytes()
+                + b"\r\n"
             )
-
     finally:
-        cap.release()
+        shared_stream.unsubscribe()
 
 
 def camera_mjpeg_stream(request, camera_id):
@@ -233,6 +203,19 @@ def camera_stream_check(request, camera_id):
         camera.last_checked_at = timezone.now()
         camera.save(update_fields=["status", "is_online", "last_checked_at"])
 
+        try:
+            report_device_fault(
+                device_type=DeviceFaultLog.DEVICE_CAMERA,
+                device_code=camera.camera_code,
+                device_name=camera.name,
+                area=camera.area or "",
+                fault_code="CAMERA_RTSP_NOT_CONFIGURED",
+                fault_description="Camera does not have an RTSP URL.",
+                severity=DeviceFaultLog.SEVERITY_WARNING,
+            )
+        except Exception:
+            pass
+
         return JsonResponse(
             {
                 "success": False,
@@ -269,6 +252,20 @@ def camera_stream_check(request, camera_id):
         camera.last_checked_at = timezone.now()
         camera.save(update_fields=["status", "is_online", "last_checked_at"])
 
+        try:
+            recover_device_fault(
+                device_type=DeviceFaultLog.DEVICE_CAMERA,
+                device_code=camera.camera_code,
+                fault_code="CAMERA_RTSP_NOT_CONFIGURED",
+            )
+            recover_device_fault(
+                device_type=DeviceFaultLog.DEVICE_CAMERA,
+                device_code=camera.camera_code,
+                fault_code="CAMERA_RTSP_UNAVAILABLE",
+            )
+        except Exception:
+            pass
+
         return JsonResponse(
             {
                 "success": True,
@@ -286,6 +283,19 @@ def camera_stream_check(request, camera_id):
     camera.is_online = False
     camera.last_checked_at = timezone.now()
     camera.save(update_fields=["status", "is_online", "last_checked_at"])
+
+    try:
+        report_device_fault(
+            device_type=DeviceFaultLog.DEVICE_CAMERA,
+            device_code=camera.camera_code,
+            device_name=camera.name,
+            area=camera.area or "",
+            fault_code="CAMERA_RTSP_UNAVAILABLE",
+            fault_description="Unable to open RTSP stream or read frame.",
+            severity=DeviceFaultLog.SEVERITY_WARNING,
+        )
+    except Exception:
+        pass
 
     return JsonResponse(
         {

@@ -155,6 +155,26 @@ class InferenceClient:
 
         return payload
 
+    def get_zone_counts(
+        self,
+        *,
+        camera_id: str | None = None,
+        station: str | None = None,
+    ) -> dict[str, Any]:
+        """Read current per-zone people counts from API v1.3+."""
+        params = {}
+        if camera_id:
+            params["camera_id"] = camera_id
+        if station:
+            params["station"] = station
+
+        payload = self._get_json("/api/notify/zone_counts", params=params or None)
+        self._validate_collection_response(
+            payload=payload,
+            endpoint="/api/notify/zone_counts",
+        )
+        return payload
+
     def get_event(self, event_id: int | str) -> dict[str, Any]:
         """
         呼叫 GET /api/events/{id}。

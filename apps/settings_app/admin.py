@@ -29,6 +29,7 @@ class UIConfigurationAdmin(admin.ModelAdmin):
             "登入頁",
             {
                 "fields": (
+                    "login_theme",
                     "login_background_enabled",
                     "login_background",
                     "login_overlay_opacity",

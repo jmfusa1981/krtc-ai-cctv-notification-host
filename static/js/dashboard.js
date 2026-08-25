@@ -953,16 +953,16 @@ document.addEventListener("DOMContentLoaded", function () {
         const cells = [];
 
         pageItems.forEach(function (item) {
-            const cameraCode = escapeAreaFlowText(item.camera_code);
-            const cameraArea = escapeAreaFlowText(item.camera_area, "未設定區域");
+            const zoneLabel = escapeAreaFlowText(item.zone_label, "未命名區域");
+            const cameraCode = escapeAreaFlowText(item.camera_code ?? item.camera_id, "--");
             const hasCount = item.count !== null && item.count !== undefined;
             const countText = hasCount ? `${item.count} 人` : "--";
             const abnormalClass = item.is_abnormal ? " is-abnormal" : "";
 
             cells.push(`
-                <div class="area-flow-cell${abnormalClass}" data-camera-id="${escapeHtml(item.camera_id)}">
-                    <span class="area-flow-camera">${escapeHtml(cameraCode)}</span>
-                    <span class="area-flow-area" title="${escapeHtml(cameraArea)}">${escapeHtml(cameraArea)}</span>
+                <div class="area-flow-cell${abnormalClass}" data-zone-key="${escapeHtml(item.zone_key ?? "")}" title="${escapeHtml(cameraCode)}">
+                    <span class="area-flow-camera">${escapeHtml(zoneLabel)}</span>
+                    <span class="area-flow-area">${escapeHtml(cameraCode)}</span>
                     <strong class="area-flow-count">${escapeHtml(countText)}</strong>
                 </div>
             `);
@@ -972,7 +972,7 @@ document.addEventListener("DOMContentLoaded", function () {
             cells.push(`
                 <div class="area-flow-cell is-empty">
                     <span class="area-flow-camera">--</span>
-                    <span class="area-flow-area">${areaFlowItems.length ? "等待攝影機資料" : "尚無上線攝影機"}</span>
+                    <span class="area-flow-area">${areaFlowItems.length ? "等待區域資料" : "尚無區域人流資料"}</span>
                     <strong class="area-flow-count">--</strong>
                 </div>
             `);
@@ -983,7 +983,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (areaFlowPageStatus) {
             areaFlowPageStatus.textContent = totalPages > 1
                 ? `${areaFlowPageIndex + 1}/${totalPages}`
-                : `${areaFlowItems.length} 台上線`;
+                : `${areaFlowItems.length} 個區域`;
         }
     }
 
@@ -1011,7 +1011,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const nextItems = Array.isArray(items) ? items : [];
         const nextSignature = nextItems.map(function (item) {
-            return String(item.camera_id ?? item.camera_code ?? "");
+            return String(item.zone_key ?? `${item.camera_id ?? ""}:${item.zone_label ?? ""}`);
         }).join("|");
 
         areaFlowItems = nextItems;

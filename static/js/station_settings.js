@@ -45,6 +45,22 @@ document.addEventListener("DOMContentLoaded", () => {
         return `${isSuccess ? "測試成功" : "測試失敗"}｜${data.message || "未回傳訊息"}${elapsed}${testedAt}`;
     }
 
+    function updateDynamicStatus(button, data) {
+        const statusTargetId = button.dataset.statusTarget || "";
+        const timeTargetId = button.dataset.statusTimeTarget || "";
+        if (statusTargetId && data.status) {
+            const statusTarget = document.getElementById(statusTargetId);
+            if (statusTarget) {
+                statusTarget.className = `status status-${data.status}`;
+                statusTarget.textContent = data.status_label || (data.status === "online" ? "連線正常" : "離線");
+            }
+        }
+        if (timeTargetId && data.tested_at) {
+            const timeTarget = document.getElementById(timeTargetId);
+            if (timeTarget) timeTarget.textContent = data.tested_at;
+        }
+    }
+
     function showResult(data, isSuccess, targetId = "") {
         const message = formatResult(data, isSuccess);
         if (resultBox) {
@@ -85,6 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             const data = await response.json();
             const success = response.ok && data.success;
+            updateDynamicStatus(button, data);
             if (showToast) {
                 showResult(data, success, button.dataset.resultTarget || "");
             } else if (button.dataset.resultTarget) {
@@ -214,5 +231,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 submitButton.textContent = "儲存中…";
             }
         });
+    }
+
+    // Preserve the operator's current viewport after deleting a device.
+    document.querySelectorAll(".preserve-scroll-delete-form").forEach((form) => {
+        form.addEventListener("submit", () => {
+            const field = form.querySelector('input[name="return_scroll_y"]');
+            if (field) field.value = String(Math.max(0, Math.round(window.scrollY || 0)));
+        });
+    });
+
+    const scrollParam = new URLSearchParams(window.location.search).get("scroll_y");
+    if (scrollParam !== null) {
+        const targetY = Number.parseInt(scrollParam, 10);
+        if (Number.isFinite(targetY) && targetY >= 0) {
+            requestAnimationFrame(() => window.scrollTo({ top: targetY, left: 0, behavior: "auto" }));
+        }
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("scroll_y");
+        window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
     }
 });

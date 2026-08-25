@@ -1,0 +1,462 @@
+:root {
+    --navy: #102a43;
+    --blue: #0e5aa7;
+    --cyan: #5fbde9;
+    --line: #d8e1ea;
+    --surface: #ffffff;
+    --background: #eef3f7;
+    --text: #1c2b39;
+    --muted: #66788a;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-width: 1280px;
+    font-family: "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif;
+    color: var(--text);
+    background: var(--background);
+}
+
+.system-log-shell {
+    min-width: 1280px;
+    min-height: 100vh;
+    padding: 12px;
+}
+
+.system-log-banner {
+    position: static;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    height: 128px;
+    min-height: 128px;
+    max-height: 128px;
+    margin-top: 10px;
+    padding: 16px 20px;
+    border-radius: 14px;
+    color: #fff;
+    background: #0068b7;
+    overflow: hidden;
+    box-sizing: border-box;
+    text-align: left;
+}
+
+.system-log-banner__content {
+    display: block;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+}
+
+.system-log-banner h1 {
+    margin: 0;
+    padding: 0;
+    color: #fff;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: 0;
+}
+
+.system-log-banner p {
+    margin: 6px 0 0;
+    padding: 0;
+    color: #eaf4ff;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.35;
+}
+
+.system-log-main {
+    padding: 10px 0 20px;
+}
+
+.filter-panel,
+.system-log-table-panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(16, 42, 67, .06);
+}
+
+.filter-panel {
+    padding: 16px;
+    margin-bottom: 10px;
+}
+
+.summary-inline {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 0;
+    margin: -4px 0 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e4ebf1;
+}
+
+.summary-item {
+    min-height: 48px;
+    padding: 2px 18px;
+    border-right: 1px solid #e4ebf1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.summary-item:first-child {
+    padding-left: 0;
+}
+
+.summary-item:last-child {
+    border-right: 0;
+}
+
+.summary-item span {
+    color: #66788a;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.summary-item strong {
+    color: #163b63;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.summary-active strong {
+    color: #b54708;
+}
+
+.summary-critical strong {
+    color: #b42318;
+}
+
+.summary-recovered strong {
+    color: #067647;
+}
+
+/*
+V6.4.5.3:
+- six filters remain on one row
+- keyword gets extra width
+- date controls are slightly narrower
+*/
+.filter-grid {
+    display: grid;
+    grid-template-columns:
+        minmax(118px, 0.85fr)
+        minmax(118px, 0.85fr)
+        minmax(118px, 0.85fr)
+        minmax(320px, 1.90fr)
+        minmax(135px, 0.78fr)
+        minmax(135px, 0.78fr);
+    gap: 12px;
+    align-items: end;
+}
+
+.filter-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.filter-grid label span {
+    font-size: 12px;
+    font-weight: 800;
+    color: #465d70;
+    white-space: nowrap;
+}
+
+.filter-grid input,
+.filter-grid select {
+    height: 38px;
+    border: 1px solid #bdcbd7;
+    border-radius: 7px;
+    padding: 0 10px;
+    background: #fff;
+    font: inherit;
+    font-size: 13px;
+    min-width: 0;
+    width: 100%;
+}
+
+.filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 14px;
+    min-height: 36px;
+}
+
+.action-spacer {
+    flex: 1 1 auto;
+}
+
+.action-button {
+    height: 36px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.action-primary {
+    background: var(--blue);
+    color: #fff;
+}
+
+.action-secondary {
+    background: #fff;
+    color: #43576a;
+    border-color: #afbdca;
+}
+
+.result-count {
+    margin-left: auto;
+    color: #66788a;
+    font-size: 12px;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.system-log-table-panel {
+    overflow: hidden;
+}
+
+.table-scroll {
+    overflow: auto;
+    max-height: calc(100vh - 420px);
+}
+
+.system-log-table {
+    width: 100%;
+    min-width: 1600px;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.system-log-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 12px 10px;
+    text-align: left;
+    color: #fff;
+    background: #183f63;
+    white-space: nowrap;
+}
+
+.system-log-table td {
+    padding: 10px;
+    border-bottom: 1px solid #e4ebf1;
+    vertical-align: top;
+    background: #fff;
+}
+
+.system-log-table tbody tr:hover td {
+    background: #f4f9fd;
+}
+
+.system-log-table tbody tr.severity-critical td:first-child {
+    box-shadow: inset 3px 0 0 #b42318;
+}
+
+.system-log-table tbody tr.severity-warning td:first-child {
+    box-shadow: inset 3px 0 0 #b54708;
+}
+
+.system-log-table tbody tr.severity-info td:first-child {
+    box-shadow: inset 3px 0 0 #3538cd;
+}
+
+.time-cell {
+    white-space: nowrap;
+}
+
+.device-cell strong {
+    display: block;
+    color: #0b5ca7;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.device-cell small {
+    display: block;
+    margin-top: 4px;
+    color: #66788a;
+    line-height: 1.35;
+}
+
+.fault-cell {
+    max-width: 430px;
+}
+
+.fault-cell code {
+    display: block;
+    margin-bottom: 4px;
+    color: #0b5ca7;
+    font: 700 11px Consolas, monospace;
+    white-space: nowrap;
+}
+
+.fault-cell span {
+    display: block;
+    line-height: 1.45;
+}
+
+.badge {
+    display: inline-flex;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.status-active {
+    background: #fff1c9;
+    color: #7b5400;
+}
+
+.status-recovered {
+    background: #d9f5e6;
+    color: #16633c;
+}
+
+.severity-info {
+    background: #dceeff;
+    color: #075086;
+}
+
+.severity-warning {
+    background: #fff1c9;
+    color: #7b5400;
+}
+
+.severity-critical {
+    background: #ffe0dd;
+    color: #963429;
+}
+
+.count-cell {
+    text-align: center;
+    font-weight: 800;
+}
+
+.empty-row {
+    text-align: center;
+    padding: 40px !important;
+    color: var(--muted);
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 14px;
+    border-top: 1px solid var(--line);
+}
+
+.pagination a {
+    color: #0b5ca7;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+@media (max-width: 1600px) {
+    .summary-item {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .filter-grid {
+        grid-template-columns:
+            minmax(108px, 0.82fr)
+            minmax(108px, 0.82fr)
+            minmax(108px, 0.82fr)
+            minmax(270px, 1.65fr)
+            minmax(125px, 0.75fr)
+            minmax(125px, 0.75fr);
+        gap: 10px;
+    }
+}
+
+
+/* KRTC V6.4.6.1 - System Log viewport fit */
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+}
+
+.system-log-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.system-log-shell > .system-header,
+.system-log-shell > .system-log-banner {
+    flex: 0 0 auto;
+}
+
+.system-log-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+    overflow: hidden;
+}
+
+.system-log-main > .filter-panel {
+    flex: 0 0 auto;
+}
+
+.system-log-table-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.system-log-table-panel > .table-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+}
+
+.system-log-table-panel > .pagination {
+    flex: 0 0 auto;
+}
+
+/* KRTC V6.5 - System Log category / security audit */
+.log-category-tabs { display:flex; gap:8px; flex:0 0 auto; margin:10px 0 0; }
+.log-category-tab { display:inline-flex; align-items:center; min-height:36px; padding:0 16px; border:1px solid #afbdca; border-radius:8px; background:#fff; color:#43576a; font-size:12px; font-weight:800; text-decoration:none; }
+.log-category-tab.is-active { background:#0e5aa7; border-color:#0e5aa7; color:#fff; }
+.audit-filter-grid { grid-template-columns:minmax(120px,.8fr) minmax(210px,1.25fr) minmax(320px,1.8fr) minmax(140px,.8fr) minmax(140px,.8fr); }
+.audit-code { display:block; margin-top:3px; color:#66788a; font-size:10px; font-weight:500; }
+.audit-result-success { background:#d9f5e6; color:#16633c; }
+.audit-result-failed { background:#ffe0dd; color:#963429; }
+.audit-result-info { background:#dceeff; color:#075086; }

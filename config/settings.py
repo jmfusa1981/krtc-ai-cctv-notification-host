@@ -235,6 +235,23 @@ INFERENCE_POLL_STARTUP_DELAY_SECONDS = float(
     os.getenv("INFERENCE_POLL_STARTUP_DELAY_SECONDS", "2")
 )
 
+
+# API v1.5 zone-count current-state polling.
+# /api/notify/zone_counts is not an event stream; 15 seconds matches the source update cadence.
+ZONE_COUNT_POLL_AUTOSTART = (
+    os.getenv("ZONE_COUNT_POLL_AUTOSTART", "True").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+ZONE_COUNT_POLL_INTERVAL_SECONDS = float(
+    os.getenv("ZONE_COUNT_POLL_INTERVAL_SECONDS", "15")
+)
+ZONE_COUNT_POLL_STARTUP_DELAY_SECONDS = float(
+    os.getenv("ZONE_COUNT_POLL_STARTUP_DELAY_SECONDS", "4")
+)
+ZONE_COUNT_STALE_SECONDS = int(
+    os.getenv("ZONE_COUNT_STALE_SECONDS", "45")
+)
+
 # Inference WebSocket receiver. By default it starts with the Django server.
 # The standalone management command remains available for diagnostics.
 INFERENCE_WS_AUTOSTART = (
@@ -378,6 +395,34 @@ BROADCAST_SCHEDULER_RUNTIME_DIR = Path(
 )
 
 INFERENCE_HEALTH_STALE_SECONDS = int(os.getenv("INFERENCE_HEALTH_STALE_SECONDS", "20"))
+
+# V6.4.3 PAO internal service watchdog.
+# Complete Django process loss must be detected externally by OCC heartbeat timeout.
+PAO_SERVICE_WATCHDOG_ENABLED = (
+    os.getenv("PAO_SERVICE_WATCHDOG_ENABLED", "True").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+PAO_SERVICE_WATCHDOG_STARTUP_DELAY_SECONDS = int(
+    os.getenv("PAO_SERVICE_WATCHDOG_STARTUP_DELAY_SECONDS", "20")
+)
+PAO_SERVICE_WATCHDOG_INTERVAL_SECONDS = int(
+    os.getenv("PAO_SERVICE_WATCHDOG_INTERVAL_SECONDS", "30")
+)
+PAO_WATCHDOG_MONITOR_INFERENCE_POLLING = (
+    os.getenv("PAO_WATCHDOG_MONITOR_INFERENCE_POLLING", "True").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+PAO_WATCHDOG_MONITOR_BROADCAST_SCHEDULER = (
+    os.getenv("PAO_WATCHDOG_MONITOR_BROADCAST_SCHEDULER", "True").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+PAO_WATCHDOG_MONITOR_OCC_SYNC_SERVICE = (
+    os.getenv("PAO_WATCHDOG_MONITOR_OCC_SYNC_SERVICE", "False").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+PAO_WATCHDOG_BROADCAST_STALE_SECONDS = int(
+    os.getenv("PAO_WATCHDOG_BROADCAST_STALE_SECONDS", "60")
+)
 
 # Built-in frontend administrator (not Django Admin / superuser)
 KRTC_DEFAULT_ADMIN_ENABLED = os.getenv("KRTC_DEFAULT_ADMIN_ENABLED", "True").strip().lower() in {"1", "true", "yes", "on"}

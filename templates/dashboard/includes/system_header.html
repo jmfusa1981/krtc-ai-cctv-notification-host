@@ -27,6 +27,9 @@
             {% if current_page != "records" %}
                 <a href="{% url 'dashboard:event_record_list' %}" class="system-header__button system-header__button--cyan">事件紀錄</a>
             {% endif %}
+            {% if can_view_system_log_global and current_page != "system_log" %}
+                <a href="{% url 'dashboard:system_log_list' %}" class="system-header__button system-header__button--cyan">系統紀錄</a>
+            {% endif %}
         </div>
 
         <span class="system-header__divider" aria-hidden="true"></span>
@@ -43,7 +46,7 @@
         <span class="system-header__divider" aria-hidden="true"></span>
 
         <div class="system-header__nav-group">
-            {% if current_page != "settings" %}
+            {% if can_access_settings_global and current_page != "settings" %}
                 <a href="{% url 'settings_app:station_settings' %}" class="system-header__button system-header__button--navy">系統設定</a>
             {% endif %}
             {% if can_manage_accounts_global and current_page != "users" %}

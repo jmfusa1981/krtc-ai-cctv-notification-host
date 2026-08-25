@@ -20,7 +20,8 @@ from apps.events.models import Event
 from apps.notifications.models import SpeakerDevice
 from apps.settings_app.models import StationLocalSettings
 
-from .models import OccSyncLog, OccSyncState
+from .device_faults import recover_device_fault, report_device_fault
+from .models import DeviceFaultLog, OccSyncLog, OccSyncState
 
 
 OCC_URL_VALIDATOR = URLValidator(schemes=["http", "https"])
@@ -230,12 +231,35 @@ class OccSyncClient:
         state.last_error = ""
         state.save(update_fields=["last_success_at", "consecutive_failures", "last_error"])
 
+        try:
+            recover_device_fault(
+                device_type=DeviceFaultLog.DEVICE_OCC_NETWORK,
+                device_code=settings.KRTC_NOTIFICATION_HOST_CODE or "PAO",
+                fault_code="OCC_SYNC_UNAVAILABLE",
+            )
+        except Exception:
+            pass
+
     @staticmethod
     def _mark_failure(error):
         state = OccSyncState.load()
         state.consecutive_failures += 1
         state.last_error = error[:500]
         state.save(update_fields=["consecutive_failures", "last_error"])
+
+        if state.consecutive_failures >= 3:
+            try:
+                report_device_fault(
+                    device_type=DeviceFaultLog.DEVICE_OCC_NETWORK,
+                    device_code=settings.KRTC_NOTIFICATION_HOST_CODE or "PAO",
+                    device_name="PAO to OCC synchronization",
+                    area="PAO/OCC",
+                    fault_code="OCC_SYNC_UNAVAILABLE",
+                    fault_description=error[:500],
+                    severity=DeviceFaultLog.SEVERITY_WARNING,
+                )
+            except Exception:
+                pass
 
     def send_heartbeat(self, forced_host_status=None):
         now = timezone.now()

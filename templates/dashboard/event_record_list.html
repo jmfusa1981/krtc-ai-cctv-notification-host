@@ -67,6 +67,7 @@
             text-align: left !important;
         }
     </style>
+    <link rel="stylesheet" href="{% static 'css/back_to_top.css' %}">
 </head>
 <body>
     <div class="record-shell">
@@ -255,5 +256,8 @@
     </dialog>
 
     <script src="{% static 'js/event_record_list.js' %}"></script>
+
+    <button type="button" class="krtc-back-to-top" data-krtc-back-to-top data-scroll-target=".table-scroll" aria-label="回到頂端">Top</button>
+    <script src="{% static 'js/back_to_top.js' %}"></script>
 </body>
 </html>

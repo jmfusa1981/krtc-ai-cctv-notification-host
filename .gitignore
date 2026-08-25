@@ -10,3 +10,5 @@ _update_backups/
 backups/
 logs/
 runtime/
+*.key
+*.key

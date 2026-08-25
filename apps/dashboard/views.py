@@ -56,6 +56,7 @@ Event = get_model_or_none("events", "Event")
 LocalAlarmPolicy = get_model_or_none("events", "LocalAlarmPolicy")
 CrowdFlowSetting = get_model_or_none("events", "CrowdFlowSetting")
 CrowdFlowRecord = get_model_or_none("events", "CrowdFlowRecord")
+ZoneCountState = get_model_or_none("events", "ZoneCountState")
 
 SpeakerDevice = get_model_or_none("notifications", "SpeakerDevice")
 AudioFile = get_model_or_none("notifications", "AudioFile")
@@ -497,63 +498,92 @@ def get_crowd_flow_records():
     )
 
 
-def get_area_crowd_flow_items():
-    """Return the latest per-camera people count for online cameras.
+def _aggregate_zone_count_rows(rows):
+    """Aggregate current ZoneCountState rows by station + roi_id.
 
-    The Dashboard displays six items per page. Cameras without a current
-    CrowdFlowRecord remain visible with a null count so the UI can show ``--``.
+    One physical zone can be observed by multiple cameras. In that case PAO
+    sums the counts before rendering the Dashboard. Camera IDs remain secondary
+    source metadata.
     """
-    if Camera is None:
-        return []
+    groups = {}
+    for row in rows:
+        zone_label = (row.roi_id or "").strip() or "未命名區域"
+        station = (row.station or "").strip()
+        key = (station, zone_label)
+        group = groups.setdefault(
+            key,
+            {
+                "station": station,
+                "zone_label": zone_label,
+                "count": 0,
+                "thresholds": [],
+                "source_cameras": [],
+                "camera_codes": [],
+                "latest_at": None,
+            },
+        )
 
-    field_names = {field.name for field in Camera._meta.get_fields()}
-    queryset = Camera.objects.all()
+        group["count"] += int(row.count or 0)
+        if row.threshold is not None:
+            group["thresholds"].append(int(row.threshold))
 
-    if "is_active" in field_names:
-        queryset = queryset.filter(is_active=True)
+        source_id = (row.source_camera_id or "").strip()
+        if source_id and source_id not in group["source_cameras"]:
+            group["source_cameras"].append(source_id)
 
-    online_filter = Q()
-    has_online_filter = False
+        local_code = getattr(row.camera, "camera_code", "") if getattr(row, "camera_id", None) else ""
+        display_code = (local_code or source_id).strip()
+        if display_code and display_code not in group["camera_codes"]:
+            group["camera_codes"].append(display_code)
 
-    if "status" in field_names:
-        online_filter |= Q(status="online")
-        has_online_filter = True
+        current_at = row.source_updated_at or row.received_at
+        if current_at is not None and (group["latest_at"] is None or current_at > group["latest_at"]):
+            group["latest_at"] = current_at
 
-    if "is_online" in field_names:
-        online_filter |= Q(is_online=True)
-        has_online_filter = True
-
-    if has_online_filter:
-        queryset = queryset.filter(online_filter)
-
-    cameras = list(queryset.order_by("camera_code", "id"))
     items = []
+    for (station, zone_label), group in groups.items():
+        threshold = max(group["thresholds"]) if group["thresholds"] else None
+        camera_codes = group["camera_codes"]
+        if len(camera_codes) <= 2:
+            camera_summary = " + ".join(camera_codes) or "--"
+        else:
+            camera_summary = f"{len(camera_codes)} 台攝影機"
 
-    for camera in cameras:
-        record = None
-        if CrowdFlowRecord is not None:
-            record = (
-                CrowdFlowRecord.objects.filter(camera_id=camera.id)
-                .order_by("-recorded_at", "-created_at", "-id")
-                .first()
-            )
-
+        latest_at = group["latest_at"]
         items.append(
             {
-                "camera_id": camera.id,
-                "camera_code": getattr(camera, "camera_code", f"CAM-{camera.id}"),
-                "camera_area": getattr(camera, "area", "") or getattr(camera, "name", ""),
-                "count": getattr(record, "count", None) if record else None,
-                "is_abnormal": bool(getattr(record, "is_abnormal", False)) if record else False,
+                "zone_key": f"{station}:{zone_label}",
+                "zone_label": zone_label,
+                "camera_id": ",".join(group["source_cameras"]),
+                "camera_code": camera_summary,
+                "source_cameras": list(group["source_cameras"]),
+                "station": station,
+                "count": group["count"],
+                "threshold": threshold,
+                "is_abnormal": threshold is not None and group["count"] >= threshold,
                 "recorded_at": (
-                    timezone.localtime(getattr(record, "recorded_at")).strftime("%Y-%m-%d %H:%M:%S")
-                    if record is not None and getattr(record, "recorded_at", None)
-                    else None
+                    timezone.localtime(latest_at).strftime("%Y-%m-%d %H:%M:%S")
+                    if latest_at else ""
                 ),
             }
         )
 
-    return items
+    return sorted(items, key=lambda item: (item["station"], item["zone_label"]))
+
+
+def get_area_crowd_flow_items():
+    """Return fresh zone telemetry aggregated by station + Zone label."""
+    if ZoneCountState is None:
+        return []
+
+    stale_seconds = max(15, int(getattr(settings, "ZONE_COUNT_STALE_SECONDS", 45)))
+    fresh_after = timezone.now() - timedelta(seconds=stale_seconds)
+    rows = list(
+        ZoneCountState.objects.select_related("camera", "inference_host")
+        .filter(received_at__gte=fresh_after)
+        .order_by("station", "roi_id", "source_camera_id")
+    )
+    return _aggregate_zone_count_rows(rows)
 
 
 def get_crowd_flow_summary():

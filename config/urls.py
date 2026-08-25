@@ -89,3 +89,8 @@ if settings.DEBUG:
         settings.MEDIA_URL,
         document_root=settings.MEDIA_ROOT,
     )
+
+# KRTC V6.4.6.2 - release-safe hidden error handlers.
+handler404 = "config.error_views.hidden_forbidden"
+handler403 = "config.error_views.hidden_forbidden"
+

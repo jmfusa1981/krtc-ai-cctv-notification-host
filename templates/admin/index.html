@@ -1,0 +1,72 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/dashboard.css' %}">
+<style>
+  .krtc-security-module { margin-bottom: 18px; }
+  .krtc-security-module caption { background: var(--primary); }
+  .krtc-security-note { color: var(--body-quiet-color); font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block coltype %}colMS{% endblock %}
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if user.is_superuser %}
+  <div class="app-security module krtc-security-module">
+    <table>
+      <caption>安全管理</caption>
+      <tbody>
+        <tr class="model-superuser-usb-key">
+          <th scope="row">
+            <a href="{% url 'superuser_usb_manager' %}">Superuser USB Key 管理</a>
+          </th>
+          <td class="krtc-security-note">建立、登錄、驗證或停用本機 Superuser USB 二次驗證</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+</div>
+{% endblock %}
+
+{% block sidebar %}
+<div id="content-related">
+    <div class="module" id="recent-actions-module">
+        <h2>{% translate 'Recent actions' %}</h2>
+        <h3>{% translate 'My actions' %}</h3>
+        {% load log %}
+        {% get_admin_log 10 as admin_log for_user user %}
+        {% if not admin_log %}
+        <p>{% translate 'None available' %}</p>
+        {% else %}
+        <ul class="actionlist">
+        {% for entry in admin_log %}
+          <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
+            <span class="visually-hidden">{% if entry.is_addition %}{% translate 'Added:' %}{% elif entry.is_change %}{% translate 'Changed:' %}{% elif entry.is_deletion %}{% translate 'Deleted:' %}{% endif %}</span>
+            {% if entry.is_deletion or not entry.get_admin_url %}
+              {{ entry.object_repr }}
+            {% else %}
+              <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
+            {% endif %}
+            <br>
+            {% if entry.content_type %}
+              <span class="mini quiet">{% filter capfirst %}{{ entry.content_type.name }}{% endfilter %}</span>
+            {% else %}
+              <span class="mini quiet">{% translate 'Unknown content' %}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

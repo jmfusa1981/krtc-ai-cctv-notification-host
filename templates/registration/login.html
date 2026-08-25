@@ -49,12 +49,23 @@
         }
 
         .login-card {
-            background: rgba(10, 21, 36, 0.92);
-            border: 1px solid rgba(148, 163, 184, 0.28);
             border-radius: 18px;
             padding: 32px;
-            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
             backdrop-filter: blur(12px);
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .login-theme-dark .login-card {
+            background: rgba(10, 21, 36, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+        }
+
+        .login-theme-bright .login-card {
+            background: rgba(255, 255, 255, 0.90);
+            border: 1px solid rgba(203, 213, 225, 0.92);
+            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+            color: #0f172a;
         }
 
         .system-label {
@@ -65,11 +76,19 @@
             text-transform: uppercase;
         }
 
+        .login-theme-bright .system-label {
+            color: #0284c7;
+        }
+
         h1 {
             margin: 0;
             font-size: 26px;
             line-height: 1.35;
             font-weight: 700;
+        }
+
+        .login-theme-bright h1 {
+            color: #0f172a;
         }
 
         .subtitle {
@@ -78,6 +97,10 @@
             color: #94a3b8;
             font-size: 14px;
             line-height: 1.6;
+        }
+
+        .login-theme-bright .subtitle {
+            color: #475569;
         }
 
         .form-group {
@@ -91,21 +114,42 @@
             color: #cbd5e1;
         }
 
+        .login-theme-bright label {
+            color: #334155;
+        }
+
         input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 12px 14px;
             border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .login-theme-dark input[type="text"],
+        .login-theme-dark input[type="password"] {
             border: 1px solid rgba(148, 163, 184, 0.35);
             background: rgba(15, 23, 42, 0.95);
             color: #f8fafc;
-            font-size: 15px;
-            outline: none;
+        }
+
+        .login-theme-bright input[type="text"],
+        .login-theme-bright input[type="password"] {
+            border: 1px solid #cbd5e1;
+            background: rgba(255, 255, 255, 0.96);
+            color: #0f172a;
         }
 
         input[type="text"]::placeholder,
         input[type="password"]::placeholder {
             color: #64748b;
+        }
+
+        .login-theme-bright input[type="text"]::placeholder,
+        .login-theme-bright input[type="password"]::placeholder {
+            color: #94a3b8;
         }
 
         input[type="text"]:focus,
@@ -123,6 +167,12 @@
             font-size: 14px;
             line-height: 1.5;
             margin-bottom: 18px;
+        }
+
+        .login-theme-bright .error-box {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #b91c1c;
         }
 
         .login-button {
@@ -155,11 +205,20 @@
             text-align: center;
         }
 
+        .login-theme-bright .hint {
+            color: #64748b;
+        }
+
         .footer-note {
             margin-top: 16px;
             text-align: center;
             color: #475569;
             font-size: 12px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+        }
+
+        .login-theme-bright .footer-note {
+            color: rgba(255, 255, 255, 0.88);
         }
 
         @media (max-width: 768px) {
@@ -181,7 +240,7 @@
         }
     </style>
 </head>
-<body>
+<body class="login-theme-{{ ui_config.login_theme|default:'dark' }}">
     <main class="login-page">
         <section class="login-card">
             <div class="system-label">KRTC AI CCTV</div>

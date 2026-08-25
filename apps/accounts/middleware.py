@@ -1,5 +1,5 @@
-from django.http import HttpResponseForbidden
 from apps.accounts.usb_key import verify_trusted_key
+from apps.accounts.permissions import hidden_forbidden_response
 
 
 class SuperuserUSBKeyMiddleware:
@@ -8,20 +8,42 @@ class SuperuserUSBKeyMiddleware:
 
     def __call__(self, request):
         user = getattr(request, "user", None)
-        if request.path.startswith("/admin/") and user and user.is_authenticated and user.is_superuser:
+        if request.path.startswith("/admin/"):
+            # The developer backend is intentionally undiscoverable.
+            # Anonymous and non-Superuser users receive the same hidden 404.
+            if not user or not user.is_authenticated or not user.is_superuser:
+                return hidden_forbidden_response()
+
             try:
                 from apps.settings_app.models import UIConfiguration
                 config = UIConfiguration.load()
                 required = bool(config.superuser_usb_required)
                 digest = (config.superuser_usb_token_sha256 or "").strip()
             except Exception:
-                required = False
+                required = True
                 digest = ""
+
             if required:
                 ok, _ = verify_trusted_key(digest)
                 if not ok:
-                    return HttpResponseForbidden(
-                        "Superuser USB Key 未插入或驗證失敗。請插入已授權的 KRTC Master USB Key 後重新整理。",
-                        content_type="text/plain; charset=utf-8",
-                    )
-        return self.get_response(request)
+                    return hidden_forbidden_response()
+
+        response = self.get_response(request)
+
+        # KRTC V6.4.6.2 - never expose Django DEBUG 404 route details.
+        # Unknown URLs use the same minimal response in development and release builds.
+        if response.status_code == 404:
+            return hidden_forbidden_response()
+
+        # Protected backend/frontend paths also hide authorization failures.
+        hidden_prefixes = (
+            "/admin/",
+            "/dashboard/settings/",
+            "/dashboard/system-log/",
+        )
+        if response.status_code == 403 and request.path.startswith(hidden_prefixes):
+            return hidden_forbidden_response()
+
+        return response
+
+# KRTC V6.4.6.2 - Security Admin Hardening

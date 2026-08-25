@@ -1,3 +1,5 @@
+from django.http import HttpResponse
+
 ROLE_OPERATOR = "Operator"
 ROLE_ADMINISTRATOR = "Administrator"
 ROLE_MAINTAINER = "Maintainer"
@@ -52,3 +54,21 @@ def can_manage_ai_settings(user):
 def can_access_django_admin(user):
     """Django admin is reserved for technical superusers only."""
     return bool(user and user.is_authenticated and user.is_superuser)
+
+
+# KRTC V6.4.6.1 - hide protected backend routes from unauthorized users
+def hidden_forbidden_response():
+    return HttpResponse(
+        "404 forbidden",
+        status=404,
+        content_type="text/plain; charset=utf-8",
+    )
+
+SECURITY_AUDIT_VIEW_ROLES = {
+    ROLE_ADMINISTRATOR,
+}
+
+
+def can_view_security_audit(user):
+    """Security/audit records are limited to Administrator and Superuser."""
+    return user_has_any_role(user, SECURITY_AUDIT_VIEW_ROLES)

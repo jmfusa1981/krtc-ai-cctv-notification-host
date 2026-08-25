@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統紀錄｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/system_log_list.css' %}">
+    <link rel="stylesheet" href="{% static 'css/back_to_top.css' %}">
+</head>
+<body>
+<div class="system-log-shell">
+{% include "dashboard/includes/system_header.html" with current_page="system_log" page_title="系統紀錄" show_dashboard_status=True hide_mode_badge=True show_home_button=True %}
+<section class="system-log-banner"><div class="system-log-banner__content"><h1>系統紀錄</h1><p>{% if category == 'security' %}登入、權限與安全操作稽核｜唯讀查詢{% else %}設備異常與恢復紀錄｜唯讀查詢{% endif %}</p></div></section>
+<main class="system-log-main">
+<div class="log-category-tabs">
+<a class="log-category-tab {% if category == 'device' %}is-active{% endif %}" href="{% url 'dashboard:system_log_list' %}?category=device">設備與服務紀錄</a>
+{% if can_view_security_audit %}<a class="log-category-tab {% if category == 'security' %}is-active{% endif %}" href="{% url 'dashboard:system_log_list' %}?category=security">安全稽核紀錄</a>{% endif %}
+</div>
+<form method="get" class="filter-panel"><input type="hidden" name="category" value="{{ category }}">
+{% if category == 'security' %}
+<div class="summary-inline"><div class="summary-item"><span>全部紀錄</span><strong>{{ summary.total }}</strong></div><div class="summary-item summary-recovered"><span>成功</span><strong>{{ summary.success }}</strong></div><div class="summary-item summary-critical"><span>失敗</span><strong>{{ summary.failed }}</strong></div><div class="summary-item summary-active"><span>登入失敗</span><strong>{{ summary.login_failed }}</strong></div></div>
+<div class="filter-grid audit-filter-grid">
+<label><span>結果</span><select name="result"><option value="">全部</option>{% for value,label in security_result_choices %}<option value="{{ value }}" {% if selected_result == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label><span>動作</span><select name="action"><option value="">全部</option>{% for value,label in security_action_choices %}<option value="{{ value }}" {% if selected_action == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label><span>關鍵字</span><input name="q" value="{{ keyword }}" placeholder="帳號、姓名、角色、IP、內容"></label>
+<label><span>開始日期</span><input type="date" name="date_from" value="{{ date_from }}"></label>
+<label><span>結束日期</span><input type="date" name="date_to" value="{{ date_to }}"></label>
+</div>
+{% else %}
+<div class="summary-inline"><div class="summary-item"><span>全部紀錄</span><strong>{{ summary.total }}</strong></div><div class="summary-item summary-active"><span>異常中</span><strong>{{ summary.active }}</strong></div><div class="summary-item summary-critical"><span>嚴重異常</span><strong>{{ summary.critical_active }}</strong></div><div class="summary-item summary-recovered"><span>已恢復</span><strong>{{ summary.recovered }}</strong></div></div>
+<div class="filter-grid"><label><span>狀態</span><select name="status"><option value="">全部</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label><span>嚴重度</span><select name="severity"><option value="">全部</option>{% for value,label in severity_choices %}<option value="{{ value }}" {% if selected_severity == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label><span>設備類型</span><select name="device_type"><option value="">全部</option>{% for value,label in device_type_choices %}<option value="{{ value }}" {% if selected_device_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label><span>關鍵字</span><input name="q" value="{{ keyword }}" placeholder="設備編號、名稱、fault code、故障內容"></label><label><span>開始日期</span><input type="date" name="date_from" value="{{ date_from }}"></label><label><span>結束日期</span><input type="date" name="date_to" value="{{ date_to }}"></label></div>
+{% endif %}
+<div class="filter-actions"><button type="submit" class="action-button action-primary">查詢</button><a href="{% url 'dashboard:system_log_list' %}?category={{ category }}" class="action-button action-secondary">清除條件</a><span class="action-spacer"></span><span class="result-count">符合條件：{{ page_obj.paginator.count }} 筆</span></div>
+</form>
+<section class="system-log-table-panel"><div class="table-scroll"><table class="system-log-table"><thead><tr>
+{% if category == 'security' %}<th>時間</th><th>結果</th><th>動作</th><th>帳號 / 角色</th><th>驗證方式</th><th>來源 IP</th><th>內容</th>{% else %}<th>發生時間</th><th>狀態</th><th>嚴重度</th><th>設備</th><th>區域</th><th>Fault Code / 故障內容</th><th>最近偵測</th><th>恢復時間</th><th>次數</th>{% endif %}
+</tr></thead><tbody>
+{% for item in page_obj %}
+{% if category == 'security' %}<tr><td class="time-cell">{{ item.occurred_at|date:"Y-m-d H:i:s" }}</td><td><span class="badge audit-result-{{ item.result }}">{{ item.result_label_ui }}</span></td><td><strong>{{ item.action_label_ui }}</strong><small class="audit-code">{{ item.action }}</small></td><td><strong>{{ item.username|default:"—" }}</strong><small class="audit-code">{{ item.role|default:"—" }}</small></td><td>{{ item.auth_method|default:"—" }}</td><td>{{ item.client_ip|default:"—" }}</td><td>{{ item.detail|default:"—" }}</td></tr>
+{% else %}<tr class="row-{{ item.status }} severity-{{ item.severity }}"><td class="time-cell">{{ item.occurred_at|date:"Y-m-d H:i:s" }}</td><td><span class="badge status-{{ item.status }}">{{ item.status_label_ui }}</span></td><td><span class="badge severity-{{ item.severity }}">{{ item.severity_label_ui }}</span></td><td class="device-cell"><strong>{{ item.device_code }}</strong><small>{{ item.device_name }} · {{ item.device_type_label_ui }}</small></td><td>{{ item.area|default:"—" }}</td><td class="fault-cell"><code>{{ item.fault_code }}</code><span>{{ item.fault_description }}</span></td><td class="time-cell">{{ item.last_seen_at|date:"Y-m-d H:i:s" }}</td><td class="time-cell">{% if item.recovered_at %}{{ item.recovered_at|date:"Y-m-d H:i:s" }}{% else %}—{% endif %}</td><td class="count-cell">{{ item.occurrence_count }}</td></tr>{% endif %}
+{% empty %}<tr><td colspan="9" class="empty-row">目前沒有符合條件的系統紀錄。</td></tr>{% endfor %}
+</tbody></table></div>
+{% if page_obj.paginator.num_pages > 1 %}<nav class="pagination">{% if page_obj.has_previous %}<a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page_obj.previous_page_number }}">上一頁</a>{% endif %}<span>第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 頁</span>{% if page_obj.has_next %}<a href="?{% if query_without_page %}{{ query_without_page }}&{% endif %}page={{ page_obj.next_page_number }}">下一頁</a>{% endif %}</nav>{% endif %}
+</section></main></div>
+<button type="button" class="krtc-back-to-top" data-krtc-back-to-top data-scroll-target=".table-scroll" aria-label="回到頂端">Top</button><script src="{% static 'js/back_to_top.js' %}"></script>
+</body></html>
