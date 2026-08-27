@@ -184,8 +184,53 @@
   scheduleType.addEventListener('change', syncTypeFields);
   syncTypeFields();
 
+  const scheduleName = form.querySelector('[name=name]');
+  const audioFile = form.querySelector('[name=audio_file]');
+  const speakers = form.querySelector('[name=speakers]');
+  const volume = form.querySelector('[name=volume_percent]');
+
+  [scheduleName, scheduleType, runAt, dailyTime, audioFile, speakers, volume].filter(Boolean).forEach((field) => {
+    const clearCustomValidity = () => field.setCustomValidity('');
+    field.addEventListener('input', clearCustomValidity);
+    field.addEventListener('change', clearCustomValidity);
+  });
+
+  function requireField(field, message) {
+    if (!field || field.disabled) return true;
+    const hasValue = field.multiple ? field.selectedOptions.length > 0 : String(field.value || '').trim() !== '';
+    if (hasValue) {
+      field.setCustomValidity('');
+      return true;
+    }
+    field.setCustomValidity(message);
+    field.reportValidity();
+    field.focus();
+    return false;
+  }
+
+  function validateScheduleForm() {
+    if (!requireField(scheduleName, '請輸入排程名稱。')) return false;
+    if (!requireField(scheduleType, '請選擇排程類型。')) return false;
+    if (scheduleType.value === 'daily') {
+      if (!requireField(dailyTime, '請設定每日執行時間。')) return false;
+    } else if (!requireField(runAt, '請設定單次執行時間。')) return false;
+    if (!requireField(audioFile, '請選擇預錄音檔。')) return false;
+    if (!requireField(speakers, '請至少選擇一台播放 Speaker。')) return false;
+    if (!requireField(volume, '請輸入播放音量。')) return false;
+    const volumeValue = Number(volume.value);
+    if (!Number.isFinite(volumeValue) || volumeValue < 0 || volumeValue > 200) {
+      volume.setCustomValidity('播放音量必須介於 0 到 200%。');
+      volume.reportValidity();
+      volume.focus();
+      return false;
+    }
+    volume.setCustomValidity('');
+    return true;
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!validateScheduleForm()) return;
     const submit = form.querySelector('[type=submit]');
     submit.disabled = true;
     status.textContent = '正在建立排程…';

@@ -8,6 +8,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const eventCarouselButton = document.getElementById("eventCarouselButton");
 
     const stationCameraCount = document.getElementById("stationCameraCount");
+    const speakerMetric = document.getElementById("speakerMetric");
+    const speakerStatusCount = document.getElementById("speakerStatusCount");
+    const speakerStatusDetail = document.getElementById("speakerStatusDetail");
     const latestEventType = document.getElementById("latestEventType");
     const latestEventCamera = document.getElementById("latestEventCamera");
     const latestEventTime = document.getElementById("latestEventTime");
@@ -26,6 +29,8 @@ document.addEventListener("DOMContentLoaded", function () {
     let areaFlowPageIndex = 0;
     let areaFlowRotateTimer = null;
     let areaFlowCameraSignature = "";
+    let inferenceHostDetailTimer = null;
+    let inferenceHostDetailKey = "";
     const resolveAllAlertEventsButton = document.getElementById(
         "resolveAllAlertEventsButton"
     );
@@ -685,6 +690,84 @@ document.addEventListener("DOMContentLoaded", function () {
         updateCameraSelectionClasses();
     }
 
+    function stopInferenceHostDetailRotation() {
+        if (inferenceHostDetailTimer) {
+            window.clearInterval(inferenceHostDetailTimer);
+            inferenceHostDetailTimer = null;
+        }
+    }
+
+    function renderInferenceHostDetails(labels, fallbackText) {
+        if (!inferenceHostDetail) return;
+        const normalizedLabels = Array.isArray(labels)
+            ? labels.map((item) => normalizeText(item, "")).filter(Boolean)
+            : [];
+        const key = normalizedLabels.join("\u001f") || `fallback:${fallbackText}`;
+        if (key === inferenceHostDetailKey) return;
+        inferenceHostDetailKey = key;
+        stopInferenceHostDetailRotation();
+        inferenceHostDetail.innerHTML = "";
+
+        const values = normalizedLabels.length ? normalizedLabels : [fallbackText];
+        const viewport = document.createElement("div");
+        viewport.className = "inference-host-detail-viewport";
+        const track = document.createElement("div");
+        track.className = "inference-host-detail-track";
+        values.forEach((value) => {
+            const row = document.createElement("span");
+            row.textContent = value;
+            row.title = value;
+            track.appendChild(row);
+        });
+
+        if (values.length > 2) {
+            values.slice(0, 2).forEach((value) => {
+                const row = document.createElement("span");
+                row.textContent = value;
+                row.title = value;
+                track.appendChild(row);
+            });
+            track.classList.add("is-scrolling");
+        }
+
+        viewport.appendChild(track);
+        inferenceHostDetail.appendChild(viewport);
+
+        if (values.length <= 2) return;
+        let index = 0;
+        const rowHeight = 16;
+        inferenceHostDetailTimer = window.setInterval(() => {
+            index += 1;
+            track.style.transition = "transform 420ms ease";
+            track.style.transform = `translateY(-${index * rowHeight}px)`;
+            if (index >= values.length) {
+                window.setTimeout(() => {
+                    track.style.transition = "none";
+                    track.style.transform = "translateY(0)";
+                    index = 0;
+                }, 450);
+            }
+        }, 2400);
+    }
+
+    function updateSpeakerSummary(speakerSummary) {
+        if (!speakerMetric || !speakerStatusCount || !speakerStatusDetail) return;
+        const summary = speakerSummary || {};
+        const registeredCount = Number(summary.registered_count || 0);
+        const onlineCount = Number(summary.online_count || 0);
+        const isUnconfigured = Boolean(summary.is_unconfigured) || registeredCount === 0;
+        const isAbnormal = !isUnconfigured && Boolean(summary.is_abnormal);
+
+        speakerMetric.classList.toggle("is-abnormal", isAbnormal);
+        speakerMetric.classList.toggle("is-unconfigured", isUnconfigured);
+        speakerMetric.classList.toggle("is-normal", !isAbnormal && !isUnconfigured);
+        speakerStatusCount.textContent = normalizeText(
+            summary.display_value,
+            isAbnormal ? `${onlineCount}/${registeredCount}` : String(registeredCount)
+        );
+        speakerStatusDetail.textContent = isUnconfigured ? "尚未登記" : "台啟用";
+    }
+
     function updateInferenceHostSummary(inferenceHosts) {
         if (
             !inferenceHostMetric ||
@@ -711,9 +794,9 @@ document.addEventListener("DOMContentLoaded", function () {
             "未設定主機"
         );
 
-        inferenceHostDetail.textContent = normalizeText(
-            summary.detail_label,
-            "尚未設定推論主機"
+        renderInferenceHostDetails(
+            isAbnormal ? summary.abnormal_host_names : [],
+            normalizeText(summary.detail_label, "尚未設定推論主機")
         );
     }
 
@@ -1068,6 +1151,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         eventListCount.textContent = String(events.length);
 
+        updateSpeakerSummary(data.speaker_summary);
         updateInferenceHostSummary(data.inference_hosts);
         updateAreaCrowdFlow(data.crowd_flow_items);
         updateEventWarningLight(data.event_alert_active);

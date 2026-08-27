@@ -1,0 +1,22 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設定還原完成｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=9.1">
+</head>
+<body>
+<div class="settings-shell">
+    {% include "dashboard/includes/system_header.html" with current_page="settings" page_title="設定還原完成" show_dashboard_status=True hide_mode_badge=True show_home_button=True %}
+    <section class="settings-page-heading"><div><h1>設定還原完成</h1><p>設備設定已套用，並已保留還原前 SQLite DB。</p></div></section>
+    <main class="restore-preview-shell">
+        <div class="notice notice-success">設定還原成功。</div>
+        <div class="settings-card"><div class="card-heading"><div><h3>自動還原點</h3><p>若還原後需要人工回復，可使用下列 DB 檔案。</p></div></div><div class="mono restore-point-path">{{ result.restore_point }}</div></div>
+        <div class="restore-actions"><a class="primary-button" href="{% url 'settings_app:station_settings' %}">返回系統設定</a></div>
+    </main>
+</div>
+</body>
+</html>

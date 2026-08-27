@@ -104,6 +104,7 @@ def dashboard_home(request):
         "crowd_flow_summary": crowd_flow_summary,
         "crowd_flow_items": crowd_flow_items,
         "inference_host_summary": get_inference_host_summary(),
+        "speaker_summary": get_speaker_summary(),
         "active_speakers": get_active_count(SpeakerDevice),
         "active_audio_files": get_active_count(AudioFile),
         "active_broadcast_rules": get_active_count(BroadcastRule),
@@ -353,6 +354,7 @@ def dashboard_live_state_api(request):
             "crowd_flow": crowd_flow_summary,
             "crowd_flow_items": crowd_flow_items,
             "inference_hosts": get_inference_host_summary(),
+            "speaker_summary": get_speaker_summary(),
             "event_alert_active": event_alert_active,
             "local_alarm": local_alarm,
             "can_process_events": can_process_events(request.user),
@@ -403,8 +405,12 @@ def get_recent_events():
     if Event is None:
         return []
 
+    # Keep the Dashboard "recent AI events" list aligned with the event-record
+    # page: event occurrence time is authoritative.  created_at can be much later
+    # when older inference events are imported/synchronised in a batch, which
+    # previously pushed genuinely newer CAM-004 events out of the 10-row list.
     events = list(
-        Event.objects.select_related("camera").order_by("-created_at")[:10]
+        Event.objects.select_related("camera").order_by("-detected_at", "-id")[:10]
     )
 
     for event in events:
@@ -670,6 +676,42 @@ def get_crowd_flow_summary():
     }
 
 
+def get_speaker_summary():
+    """Return dashboard speaker availability from the latest stored probe state.
+
+    The denominator is every registered, enabled speaker. A speaker is counted as
+    healthy only when its latest status is ``online``. This intentionally does not
+    depend on System Log health-monitor enrollment: manual/system diagnostics must
+    still be reflected on the Dashboard.
+    """
+    default_summary = {
+        "registered_count": 0,
+        "online_count": 0,
+        "is_abnormal": False,
+        "is_unconfigured": True,
+        "display_value": "0",
+    }
+    if SpeakerDevice is None:
+        return default_summary
+
+    speakers = list(SpeakerDevice.objects.filter(is_active=True).only("status"))
+    if not speakers:
+        return default_summary
+
+    registered_count = len(speakers)
+    online_count = sum(1 for speaker in speakers if speaker.status == "online")
+    is_abnormal = online_count != registered_count
+    return {
+        "registered_count": registered_count,
+        "online_count": online_count,
+        "is_abnormal": is_abnormal,
+        "is_unconfigured": False,
+        "display_value": (
+            f"{online_count}/{registered_count}" if is_abnormal else str(registered_count)
+        ),
+    }
+
+
 def get_inference_host_summary():
     """Return the station inference-host summary from the real GET /health result.
 
@@ -686,6 +728,7 @@ def get_inference_host_summary():
         "status_label": "未設定主機",
         "detail_label": "尚未設定推論主機",
         "abnormal_host_codes": [],
+        "abnormal_host_names": [],
     }
 
     if InferenceHost is None:
@@ -706,10 +749,12 @@ def get_inference_host_summary():
     stale_before = timezone.now() - timedelta(seconds=stale_seconds)
 
     abnormal_host_codes = []
+    abnormal_host_names = []
     healthy_count = 0
 
     for host in hosts:
         host_code = host.host_code or host.name or f"HOST-{host.pk}"
+        host_name = (host.name or host_code).strip()
         try:
             state = host.connection_state
         except Exception:
@@ -730,6 +775,7 @@ def get_inference_host_summary():
             healthy_count += 1
         else:
             abnormal_host_codes.append(str(host_code))
+            abnormal_host_names.append(str(host_name))
 
     configured_count = len(hosts)
     abnormal_count = len(abnormal_host_codes)
@@ -743,13 +789,11 @@ def get_inference_host_summary():
         "is_unconfigured": False,
         "status_label": "異常" if is_abnormal else "正常",
         "detail_label": (
-            "異常：" + "、".join(abnormal_host_codes)
-            if is_abnormal
-            else "全部推論主機狀態正常"
+            f"{abnormal_count} 台主機異常" if is_abnormal else "全部推論主機狀態正常"
         ),
         "abnormal_host_codes": abnormal_host_codes,
+        "abnormal_host_names": abnormal_host_names,
     }
-
 
 def get_recent_broadcast_logs():
     if BroadcastLog is None:

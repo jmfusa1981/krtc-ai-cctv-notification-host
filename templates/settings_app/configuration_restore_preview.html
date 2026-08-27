@@ -1,0 +1,50 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設定還原確認｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=9.1">
+</head>
+<body>
+<div class="settings-shell">
+    {% include "dashboard/includes/system_header.html" with current_page="settings" page_title="設定還原確認" show_dashboard_status=True hide_mode_badge=True show_home_button=True %}
+    <section class="settings-page-heading"><div><h1>設定還原確認</h1><p>還原前先確認備份來源、Schema 與設備數量。</p></div></section>
+    <main class="restore-preview-shell">
+        {% if error %}
+            <div class="notice notice-error">{{ error }}</div>
+            <a class="test-button" href="{% url 'settings_app:station_settings' %}">返回系統設定</a>
+        {% else %}
+            <div class="restore-meta-grid">
+                <article><span>Station</span><strong>{{ station.station_code|default:"—" }}</strong><small>{{ station.station_name|default:"—" }}</small></article>
+                <article><span>Backup Version</span><strong>{{ manifest.backup_schema_version }}</strong><small>{{ manifest.application_version }}</small></article>
+                <article><span>Exported At</span><strong>{{ manifest.exported_at }}</strong><small>SHA256 已驗證</small></article>
+            </div>
+            <div class="table-wrap restore-count-table">
+                <table><thead><tr><th>項目</th><th>筆數</th></tr></thead><tbody>
+                    <tr><td>推論主機</td><td>{{ counts.inference_hosts }}</td></tr>
+                    <tr><td>IP 攝影機</td><td>{{ counts.cameras }}</td></tr>
+                    <tr><td>AI Model</td><td>{{ counts.ai_models }}</td></tr>
+                    <tr><td>Camera Mapping</td><td>{{ counts.camera_mappings }}</td></tr>
+                    <tr><td>IP 擴音器</td><td>{{ counts.speakers }}</td></tr>
+                    <tr><td>廣播音檔</td><td>{{ counts.audio_files }}</td></tr>
+                    <tr><td>廣播規則</td><td>{{ counts.broadcast_rules }}</td></tr>
+                    <tr><td>廣播排程</td><td>{{ counts.broadcast_schedules }}</td></tr>
+                </tbody></table>
+            </div>
+            <div class="notice notice-warning restore-warning">還原會更新同代碼設備設定，重建 Camera Mapping 與 Broadcast Schedule。Camera / NVR / Speaker 密碼不由備份檔覆蓋；若為全新主機，這些密碼需另行設定。</div>
+            <div class="restore-actions">
+                <a class="test-button" href="{% url 'settings_app:station_settings' %}">取消</a>
+                <form method="post" action="{% url 'settings_app:config_backup_restore' %}" onsubmit="return confirm('確定還原此設定備份？系統會先建立目前 DB 還原點，再套用設備設定。');">
+                    {% csrf_token %}
+                    <input type="hidden" name="restore_token" value="{{ restore_token }}">
+                    <button type="submit" class="primary-button">建立還原點並還原</button>
+                </form>
+            </div>
+        {% endif %}
+    </main>
+</div>
+</body>
+</html>

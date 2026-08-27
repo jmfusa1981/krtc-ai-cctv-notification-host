@@ -3311,3 +3311,94 @@ textarea {
     font-weight: 700;
     letter-spacing: 0;
 }
+
+
+/* KRTC V6.6.2 - speaker availability and inference-host detail rotation */
+.speaker-metric.is-abnormal > strong,
+.speaker-metric.is-abnormal > small {
+    color: #ffb4b4;
+}
+.speaker-metric.is-unconfigured {
+    background: rgba(71, 85, 105, 0.34);
+}
+.inference-host-detail {
+    min-width: 0;
+    margin-top: 5px;
+    color: #ffe0e0;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+}
+.inference-host-detail-viewport {
+    height: 32px;
+    overflow: hidden;
+}
+.inference-host-detail-track {
+    will-change: transform;
+}
+.inference-host-detail-track > span {
+    display: block;
+    height: 16px;
+    overflow: hidden;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.inference-host-metric.is-normal .inference-host-detail,
+.inference-host-metric.is-unconfigured .inference-host-detail {
+    color: #eaf4ff;
+}
+
+
+/* KRTC V6.6.4 - inference host abnormal state: preserve blue strip, alert with text only */
+.inference-host-metric.is-abnormal {
+    background: transparent !important;
+}
+.inference-host-metric.is-abnormal > span,
+.inference-host-metric.is-abnormal .metric-text,
+.inference-host-metric.is-abnormal .inference-host-detail,
+.inference-host-metric.is-abnormal .inference-host-detail-track > span {
+    color: #ffb4b4 !important;
+}
+
+
+/* KRTC V6.6.5 - keep inference metric title white while status/details alert in red */
+.inference-host-metric.is-abnormal > span {
+    color: #ffffff !important;
+}
+.inference-host-metric.is-abnormal .metric-text,
+.inference-host-metric.is-abnormal .inference-host-detail,
+.inference-host-metric.is-abnormal .inference-host-detail-track > span {
+    color: #ffb4b4 !important;
+}
+
+/* KRTC V6.6.5.1 - align simple dashboard metric titles to the top baseline */
+.metric-row > .metric-card:not(.inference-host-metric):not(.crowd-flow-metric):not(.event-warning-metric) {
+    align-content: start !important;
+}
+
+/* KRTC V6.6.5.2 - align latest-event heading with dashboard metric title baseline */
+.latest-event-summary {
+    align-content: start !important;
+}
+
+/* KRTC V6.6.5.3 - strict dashboard blue-bar title baseline alignment */
+/* Latest-event uses a legacy flex kicker while ordinary metrics use grid-item spans. */
+.latest-event-kicker {
+    display: block !important;
+    align-items: initial !important;
+}
+
+/* Inference host is a three-row metric and was still vertically centered. */
+.inference-host-metric {
+    align-content: start !important;
+}
+
+/* Keep the warning lamp/button geometry unchanged; lift only its title to the shared baseline. */
+.event-warning-metric > span {
+    position: relative !important;
+    top: -9px !important;
+}

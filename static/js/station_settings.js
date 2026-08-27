@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const maintenanceHostInput = document.getElementById("id_maintenance_host_url");
     const runAllButton = document.getElementById("run-all-diagnostics");
     const issueList = document.getElementById("dynamic-issue-list");
+    const issueCountBadge = document.querySelector(".issue-overview-heading span");
     const progressBar = document.getElementById("check-progress-bar");
     const progressText = document.getElementById("check-progress-text");
     const countSuccess = document.getElementById("check-success-count");
@@ -135,7 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    document.querySelectorAll(".test-button").forEach((button) => {
+    document.querySelectorAll(".test-button[data-test-url]").forEach((button) => {
         button.addEventListener("click", () => runDiagnostic(button, true));
     });
 
@@ -151,6 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderIssues(issues) {
         if (!issueList) return;
         issueList.innerHTML = "";
+        if (issueCountBadge) issueCountBadge.textContent = `${issues.length} 項`;
         if (!issues.length) {
             const item = document.createElement("li");
             item.className = "is-ok";

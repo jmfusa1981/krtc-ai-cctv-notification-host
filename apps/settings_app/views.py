@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -27,6 +27,15 @@ from .forms import (
     StationLocalSettingsForm,
 )
 from .models import StationLocalSettings
+from .services.config_backup import (
+    ConfigurationBackupError,
+    configuration_counts,
+    export_configuration_archive,
+    inspect_configuration_archive,
+    restore_configuration_archive,
+    stage_uploaded_archive,
+    staged_archive_path,
+)
 
 
 STATUS_LABELS = {
@@ -99,6 +108,17 @@ def _url_probe(url, timeout=5):
         return False, elapsed_ms, f"服務無法連線：{exc}"
 
 
+def _inference_host_network_location(host):
+    """Return the configured inference-host IP without exposing URL paths or ports."""
+    configured_ip = str(getattr(host, "ip_address", "") or "").strip()
+    if configured_ip:
+        return configured_ip
+    try:
+        return urlparse(getattr(host, "normalized_base_url", "") or "").hostname or "未設定"
+    except (TypeError, ValueError):
+        return "未設定"
+
+
 def _safe_stream_endpoint(stream_url):
     """Return host:port only; never expose camera credentials in the UI."""
     if not stream_url:
@@ -165,6 +185,7 @@ def station_settings(request):
     inference_hosts = list(InferenceHost.objects.all().order_by("host_code")) if InferenceHost else []
     for host in inference_hosts:
         host.status_label_zh = STATUS_LABELS.get(host.status, "未知")
+        host.network_location = _inference_host_network_location(host)
 
     cameras = list(Camera.objects.all().order_by("camera_code")) if Camera else []
     for camera in cameras:
@@ -242,8 +263,12 @@ def station_settings(request):
 
     active_camera_count = sum(1 for item in cameras if item.is_active)
     online_camera_count = sum(1 for item in cameras if item.is_active and item.status == "online")
-    active_speaker_count = sum(1 for item in speakers if item.health_monitor_active)
-    online_speaker_count = sum(1 for item in speakers if item.health_monitor_active and item.status == "online")
+    active_speaker_count = sum(1 for item in speakers if item.is_active)
+    online_speaker_count = sum(1 for item in speakers if item.is_active and item.status == "online")
+    monitored_speaker_count = sum(1 for item in speakers if item.health_monitor_active)
+    online_inference_host_count = sum(
+        1 for item in inference_hosts if item.is_active and item.status == "online"
+    )
     mapped_active_camera_count = sum(1 for item in cameras if item.is_active and item.mapping_count > 0)
     unmapped_active_cameras = [item for item in cameras if item.is_active and item.mapping_count == 0]
     healthy_mapping_count = sum(1 for item in mappings if item.health_ok)
@@ -260,8 +285,14 @@ def station_settings(request):
         if camera.is_active and camera.mapping_count == 0:
             initial_issues.append(f"攝影機 {camera.camera_code}：尚未建立推論映射")
     for speaker in speakers:
-        if speaker.health_monitor_active and speaker.status != "online":
-            initial_issues.append(f"IP Speaker {speaker.speaker_code}：{speaker.status_label_zh}")
+        if speaker.is_active and speaker.status != "online":
+            initial_issues.append(f"IP 廣播喇叭 {speaker.speaker_code}：{speaker.status_label_zh}")
+    for model in ai_models:
+        if model.is_active and not model.health_ok:
+            initial_issues.append(f"AI 模型 {model.model_code}：{model.health_label}")
+    for mapping in mappings:
+        if mapping.is_active and not mapping.health_ok:
+            initial_issues.append(f"Camera 映射 {mapping.source_camera_id}：{mapping.health_label}")
     for audio in audio_files:
         if audio.is_active and not audio.health_ok:
             initial_issues.append(f"音檔 {audio.audio_code}：{audio.health_label}")
@@ -291,12 +322,14 @@ def station_settings(request):
         "configuration_audit_logs": configuration_audit_logs,
         "inference_host_count": len(inference_hosts),
         "active_inference_host_count": sum(1 for item in inference_hosts if item.is_active),
+        "online_inference_host_count": online_inference_host_count,
         "camera_count": len(cameras),
         "active_camera_count": active_camera_count,
         "online_camera_count": online_camera_count,
         "speaker_count": len(speakers),
         "active_speaker_count": active_speaker_count,
         "online_speaker_count": online_speaker_count,
+        "monitored_speaker_count": monitored_speaker_count,
         "ai_model_count": len(ai_models),
         "active_ai_model_count": sum(1 for item in ai_models if item.is_active),
         "broadcast_rule_count": len(broadcast_rules),
@@ -313,6 +346,10 @@ def station_settings(request):
         "can_manage_accounts": _can_manage_accounts(request.user),
         "show_advanced_settings": _can_view_advanced_settings(request.user),
         "can_edit_ai_settings": _can_manage_ai_settings(request.user),
+        "persistent_root": getattr(settings, "KRTC_PERSISTENT_ROOT", settings.BASE_DIR),
+        "persistent_data_dir": getattr(settings, "KRTC_DATA_DIR", settings.BASE_DIR),
+        "persistent_media_dir": getattr(settings, "KRTC_MEDIA_DIR", settings.MEDIA_ROOT),
+        "persistent_backup_dir": getattr(settings, "KRTC_BACKUP_DIR", settings.BASE_DIR / "backups"),
     }
     return render(request, "settings_app/station_settings.html", context)
 
@@ -336,7 +373,7 @@ def test_inference_host(request):
         host.last_error_at = now
         host.last_error = message
     host.save(update_fields=["status", "last_health_at", "last_success_at", "last_error_at", "last_error", "updated_at"])
-    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "tested_at": timezone.localtime(now).strftime("%Y-%m-%d %H:%M:%S")})
+    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "status": host.status, "status_label": STATUS_LABELS.get(host.status, "未知"), "tested_at": timezone.localtime(now).strftime("%Y-%m-%d %H:%M:%S")})
 
 
 def _save_camera_probe_state(camera, ok):
@@ -407,7 +444,16 @@ def test_speaker(request):
         pass
     if not speaker.health_monitor_active:
         message = f"{message}（目前未啟用 Speaker System Log 健康監測）"
-    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "system_log_action": system_log_action, "monitoring_enabled": speaker.health_monitor_active, "tested_at": timezone.localtime(speaker.last_checked_at).strftime("%Y-%m-%d %H:%M:%S")})
+    return JsonResponse({
+        "success": ok,
+        "message": message,
+        "elapsed_ms": elapsed_ms,
+        "system_log_action": system_log_action,
+        "monitoring_enabled": speaker.health_monitor_active,
+        "status": speaker.status,
+        "status_label": STATUS_LABELS.get(speaker.status, "未知"),
+        "tested_at": timezone.localtime(speaker.last_checked_at).strftime("%Y-%m-%d %H:%M:%S"),
+    })
 
 
 @login_required
@@ -529,6 +575,13 @@ MANAGEMENT_REGISTRY = {
         "plural": "攝影機",
         "tab": "devices",
     },
+    "speaker-device": {
+        "model": ("notifications", "SpeakerDevice"),
+        "form": SpeakerDeviceForm,
+        "title": "廣播喇叭",
+        "plural": "廣播喇叭",
+        "tab": "devices",
+    },
     "camera-mapping": {
         "model": ("ai_bridge", "InferenceCameraMapping"),
         "form": InferenceCameraMappingForm,
@@ -605,6 +658,11 @@ def manage_object(request, kind, object_id=None):
             saved.save()
             if hasattr(form, "save_m2m"):
                 form.save_m2m()
+            if kind == "speaker-device":
+                try:
+                    clear_speaker_fault_if_monitoring_disabled(saved)
+                except Exception:
+                    pass
             if return_to == "broadcast":
                 return redirect(f"{reverse('dashboard:station_broadcast')}?saved=1#auto-broadcast-rules")
             return redirect(
@@ -777,3 +835,78 @@ def toggle_user(request, object_id):
         metadata={"target_username": user.username},
     )
     return redirect(reverse("settings_app:user_management"))
+
+
+@login_required
+def export_station_configuration(request):
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    path, manifest = export_configuration_archive()
+    record_security_audit(
+        action="STATION_CONFIG_EXPORTED",
+        result="success",
+        request=request,
+        user=request.user,
+        detail=f"Configuration backup exported: {path.name}",
+    )
+    return FileResponse(
+        open(path, "rb"),
+        as_attachment=True,
+        filename=path.name,
+        content_type="application/zip",
+    )
+
+
+@login_required
+@require_POST
+def preview_station_configuration_restore(request):
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    uploaded = request.FILES.get("backup_file")
+    if uploaded is None:
+        return render(request, "settings_app/configuration_restore_preview.html", {
+            "error": "請選擇 KRTC 設定備份 ZIP。",
+            "server_time": timezone.localtime(timezone.now()),
+        }, status=400)
+    try:
+        token, path, manifest, payload = stage_uploaded_archive(uploaded)
+    except ConfigurationBackupError as exc:
+        return render(request, "settings_app/configuration_restore_preview.html", {
+            "error": str(exc),
+            "server_time": timezone.localtime(timezone.now()),
+        }, status=400)
+    return render(request, "settings_app/configuration_restore_preview.html", {
+        "restore_token": token,
+        "manifest": manifest,
+        "counts": configuration_counts(payload),
+        "station": payload.get("station") or {},
+        "server_time": timezone.localtime(timezone.now()),
+    })
+
+
+@login_required
+@require_POST
+def restore_station_configuration(request):
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    token = (request.POST.get("restore_token") or "").strip()
+    try:
+        path = staged_archive_path(token)
+        result = restore_configuration_archive(path)
+        path.unlink(missing_ok=True)
+    except ConfigurationBackupError as exc:
+        return render(request, "settings_app/configuration_restore_preview.html", {
+            "error": str(exc),
+            "server_time": timezone.localtime(timezone.now()),
+        }, status=400)
+    record_security_audit(
+        action="STATION_CONFIG_RESTORED",
+        result="success",
+        request=request,
+        user=request.user,
+        detail=f"Configuration restored; DB restore point: {result['restore_point']}",
+    )
+    return render(request, "settings_app/configuration_restore_complete.html", {
+        "result": result,
+        "server_time": timezone.localtime(timezone.now()),
+    })

@@ -7,8 +7,98 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# Load environment variables
-load_dotenv(BASE_DIR / ".env")
+# Environment precedence for durable station configuration:
+#   1. Explicit Windows/process environment variables
+#   2. <KRTC_CONFIG_DIR>\.env (persistent station configuration)
+#   3. <project>\.env (development/backward-compatible bootstrap)
+#
+# Capture the real process environment before loading any dotenv file so an
+# explicit KRTC_PERSISTENT_ROOT cannot be accidentally combined with stale
+# KRTC_DATA_DIR / KRTC_MEDIA_DIR values from the source checkout .env.
+_EXPLICIT_ENV = dict(os.environ)
+_PROJECT_ENV = BASE_DIR / ".env"
+load_dotenv(_PROJECT_ENV, override=False, encoding="utf-8-sig")
+
+
+def _clean_env_value(mapping, key):
+    value = mapping.get(key)
+    return str(value).strip() if value is not None else ""
+
+
+_persistent_root_raw = (
+    _clean_env_value(_EXPLICIT_ENV, "KRTC_PERSISTENT_ROOT")
+    or os.getenv("KRTC_PERSISTENT_ROOT", "").strip()
+)
+_ROOT_IS_EXPLICIT = bool(_clean_env_value(_EXPLICIT_ENV, "KRTC_PERSISTENT_ROOT"))
+
+if _persistent_root_raw:
+    KRTC_PERSISTENT_ROOT = Path(_persistent_root_raw)
+
+    if _ROOT_IS_EXPLICIT:
+        _config_dir_raw = (
+            _clean_env_value(_EXPLICIT_ENV, "KRTC_CONFIG_DIR")
+            or str(KRTC_PERSISTENT_ROOT / "config")
+        )
+    else:
+        _config_dir_raw = os.getenv(
+            "KRTC_CONFIG_DIR",
+            str(KRTC_PERSISTENT_ROOT / "config"),
+        ).strip()
+
+    KRTC_CONFIG_DIR = Path(_config_dir_raw)
+    _persistent_env = KRTC_CONFIG_DIR / ".env"
+
+    # Load persistent station settings over project dotenv values, then restore
+    # true process environment variables so Windows Service/AIO launch settings
+    # remain the highest-precedence source.
+    try:
+        from dotenv import dotenv_values
+        _PERSISTENT_ENV_VALUES = {
+            key: value
+            for key, value in dotenv_values(
+                _persistent_env,
+                encoding="utf-8-sig",
+            ).items()
+            if value is not None
+        }
+    except (OSError, ValueError):
+        _PERSISTENT_ENV_VALUES = {}
+
+    if _persistent_env.exists():
+        load_dotenv(_persistent_env, override=True, encoding="utf-8-sig")
+        os.environ.update(_EXPLICIT_ENV)
+
+    def _persistent_dir(key, leaf):
+        explicit_value = _clean_env_value(_EXPLICIT_ENV, key)
+        if explicit_value:
+            return Path(explicit_value)
+
+        persistent_value = _clean_env_value(_PERSISTENT_ENV_VALUES, key)
+        if persistent_value:
+            return Path(persistent_value)
+
+        # When KRTC_PERSISTENT_ROOT is explicitly supplied, legacy directory
+        # variables from <project>\.env must not escape the persistent root.
+        if not _ROOT_IS_EXPLICIT:
+            project_or_runtime_value = os.getenv(key, "").strip()
+            if project_or_runtime_value:
+                return Path(project_or_runtime_value)
+
+        return KRTC_PERSISTENT_ROOT / leaf
+
+    KRTC_DATA_DIR = _persistent_dir("KRTC_DATA_DIR", "data")
+    KRTC_MEDIA_DIR = _persistent_dir("KRTC_MEDIA_DIR", "media")
+    KRTC_LOG_DIR = _persistent_dir("KRTC_LOG_DIR", "logs")
+    KRTC_BACKUP_DIR = _persistent_dir("KRTC_BACKUP_DIR", "backups")
+else:
+    # Historical development layout. No persistent root means the checkout
+    # remains self-contained, preserving existing developer behavior.
+    KRTC_PERSISTENT_ROOT = BASE_DIR
+    KRTC_CONFIG_DIR = BASE_DIR
+    KRTC_DATA_DIR = BASE_DIR
+    KRTC_MEDIA_DIR = BASE_DIR / "media"
+    KRTC_LOG_DIR = BASE_DIR / "logs"
+    KRTC_BACKUP_DIR = BASE_DIR / "backups"
 
 
 # Security settings
@@ -98,7 +188,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": KRTC_DATA_DIR / "db.sqlite3",
     }
 }
 
@@ -150,7 +240,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Media files
 MEDIA_URL = "/media/"
 
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = KRTC_MEDIA_DIR
 
 
 # Default primary key field type

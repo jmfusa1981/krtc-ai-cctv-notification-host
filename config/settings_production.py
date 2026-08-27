@@ -1,5 +1,5 @@
-﻿"""
-KRTC AI CCTV Notification Host V5
+"""
+KRTC AI CCTV Notification Host V6
 Production settings.
 
 Production runtime:
@@ -8,21 +8,11 @@ Production runtime:
 
 import os
 from pathlib import Path
-from dotenv import load_dotenv
 
 
-# ============================================================
-# Load production environment BEFORE base settings
-# ============================================================
-
-PRODUCTION_BASE_DIR = Path(__file__).resolve().parent.parent
-
-load_dotenv(
-    dotenv_path=PRODUCTION_BASE_DIR / ".env",
-    override=True,
-    encoding="utf-8-sig",
-)
-
+# Environment loading and persistent-path precedence are centralized in
+# config.settings. Production must not pre-load the project .env because doing
+# so would make source-checkout values look like explicit process settings.
 
 # ============================================================
 # Base Django settings
@@ -102,32 +92,20 @@ ALLOWED_HOSTS = [
 # Persistent runtime paths
 # ============================================================
 
-KRTC_DATA_DIR = Path(
-    os.getenv(
-        "KRTC_DATA_DIR",
-        str(BASE_DIR),
-    )
-).resolve()
-
-KRTC_MEDIA_DIR = Path(
-    os.getenv(
-        "KRTC_MEDIA_DIR",
-        str(BASE_DIR / "media"),
-    )
-).resolve()
-
-KRTC_LOG_DIR = Path(
-    os.getenv(
-        "KRTC_LOG_DIR",
-        str(BASE_DIR / "logs"),
-    )
-).resolve()
+# Reuse the persistent path resolution from config.settings. Do not reset the
+# directories back to BASE_DIR in production. Explicit KRTC_*_DIR variables can
+# still override the KRTC_PERSISTENT_ROOT-derived locations in config.settings.
+KRTC_PERSISTENT_ROOT = Path(KRTC_PERSISTENT_ROOT).resolve()
+KRTC_CONFIG_DIR = Path(KRTC_CONFIG_DIR).resolve()
+KRTC_DATA_DIR = Path(KRTC_DATA_DIR).resolve()
+KRTC_MEDIA_DIR = Path(KRTC_MEDIA_DIR).resolve()
+KRTC_LOG_DIR = Path(KRTC_LOG_DIR).resolve()
+KRTC_BACKUP_DIR = Path(KRTC_BACKUP_DIR).resolve()
 
 
 # Ensure runtime directories exist
-KRTC_DATA_DIR.mkdir(parents=True, exist_ok=True)
-KRTC_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-KRTC_LOG_DIR.mkdir(parents=True, exist_ok=True)
+for _runtime_dir in (KRTC_CONFIG_DIR, KRTC_DATA_DIR, KRTC_MEDIA_DIR, KRTC_LOG_DIR, KRTC_BACKUP_DIR):
+    _runtime_dir.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================

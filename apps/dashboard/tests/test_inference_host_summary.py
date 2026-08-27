@@ -81,5 +81,6 @@ class InferenceHostSummaryTests(TestCase):
         self.set_health(second, status="offline")
         self.set_health(third, status="error")
         summary = get_inference_host_summary()
-        self.assertEqual(summary["detail_label"], "異常：INF-002、INF-003")
+        self.assertEqual(summary["detail_label"], "2 台主機異常")
         self.assertEqual(summary["abnormal_host_codes"], ["INF-002", "INF-003"])
+        self.assertEqual(summary["abnormal_host_names"], ["INF-002", "INF-003"])

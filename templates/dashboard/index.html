@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <title>KRTC AI CCTV 通報主機</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+    <link rel="stylesheet" href="{% static 'css/dashboard.css' %}?v=6.6.5">
     <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
 </head>
 
@@ -64,10 +64,13 @@
                     <small>台運行中</small>
                 </div>
 
-                <div class="metric-card">
+                <div
+                    class="metric-card speaker-metric {% if speaker_summary.is_unconfigured %}is-unconfigured{% elif speaker_summary.is_abnormal %}is-abnormal{% else %}is-normal{% endif %}"
+                    id="speakerMetric"
+                >
                     <span>站區廣播喇叭</span>
-                    <strong>{{ active_speakers }}</strong>
-                    <small>台啟用</small>
+                    <strong id="speakerStatusCount">{{ speaker_summary.display_value }}</strong>
+                    <small id="speakerStatusDetail">{% if speaker_summary.is_unconfigured %}尚未登記{% else %}台啟用{% endif %}</small>
                 </div>
 
                 <div
@@ -83,9 +86,17 @@
                         {{ inference_host_summary.status_label }}
                     </strong>
 
-                    <small id="inferenceHostDetail">
-                        {{ inference_host_summary.detail_label }}
-                    </small>
+                    <div class="inference-host-detail" id="inferenceHostDetail" aria-live="polite">
+                        <div class="inference-host-detail-viewport">
+                            <div class="inference-host-detail-track">
+                                {% if inference_host_summary.is_abnormal %}
+                                    {% for host_name in inference_host_summary.abnormal_host_names %}<span>{{ host_name }}</span>{% endfor %}
+                                {% else %}
+                                    <span>{{ inference_host_summary.detail_label }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div
@@ -274,6 +285,6 @@
         <button type="button" id="dashboardActionToastClose" aria-label="關閉通知">×</button>
     </aside>
 
-    <script src="{% static 'js/dashboard.js' %}"></script>
+    <script src="{% static 'js/dashboard.js' %}?v=6.6.2"></script>
 </body>
 </html>

@@ -97,10 +97,38 @@ class SpeakerDeviceForm(forms.ModelForm):
             "port": forms.NumberInput(attrs={"class": "form-control", "min": 1, "max": 65535}),
             "username": forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"}),
             "preferred_codec": forms.Select(attrs={"class": "form-control"}),
-            "deployment_state": forms.Select(attrs={"class": "form-control"}),
+            "deployment_state": forms.Select(choices=[
+                (SpeakerDevice.DEPLOYMENT_PLANNED, "未部署"),
+                (SpeakerDevice.DEPLOYMENT_DEPLOYED, "已部署"),
+                (SpeakerDevice.DEPLOYMENT_MAINTENANCE, "維護中"),
+                (SpeakerDevice.DEPLOYMENT_RETIRED, "已退役"),
+            ], attrs={"class": "form-control"}),
             "health_monitor_enabled": forms.CheckboxInput(),
             "is_active": forms.CheckboxInput(),
         }
+        labels = {
+            "speaker_code": "喇叭代碼",
+            "name": "設備名稱",
+            "area": "區域",
+            "location_note": "位置說明",
+            "network_mode": "網路模式",
+            "ip_address": "IP 位址",
+            "port": "SIP 連接埠",
+            "username": "SIP 使用者名稱",
+            "preferred_codec": "音訊編碼（Codec）",
+            "deployment_state": "部署狀態",
+            "health_monitor_enabled": "啟用 System Log 健康監測",
+            "is_active": "啟用設備",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["deployment_state"].choices = [
+            (SpeakerDevice.DEPLOYMENT_PLANNED, "未部署"),
+            (SpeakerDevice.DEPLOYMENT_DEPLOYED, "已部署"),
+            (SpeakerDevice.DEPLOYMENT_MAINTENANCE, "維護中"),
+            (SpeakerDevice.DEPLOYMENT_RETIRED, "已退役"),
+        ]
 
     def clean_speaker_code(self):
         return self.cleaned_data["speaker_code"].strip().upper()
@@ -108,13 +136,13 @@ class SpeakerDeviceForm(forms.ModelForm):
     def clean_port(self):
         value = self.cleaned_data["port"]
         if not 1 <= value <= 65535:
-            raise forms.ValidationError("SIP Port 必須介於 1 到 65535。")
+            raise forms.ValidationError("SIP 連接埠必須介於 1 到 65535。")
         return value
 
     def clean(self):
         cleaned = super().clean()
         if not (cleaned.get("username") or "").strip():
-            self.add_error("username", "請輸入 SIP Username。")
+            self.add_error("username", "請輸入 SIP 使用者名稱。")
         return cleaned
 
     def save(self, commit=True):
@@ -151,7 +179,45 @@ class InferenceHostForm(FrontendModelForm):
             "health_url", "events_url", "websocket_url",
             "websocket_auth_mode", "timeout_seconds", "is_active", "description",
         ]
-        widgets = {"description": forms.Textarea(attrs={"rows": 3})}
+        widgets = {
+            "host_type": forms.Select(choices=[("physical", "實體主機"), ("virtual", "虛擬主機")]),
+            "websocket_auth_mode": forms.Select(choices=[("none", "無驗證")]),
+            "description": forms.Textarea(attrs={"rows": 3}),
+        }
+        labels = {
+            "host_code": "推論主機代碼",
+            "name": "推論主機名稱",
+            "station_code": "站碼",
+            "host_type": "主機類型",
+            "ip_address": "IP 位址",
+            "port": "服務連接埠",
+            "base_url": "Base URL",
+            "configuration_url": "主機設定 URL",
+            "health_url": "健康檢查 URL",
+            "events_url": "事件 API URL",
+            "websocket_url": "WebSocket URL",
+            "websocket_auth_mode": "WebSocket 驗證模式",
+            "timeout_seconds": "HTTP 逾時秒數",
+            "is_active": "是否啟用",
+            "description": "說明",
+        }
+        help_texts = {
+            "host_code": "例如：INF-001",
+            "name": "例如：第一月台 AI 推論主機",
+            "station_code": "本站代碼，例如 KRTC-ST-001。",
+            "host_type": "選擇實體或虛擬推論主機。",
+            "ip_address": "推論主機 IP 位址，例如 192.168.6.20。",
+            "port": "推論主機 API 服務連接埠。",
+            "base_url": "例如：http://192.168.6.20:8000",
+            "configuration_url": "推論主機 Web 設定頁，例如：http://192.168.6.20:8080/",
+            "health_url": "健康檢查端點；未填時依 Base URL 自動建立 /health。",
+            "events_url": "事件 API 端點；未填時依 Base URL 自動建立 /api/notify/events。",
+            "websocket_url": "事件即時通知的 WebSocket 端點。",
+            "websocket_auth_mode": "目前站區介接使用無驗證模式。",
+            "timeout_seconds": "HTTP 連線逾時秒數。",
+            "is_active": "是否啟用此推論主機。",
+            "description": "設備用途或維運備註。",
+        }
 
     def clean_host_code(self):
         return self.cleaned_data["host_code"].strip().upper()
@@ -178,6 +244,35 @@ class CameraForm(FrontendModelForm):
             "description": forms.Textarea(attrs={"rows": 3}),
             "rtsp_url": forms.Textarea(attrs={"rows": 2}),
         }
+        labels = {
+            "camera_code": "攝影機代碼",
+            "name": "攝影機名稱",
+            "area": "區域",
+            "rtsp_url": "RTSP 串流 URL",
+            "username": "攝影機使用者名稱",
+            "password": "攝影機密碼",
+            "status": "連線狀態",
+            "is_active": "是否啟用",
+            "description": "說明",
+        }
+        help_texts = {
+            "rtsp_url": "輸入此攝影機的 RTSP / MJPEG / HLS 串流 URL。",
+            "username": "攝影機需要登入時填寫。",
+            "password": "攝影機需要登入時填寫。",
+            "status": "目前攝影機連線狀態。",
+            "is_active": "啟用後此攝影機可顯示於監控與事件介面。",
+            "description": "攝影機用途、安裝位置或維運備註。",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "status" in self.fields:
+            self.fields["status"].choices = [
+                ("online", "線上"),
+                ("offline", "離線"),
+                ("maintenance", "維護中"),
+                ("error", "異常"),
+            ]
 
     def clean_camera_code(self):
         return self.cleaned_data["camera_code"].strip().upper()
@@ -223,9 +318,47 @@ class AudioFileForm(FrontendModelForm):
             "message_text", "is_active", "description",
         ]
         widgets = {
+            "audio_type": forms.Select(choices=[
+                (AudioFile.AUDIO_TYPE_ALERT, "警示"),
+                (AudioFile.AUDIO_TYPE_GUIDANCE, "引導"),
+                (AudioFile.AUDIO_TYPE_WARNING, "警告"),
+                (AudioFile.AUDIO_TYPE_TEST, "測試"),
+                (AudioFile.AUDIO_TYPE_OTHER, "其他"),
+            ]),
+            "file": forms.FileInput(attrs={"class": "localized-file-native", "accept": ".mp3,.wav,.ogg"}),
             "message_text": forms.Textarea(attrs={"rows": 3}),
             "description": forms.Textarea(attrs={"rows": 3}),
         }
+        labels = {
+            "audio_code": "音檔代碼",
+            "name": "音檔名稱",
+            "audio_type": "音檔類型",
+            "file": "音檔檔案",
+            "duration_seconds": "音檔長度（秒）",
+            "message_text": "廣播文字內容",
+            "is_active": "是否啟用",
+            "description": "說明",
+        }
+        help_texts = {
+            "audio_code": "例如：AUD-FALL-001",
+            "name": "例如：電扶梯人員跌倒警示廣播",
+            "audio_type": "選擇此廣播音檔的用途類型。",
+            "file": "支援 MP3、WAV、OGG 音檔。",
+            "duration_seconds": "可填寫音檔播放長度，單位為秒。",
+            "message_text": "音檔對應的文字稿或廣播內容。",
+            "is_active": "啟用後才可供廣播規則與排程使用。",
+            "description": "音檔用途、版本或維運備註。",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["audio_type"].choices = [
+            (AudioFile.AUDIO_TYPE_ALERT, "警示"),
+            (AudioFile.AUDIO_TYPE_GUIDANCE, "引導"),
+            (AudioFile.AUDIO_TYPE_WARNING, "警告"),
+            (AudioFile.AUDIO_TYPE_TEST, "測試"),
+            (AudioFile.AUDIO_TYPE_OTHER, "其他"),
+        ]
 
     def clean_audio_code(self):
         return self.cleaned_data["audio_code"].strip().upper()

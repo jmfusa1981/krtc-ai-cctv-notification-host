@@ -22,4 +22,7 @@ urlpatterns = [
     path("speakers/<int:speaker_id>/remove/", views.delete_speaker, name="delete_speaker"),
     path("tests/audio-file/", views.test_audio_file, name="test_audio_file"),
     path("tests/maintenance-host/", views.test_maintenance_host, name="test_maintenance_host"),
+    path("configuration-backup/export/", views.export_station_configuration, name="config_backup_export"),
+    path("configuration-backup/preview/", views.preview_station_configuration_restore, name="config_backup_preview"),
+    path("configuration-backup/restore/", views.restore_station_configuration, name="config_backup_restore"),
 ]

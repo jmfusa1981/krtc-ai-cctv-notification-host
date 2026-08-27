@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% if object %}編輯{% else %}新增{% endif %}{{ management_title }}｜KRTC AI CCTV</title>
   <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
-  <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=8.0">
+  <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=8.4">
 </head>
 <body>
 <div class="settings-shell management-page-shell">
@@ -17,7 +17,7 @@
   {% endif %}
   <section class="settings-page-heading management-heading">
     <div>
-      <p class="eyebrow">OPERATION MANAGEMENT</p>
+      <p class="eyebrow">維運設定管理</p>
       <h1>{% if object %}編輯{% else %}新增{% endif %}{{ management_title }}</h1>
       <p>建立或更新本站維運設定資料。</p>
     </div>
@@ -27,7 +27,7 @@
   <main class="management-form-card">
     <div class="panel-heading">
       <div><h2>{{ management_title }}資料</h2><p>請確認代碼、連線資訊及啟用狀態後儲存。</p></div>
-      <span class="card-badge">{% if object %}EDIT{% else %}NEW{% endif %}</span>
+      <span class="card-badge">{% if object %}編輯{% else %}新增{% endif %}</span>
     </div>
     <form method="post" enctype="multipart/form-data" class="management-model-form management-kind-{{ kind }}" novalidate>
       {% csrf_token %}
@@ -35,12 +35,25 @@
       {% if form.non_field_errors %}<div class="notice notice-error">{{ form.non_field_errors }}</div>{% endif %}
       <div class="management-form-grid">
         {% for field in form %}
-          <label class="management-field management-field-{{ field.name }}{% if field.field.widget.input_type == 'checkbox' %} management-switch-field{% endif %}">
-            <span>{{ field.label }}{% if field.field.required %}<b class="required-mark">*</b>{% endif %}</span>
-            {{ field }}
-            {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
-            {% if field.errors %}<div class="field-errors">{{ field.errors }}</div>{% endif %}
-          </label>
+          {% if kind == "audio-file" and field.name == "file" %}
+            <div class="management-field management-field-{{ field.name }}">
+              <span>{{ field.label }}{% if field.field.required %}<b class="required-mark">*</b>{% endif %}</span>
+              <div class="localized-file-picker">
+                {{ field }}
+                <button type="button" class="localized-file-button" data-file-button-for="{{ field.id_for_label }}">選擇檔案</button>
+                <span class="localized-file-name" data-file-name-for="{{ field.id_for_label }}">{% if object and object.file %}目前檔案：{{ object.file.name }}{% else %}尚未選擇檔案{% endif %}</span>
+              </div>
+              {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+              {% if field.errors %}<div class="field-errors">{{ field.errors }}</div>{% endif %}
+            </div>
+          {% else %}
+            <label class="management-field management-field-{{ field.name }}{% if field.field.widget.input_type == 'checkbox' %} management-switch-field{% endif %}">
+              <span>{{ field.label }}{% if field.field.required %}<b class="required-mark">*</b>{% endif %}</span>
+              {{ field }}
+              {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+              {% if field.errors %}<div class="field-errors">{{ field.errors }}</div>{% endif %}
+            </label>
+          {% endif %}
         {% endfor %}
       </div>
       <div class="management-form-actions">
@@ -60,5 +73,19 @@
     </form>
   </main>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll(".localized-file-native").forEach(function (input) {
+    const label = document.querySelector('[data-file-name-for="' + input.id + '"]');
+    const button = document.querySelector('[data-file-button-for="' + input.id + '"]');
+    if (button) button.addEventListener("click", function () { input.click(); });
+    if (!label) return;
+    input.addEventListener("change", function () {
+      label.textContent = input.files && input.files.length ? input.files[0].name : "尚未選擇檔案";
+    });
+  });
+});
+</script>
+
 </body>
 </html>

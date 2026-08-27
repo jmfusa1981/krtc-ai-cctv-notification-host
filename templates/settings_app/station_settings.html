@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>系統設定｜KRTC AI CCTV 通報主機</title>
     <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
-    <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=8.0">
+    <link rel="stylesheet" href="{% static 'css/station_settings.css' %}?v=8.4">
 </head>
 <body>
 <div class="settings-shell">
@@ -27,7 +27,7 @@
     <section class="summary-grid" aria-label="本站設定摘要">
         <article class="summary-card"><span>推論主機</span><strong>{{ active_inference_host_count }}/{{ inference_host_count }}</strong><small>啟用／總數</small></article>
         <article class="summary-card"><span>攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong><small>線上／監測中</small></article>
-        <article class="summary-card"><span>IP Speaker</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong><small>線上／啟用</small></article>
+        <article class="summary-card"><span>IP 廣播喇叭</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong><small>線上／啟用</small></article>
         {% if show_advanced_settings %}<article class="summary-card"><span>AI 模型</span><strong>{{ active_ai_model_count }}/{{ ai_model_count }}</strong><small>啟用／總數</small></article>{% endif %}
         <article class="summary-card"><span>廣播規則</span><strong>{{ active_broadcast_rule_count }}/{{ broadcast_rule_count }}</strong><small>啟用／總數</small></article>
     </section>
@@ -37,7 +37,7 @@
         <div>
             <p class="eyebrow">SYSTEM DIAGNOSTIC</p>
             <h2>本站系統檢查</h2>
-            <p>一次檢查推論主機、攝影機、IP Speaker 與音檔；AI 映射及廣播規則採設定完整性檢查。</p>
+            <p>一次檢查推論主機 /health、攝影機網路端點、IP 廣播喇叭網路端點與音檔；AI 模型、Camera 映射及廣播規則採設定完整性檢查。此檢查不會實際播放廣播或執行 NVR 錄影。</p>
         </div>
         <button type="button" id="run-all-diagnostics" class="primary-button">執行本站系統檢查</button>
     </section>
@@ -62,12 +62,21 @@
 
     {% endif %}
 
+    {% if show_advanced_settings %}
+    <div id="static-diagnostic-integrity-items" hidden aria-hidden="true">
+        {% for model in ai_models %}{% if model.is_active %}<span class="static-diagnostic-item" data-static-ok="{% if model.health_ok %}1{% else %}0{% endif %}" data-check-category="AI 模型" data-check-label="{{ model.model_code }}"></span>{% endif %}{% endfor %}
+        {% for mapping in mappings %}{% if mapping.is_active %}<span class="static-diagnostic-item" data-static-ok="{% if mapping.health_ok %}1{% else %}0{% endif %}" data-check-category="Camera 映射" data-check-label="{{ mapping.source_camera_id }}"></span>{% endif %}{% endfor %}
+        {% for rule in broadcast_rules %}{% if rule.is_active %}<span class="static-diagnostic-item" data-static-ok="{% if rule.health_ok %}1{% else %}0{% endif %}" data-check-category="廣播規則" data-check-label="{{ rule.rule_code }}"></span>{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+
     <nav class="settings-tabs" aria-label="系統設定分類">
         <button class="settings-tab is-active" data-tab="local">本站設定</button>
-        <button class="settings-tab" data-tab="hosts">主機連線</button>
+        <button class="settings-tab" data-tab="hosts">連線主機</button>
         <button class="settings-tab" data-tab="devices">本站設備</button>
         <button class="settings-tab" data-tab="broadcast">廣播設定</button>
         {% if show_advanced_settings %}<button class="settings-tab" data-tab="logs">執行紀錄</button>{% endif %}
+        <button class="settings-tab" data-tab="backup">備份與還原</button>
     </nav>
 
     <main class="settings-content">
@@ -114,28 +123,33 @@
             <div class="panel-heading"><div><h2>推論主機連線</h2><p>執行 /health 診斷，並保存最近檢查時間與錯誤原因。</p></div>{% if can_edit_settings %}<a class="primary-button" href="{% url 'settings_app:manage_new' 'inference-host' %}">新增推論主機</a>{% endif %}</div>
             <div class="diagnostic-summary">
                 <article><span>啟用主機</span><strong>{{ active_inference_host_count }}/{{ inference_host_count }}</strong></article>
-                <article><span>目前在線</span><strong>{{ inference_hosts|length }}</strong><small>請以逐台 Health 測試結果為準</small></article>
+                <article><span>目前在線</span><strong>{{ online_inference_host_count }}</strong><small>啟用且最近 Health 狀態正常</small></article>
             </div>
-            <div class="table-wrap"><table class="diagnostic-table host-diagnostic-table"><thead><tr><th>代碼</th><th>主機名稱</th><th>Health URL</th><th>狀態</th><th>最後檢查</th><th>最後成功</th><th>操作</th></tr></thead><tbody>
-            {% for host in inference_hosts %}<tr><td class="code">{{ host.host_code }}</td><td>{{ host.name }}</td><td class="mono">{{ host.normalized_base_url }}/health</td><td><span class="status status-{{ host.status }}">{{ host.status_label_zh }}</span></td><td>{{ host.last_health_at|date:"Y-m-d H:i:s"|default:"尚無紀錄" }}{% if host.last_error %}<small class="row-error">{{ host.last_error|truncatechars:90 }}</small>{% endif %}</td><td>{{ host.last_success_at|date:"Y-m-d H:i:s"|default:"尚無紀錄" }}</td><td><div class="row-actions">{% if can_edit_settings %}<a class="test-button" href="{% url 'settings_app:manage_edit' 'inference-host' host.id %}">編輯</a>{% endif %}<button type="button" class="test-button diagnostic-item" data-check-category="推論主機" data-check-label="{{ host.host_code }}" data-test-url="{% url 'settings_app:test_inference_host' %}" data-object-id="{{ host.id }}" data-result-target="host-result-{{ host.id }}">狀態測試</button>{% if can_edit_settings %}{% if host.configuration_url %}<a class="test-button" href="{{ host.configuration_url }}" target="_blank" rel="noopener noreferrer" title="開啟 {{ host.host_code }} 推論主機設定頁">主機設定</a>{% endif %}<form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:manage_remove' 'inference-host' host.id %}" onsubmit="return confirm('確定刪除推論主機 {{ host.host_code|escapejs }}？相關即時連線狀態、Zone Count 與 Camera ID 映射會一併移除；既有事件紀錄不會刪除。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button inference-host-delete-button">刪除</button></form>{% endif %}</div></td></tr>{% empty %}<tr><td colspan="7" class="empty">尚未設定推論主機。</td></tr>{% endfor %}
+            <div class="table-wrap"><table class="diagnostic-table host-diagnostic-table"><thead><tr><th>代碼</th><th>主機名稱</th><th>網路位置</th><th>狀態</th><th>最後檢查</th><th>最後成功</th><th>操作</th></tr></thead><tbody>
+            {% for host in inference_hosts %}<tr><td class="code">{{ host.host_code }}</td><td>{{ host.name }}</td><td class="mono">{{ host.network_location }}</td><td><span id="host-status-{{ host.id }}" class="status status-{{ host.status }}">{{ host.status_label_zh }}</span></td><td><span id="host-status-time-{{ host.id }}">{{ host.last_health_at|date:"Y-m-d H:i:s"|default:"尚無紀錄" }}</span>{% if host.last_error %}<small class="row-error">{{ host.last_error|truncatechars:90 }}</small>{% endif %}</td><td>{{ host.last_success_at|date:"Y-m-d H:i:s"|default:"尚無紀錄" }}</td><td><div class="row-actions">{% if can_edit_settings %}<a class="test-button" href="{% url 'settings_app:manage_edit' 'inference-host' host.id %}">編輯</a>{% endif %}<button type="button" class="test-button diagnostic-item" data-check-category="推論主機" data-check-label="{{ host.host_code }}" data-test-url="{% url 'settings_app:test_inference_host' %}" data-object-id="{{ host.id }}" data-result-target="host-result-{{ host.id }}" data-status-target="host-status-{{ host.id }}" data-status-time-target="host-status-time-{{ host.id }}">狀態測試</button>{% if can_edit_settings %}{% if host.configuration_url %}<a class="test-button" href="{{ host.configuration_url }}" target="_blank" rel="noopener noreferrer" title="開啟 {{ host.host_code }} 推論主機設定頁">主機設定</a>{% endif %}<form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:manage_remove' 'inference-host' host.id %}" onsubmit="return confirm('確定刪除推論主機 {{ host.host_code|escapejs }}？相關即時連線狀態、Zone Count 與 Camera ID 映射會一併移除；既有事件紀錄不會刪除。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button inference-host-delete-button">刪除</button></form>{% endif %}</div></td></tr>{% empty %}<tr><td colspan="7" class="empty">尚未設定推論主機。</td></tr>{% endfor %}
             </tbody></table></div>
         </section>
 
         <section class="settings-panel" data-panel="devices" hidden>
-            <div class="panel-heading"><div><h2>本站設備</h2><p>攝影機與 IP Speaker 為本站執行所需的本地設定副本。</p></div></div>
-            <div class="diagnostic-summary">
-                <article><span>在線攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong></article>
-                <article><span>已建立映射</span><strong>{{ mapped_active_camera_count }}/{{ active_camera_count }}</strong></article>
-                <article><span>在線 Speaker</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong></article>
+            <div class="panel-heading"><div><h2>本站設備</h2><p>攝影機與 IP 廣播喇叭為本站執行所需的本地設定副本。</p></div></div>
+            <div class="diagnostic-summary device-summary-grid">
+                <article><span>線上攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong></article>
+                <article><span>線上廣播喇叭</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong></article>
             </div>
-            <div class="camera-section-title"><h3>IP 攝影機</h3>{% if can_edit_settings %}<a class="primary-button" href="{% url 'settings_app:manage_new' 'camera' %}">新增攝影機</a>{% endif %}</div>
-            <div class="table-wrap"><table class="diagnostic-table camera-diagnostic-table"><thead><tr><th>編號</th><th>名稱／區域</th><th>測試端點</th><th>映射</th><th>狀態</th><th>診斷</th></tr></thead><tbody>
-            {% for camera in cameras %}<tr><td class="code">{{ camera.camera_code }}</td><td>{{ camera.name }}<small>{{ camera.area|default:"未設定" }}</small></td><td class="mono">{{ camera.diagnostic_endpoint }}</td><td>{% if camera.mapping_count %}<span class="status status-online">{{ camera.mapping_count }} 組</span>{% else %}<span class="status status-error">未映射</span>{% endif %}</td><td><span id="camera-status-{{ camera.id }}" class="status status-{{ camera.status }}">{{ camera.status_label_zh }}</span><small id="camera-status-time-{{ camera.id }}">{{ camera.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><div class="row-actions">{% if can_edit_settings %}<a class="test-button" href="{% url 'settings_app:manage_edit' 'camera' camera.id %}">編輯</a>{% endif %}<button type="button" class="test-button diagnostic-item" data-check-category="攝影機" data-check-label="{{ camera.camera_code }}" data-test-url="{% url 'settings_app:test_camera' %}" data-object-id="{{ camera.id }}" data-result-target="camera-result-{{ camera.id }}" data-status-target="camera-status-{{ camera.id }}" data-status-time-target="camera-status-time-{{ camera.id }}">測試串流埠</button>{% if can_edit_settings %}<form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:manage_remove' 'camera' camera.id %}" onsubmit="return confirm('確定刪除攝影機 {{ camera.camera_code|escapejs }}？相關攝影機映射會一併移除，此操作無法復原。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button camera-delete-button">刪除</button></form>{% endif %}</div><small id="camera-result-{{ camera.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定攝影機。</td></tr>{% endfor %}
-            </tbody></table></div>
-            <div class="speaker-section-title"><h3>IP 擴音器</h3>{% if can_edit_settings %}<button type="button" id="speaker-add-button" class="primary-button">新增擴音器</button>{% endif %}</div>
-            <div class="table-wrap"><table class="diagnostic-table speaker-diagnostic-table"><thead><tr><th>編號</th><th>名稱／區域</th><th>網路端點</th><th>SIP URI</th><th>狀態</th><th>診斷</th></tr></thead><tbody>
-            {% for speaker in speakers %}<tr><td class="code">{{ speaker.speaker_code }}</td><td>{{ speaker.name }}<small>{{ speaker.area|default:"未設定" }}</small></td><td class="mono">{{ speaker.ip_address }}:{{ speaker.port }}<small>{{ speaker.get_network_mode_display }}</small></td><td class="mono">{{ speaker.resolved_sip_uri|default:"未設定" }}<small>{{ speaker.get_preferred_codec_display }}</small></td><td><span class="status status-{{ speaker.status }}">{{ speaker.status_label_zh }}</span><small>{{ speaker.deployment_label_zh }}／{{ speaker.monitor_label_zh }}</small><small>{{ speaker.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><div class="row-actions"><button type="button" class="test-button diagnostic-item" data-check-category="IP 擴音器" data-check-label="{{ speaker.speaker_code }}" data-test-url="{% url 'settings_app:test_speaker' %}" data-object-id="{{ speaker.id }}" data-result-target="speaker-result-{{ speaker.id }}">測試網路</button>{% if can_edit_settings %}<button type="button" class="test-button speaker-edit-button" data-speaker='{"id":{{ speaker.id }},"speaker_code":"{{ speaker.speaker_code|escapejs }}","name":"{{ speaker.name|escapejs }}","area":"{{ speaker.area|escapejs }}","location_note":"{{ speaker.location_note|escapejs }}","network_mode":"{{ speaker.network_mode }}","ip_address":"{{ speaker.ip_address }}","port":{{ speaker.port }},"username":"{{ speaker.username|escapejs }}","preferred_codec":"{{ speaker.preferred_codec }}","deployment_state":"{{ speaker.deployment_state }}","health_monitor_enabled":{% if speaker.health_monitor_enabled %}true{% else %}false{% endif %},"is_active":{% if speaker.is_active %}true{% else %}false{% endif %}}'>編輯</button><form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:delete_speaker' speaker.id %}" onsubmit="return confirm('確定刪除 IP 擴音器 {{ speaker.speaker_code|escapejs }}？相關廣播規則與排程中的此擴音器關聯會移除，既有廣播紀錄仍會保留。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button speaker-delete-button">刪除</button></form>{% endif %}</div><small id="speaker-result-{{ speaker.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定 IP 擴音器。</td></tr>{% endfor %}
-            </tbody></table></div>
+            <div class="local-device-grid">
+                <section class="local-device-panel camera-device-panel">
+                    <div class="camera-section-title"><h3>IP 攝影機</h3>{% if can_edit_settings %}<a class="primary-button" href="{% url 'settings_app:manage_new' 'camera' %}">新增攝影機</a>{% endif %}</div>
+                    <div class="table-wrap"><table class="diagnostic-table camera-diagnostic-table"><thead><tr><th>編號</th><th>名稱／區域</th><th>網路端點</th><th>狀態</th><th>執行操作</th></tr></thead><tbody>
+                    {% for camera in cameras %}<tr><td class="code">{{ camera.camera_code }}</td><td>{{ camera.name }}<small>{{ camera.area|default:"未設定" }}</small></td><td class="mono">{{ camera.diagnostic_endpoint }}</td><td><span id="camera-status-{{ camera.id }}" class="status status-{{ camera.status }}">{{ camera.status_label_zh }}</span><small id="camera-status-time-{{ camera.id }}">{{ camera.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><div class="row-actions">{% if can_edit_settings %}<a class="test-button" href="{% url 'settings_app:manage_edit' 'camera' camera.id %}">編輯</a>{% endif %}<button type="button" class="test-button diagnostic-item" data-check-category="攝影機" data-check-label="{{ camera.camera_code }}" data-test-url="{% url 'settings_app:test_camera' %}" data-object-id="{{ camera.id }}" data-result-target="camera-result-{{ camera.id }}" data-status-target="camera-status-{{ camera.id }}" data-status-time-target="camera-status-time-{{ camera.id }}">測試網路</button>{% if can_edit_settings %}<form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:manage_remove' 'camera' camera.id %}" onsubmit="return confirm('確定刪除攝影機 {{ camera.camera_code|escapejs }}？相關攝影機映射會一併移除，此操作無法復原。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button camera-delete-button">刪除</button></form>{% endif %}</div><small id="camera-result-{{ camera.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="5" class="empty">尚未設定攝影機。</td></tr>{% endfor %}
+                    </tbody></table></div>
+                </section>
+                <section class="local-device-panel speaker-device-panel">
+                    <div class="speaker-section-title"><h3>IP 廣播喇叭</h3>{% if can_edit_settings %}<a class="primary-button" href="{% url 'settings_app:manage_new' 'speaker-device' %}">新增廣播喇叭</a>{% endif %}</div>
+                    <div class="table-wrap"><table class="diagnostic-table speaker-diagnostic-table"><thead><tr><th>編號</th><th>名稱／區域</th><th>網路端點</th><th>SIP URI</th><th>狀態</th><th>執行操作</th></tr></thead><tbody>
+                    {% for speaker in speakers %}<tr><td class="code">{{ speaker.speaker_code }}</td><td>{{ speaker.name }}<small>{{ speaker.area|default:"未設定" }}</small></td><td class="mono">{{ speaker.ip_address }}:{{ speaker.port }}<small>{{ speaker.get_network_mode_display }}</small></td><td class="mono">{{ speaker.resolved_sip_uri|default:"未設定" }}<small>{{ speaker.get_preferred_codec_display }}</small></td><td><span id="speaker-status-{{ speaker.id }}" class="status status-{{ speaker.status }}">{{ speaker.status_label_zh }}</span><small>{{ speaker.deployment_label_zh }}／{{ speaker.monitor_label_zh }}</small><small id="speaker-status-time-{{ speaker.id }}">{{ speaker.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><div class="row-actions"><button type="button" class="test-button diagnostic-item" data-check-category="IP 廣播喇叭" data-check-label="{{ speaker.speaker_code }}" data-test-url="{% url 'settings_app:test_speaker' %}" data-object-id="{{ speaker.id }}" data-result-target="speaker-result-{{ speaker.id }}" data-status-target="speaker-status-{{ speaker.id }}" data-status-time-target="speaker-status-time-{{ speaker.id }}">測試網路</button>{% if can_edit_settings %}<a class="test-button speaker-edit-button" href="{% url 'settings_app:manage_edit' 'speaker-device' speaker.id %}">編輯</a><form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:delete_speaker' speaker.id %}" onsubmit="return confirm('確定刪除 IP 廣播喇叭 {{ speaker.speaker_code|escapejs }}？相關廣播規則與排程中的此擴音器關聯會移除，既有廣播紀錄仍會保留。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button speaker-delete-button">刪除</button></form>{% endif %}</div><small id="speaker-result-{{ speaker.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="6" class="empty">尚未設定 IP 廣播喇叭。</td></tr>{% endfor %}
+                    </tbody></table></div>
+                </section>
+            </div>
         </section>
 
         <section class="settings-panel" data-panel="broadcast" hidden>
@@ -200,6 +214,41 @@
             </div>
         </section>
 
+
+        <section class="settings-panel" data-panel="backup" hidden>
+            <div class="panel-heading">
+                <div>
+                    <h2>設備設定備份與還原</h2>
+                    <p>匯出本站設備與系統設定，供 App 更新、主機重建或設定移轉使用。密碼、OCC Token、Django Secret 與 USB Token 不會匯出。</p>
+                </div>
+            </div>
+
+            <div class="backup-summary-grid">
+                <article><span>Persistent Root</span><strong class="mono">{{ persistent_root }}</strong><small>正式環境可透過 KRTC_PERSISTENT_ROOT 指定。</small></article>
+                <article><span>Database Directory</span><strong class="mono">{{ persistent_data_dir }}</strong><small>App 更新不得覆蓋此目錄。</small></article>
+                <article><span>Media Directory</span><strong class="mono">{{ persistent_media_dir }}</strong><small>音檔、快照與後續錄影資料。</small></article>
+                <article><span>Backup Directory</span><strong class="mono">{{ persistent_backup_dir }}</strong><small>設定備份與還原點保存位置。</small></article>
+            </div>
+
+            <div class="backup-action-grid">
+                <article class="settings-card backup-card">
+                    <div class="card-heading"><div><h3>建立設定備份</h3><p>產生 KRTC 設定 ZIP，包含站區、推論主機、攝影機、IP 廣播喇叭、映射、音檔、廣播規則與排程。</p></div><span class="card-badge">EXPORT</span></div>
+                    <p class="backup-warning">安全原則：Camera / NVR / Speaker 密碼、OCC Bearer Token、Django SECRET_KEY、USB Token Hash 不會寫入備份檔。RTSP URL 內嵌帳密會移除。</p>
+                    <a class="primary-button backup-download-button" href="{% url 'settings_app:config_backup_export' %}">下載設定備份</a>
+                </article>
+
+                <article class="settings-card backup-card">
+                    <div class="card-heading"><div><h3>匯入設定備份</h3><p>先檢查格式、Schema Version、SHA256 與設備數量，再由操作人員確認還原。</p></div><span class="card-badge">RESTORE</span></div>
+                    <form method="post" enctype="multipart/form-data" action="{% url 'settings_app:config_backup_preview' %}" class="backup-upload-form">
+                        {% csrf_token %}
+                        <input class="form-control backup-file-input" type="file" name="backup_file" accept=".zip,application/zip" required>
+                        <button type="submit" class="primary-button">檢查備份檔</button>
+                    </form>
+                    <p class="backup-warning">確認還原前，系統會先建立目前 SQLite DB 的自動還原點。既有設備密碼會保留，不會被空白備份值覆蓋。</p>
+                </article>
+            </div>
+        </section>
+
         {% if show_advanced_settings %}
         <section class="settings-panel" data-panel="logs" hidden>
             <div class="panel-heading"><div><h2>執行與同步紀錄</h2><p>集中檢視廣播、OCC 同步與設定下發稽核結果；此頁為唯讀。</p></div></div>
@@ -231,32 +280,7 @@
     <footer class="settings-footer">最後載入時間：{{ server_time|date:"Y-m-d H:i:s" }}　｜　中央維護主機同步功能：已整合</footer>
 </div>
 
-<div id="speaker-modal" class="speaker-modal" hidden>
-  <div class="speaker-modal-card">
-    <div class="speaker-modal-heading"><h2 id="speaker-modal-title">新增擴音器</h2><button type="button" id="speaker-modal-close">×</button></div>
-    <form id="speaker-form" action="{% url 'settings_app:save_speaker' %}" method="post">{% csrf_token %}
-      <input type="hidden" name="id" id="speaker-id">
-      <div class="speaker-form-grid">
-        <label>Speaker Code<input class="form-control" name="speaker_code" id="speaker-code" required></label>
-        <label>設備名稱<input class="form-control" name="name" id="speaker-name" required></label>
-        <label>區域<input class="form-control" name="area" id="speaker-area"></label>
-        <label>位置說明<input class="form-control" name="location_note" id="speaker-location-note"></label>
-        <label>網路模式<select class="form-control" name="network_mode" id="speaker-network-mode"><option value="static">固定 IP</option><option value="dhcp">DHCP</option></select></label>
-        <label>目前 IP<input class="form-control" name="ip_address" id="speaker-ip-address" required></label>
-        <label>SIP Port<input class="form-control" type="number" min="1" max="65535" name="port" id="speaker-port" value="5060" required></label>
-        <label>SIP Username<input class="form-control" name="username" id="speaker-username" required></label>
-        <label>Codec<select class="form-control" name="preferred_codec" id="speaker-codec"><option value="PCMU/8000">G.711 μ-law (PCMU)</option><option value="PCMA/8000">G.711 A-law (PCMA)</option><option value="G726-32/8000">G.726 32 kbps</option></select></label>
-        <label>部署狀態<select class="form-control" name="deployment_state" id="speaker-deployment-state"><option value="planned">未部署 / Planned</option><option value="deployed">已部署 / Deployed</option><option value="maintenance">維護中</option><option value="retired">已退役</option></select></label>
-        <label class="speaker-checkbox"><input type="checkbox" name="health_monitor_enabled" id="speaker-health-monitor"> 啟用 System Log 健康監測</label>
-        <label class="speaker-checkbox"><input type="checkbox" name="is_active" id="speaker-active" checked> 啟用設備</label>
-      </div>
-      <div id="speaker-form-errors" class="notice notice-warning" hidden></div>
-      <div class="speaker-modal-actions"><button type="button" id="speaker-modal-cancel" class="test-button">取消</button><button type="submit" class="primary-button">儲存</button></div>
-    </form>
-  </div>
-</div>
 <script src="{% static 'js/station_settings.js' %}?v=7"></script>
-<script src="{% static 'js/speaker_settings.js' %}?v=1"></script>
 </body>
 </html>
 

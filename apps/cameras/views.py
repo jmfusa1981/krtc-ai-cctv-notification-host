@@ -1,6 +1,8 @@
 import time
 
 import cv2
+from django.contrib.auth.decorators import login_required
+from apps.cameras.rtsp_utils import camera_rtsp_url
 from django.http import Http404, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 
@@ -11,6 +13,7 @@ from .models import Camera
 from .stream_pool import acquire_camera_stream
 
 
+@login_required
 def camera_list_api(request):
     """
     Camera list API.
@@ -73,7 +76,7 @@ def generate_mjpeg_frames(camera, profile="wall"):
     }
     stream_profile = profiles.get(profile, profiles["grid4"])
     frame_interval = 1.0 / stream_profile["fps"]
-    shared_stream = acquire_camera_stream(camera.id, camera.rtsp_url)
+    shared_stream = acquire_camera_stream(camera.id, camera_rtsp_url(camera))
     last_version = 0
     next_frame_at = time.monotonic()
 
@@ -119,6 +122,7 @@ def generate_mjpeg_frames(camera, profile="wall"):
         shared_stream.unsubscribe()
 
 
+@login_required
 def camera_mjpeg_stream(request, camera_id):
     """
     MJPEG stream endpoint.
@@ -160,6 +164,7 @@ def camera_mjpeg_stream(request, camera_id):
     return response
 
 
+@login_required
 def camera_stream_check(request, camera_id):
     """
     Camera stream health check API.
@@ -229,7 +234,7 @@ def camera_stream_check(request, camera_id):
             json_dumps_params={"ensure_ascii": False},
         )
 
-    cap = cv2.VideoCapture(camera.rtsp_url)
+    cap = cv2.VideoCapture(camera_rtsp_url(camera))
 
     # These properties are best-effort. Some OpenCV builds/camera drivers may ignore them.
     try:
