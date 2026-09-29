@@ -1,0 +1,336 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ station_name|default:"站區名" }} 即時監視牆</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="{% static 'css/monitor.css' %}">
+    <link rel="stylesheet" href="{% static 'css/display_mode.css' %}?v=20260829">
+    <script src="{% static 'js/display_mode.js' %}?v=20260829"></script>
+</head>
+
+<body data-live-state-url="{% url 'dashboard:dashboard_live_state_api' %}">
+    <div class="monitor-wall-layout">
+        <header class="monitor-toolbar">
+            <div class="monitor-brand">
+                {% if request.user.is_superuser %}
+
+                <a href="{% url 'dashboard:developer_entry' %}" class="developer-logo-entry" data-developer-entry aria-label="開發者後台">
+
+                    <div class="monitor-logo-badge">
+                    <img
+                        src="{% static 'img/KRTC_logo.png' %}"
+                        alt="KRTC Logo"
+                        class="monitor-logo"
+                    >
+                </div>
+
+                </a>
+
+                {% else %}
+
+                <div class="monitor-logo-badge">
+                    <img
+                        src="{% static 'img/KRTC_logo.png' %}"
+                        alt="KRTC Logo"
+                        class="monitor-logo"
+                    >
+                </div>
+
+                {% endif %}
+                <h1 class="monitor-title">
+                    <span class="station-name">{{ station_name|default:"站區名" }}</span>
+                    <span class="page-name">即時監視牆</span>
+                </h1>
+            </div>
+
+            <div class="monitor-toolbar-center" aria-label="監視牆功能控制">
+                <div class="monitor-actions">
+                    <div class="toolbar-group camera-toolbar-group">
+                        <button
+                            type="button"
+                            class="camera-tree-toggle"
+                            id="cameraTreeToggle"
+                            aria-controls="cameraSidebar"
+                            aria-expanded="true"
+                        >
+                            攝影機清單
+                        </button>
+                    </div>
+
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+
+                    <div class="toolbar-group camera-group-navigation" aria-label="攝影機分組切換">
+                        <button type="button" id="previousCameraGroup" title="上一組" aria-label="上一組">‹</button>
+                        <span id="cameraGroupStatus">1 / 1</span>
+                        <button type="button" id="nextCameraGroup" title="下一組" aria-label="下一組">›</button>
+                    </div>
+
+                    <div class="toolbar-group carousel-controls" aria-label="攝影機分組輪播">
+                        <button type="button" id="carouselToggle" disabled>輪播</button>
+                        <select id="carouselInterval" aria-label="輪播間隔">
+                            <option value="5">5 秒</option>
+                            <option value="10" selected>10 秒</option>
+                        </select>
+                        <span id="carouselStatus">待命</span>
+                    </div>
+
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+
+                    <div class="toolbar-group grid-mode-buttons" role="group" aria-label="畫面分割">
+                        <button type="button" class="grid-mode-btn" data-grid="1" title="單畫面" aria-label="單畫面">
+                            <span class="grid-mode-icon grid-mode-icon--1" aria-hidden="true">
+                                <span></span>
+                            </span>
+                            <span class="sr-only">單畫面</span>
+                        </button>
+                        <button type="button" class="grid-mode-btn active" data-grid="4" title="四分割" aria-label="四分割">
+                            <span class="grid-mode-icon grid-mode-icon--4" aria-hidden="true">
+                                <span></span><span></span><span></span><span></span>
+                            </span>
+                            <span class="sr-only">四分割</span>
+                        </button>
+                        <button type="button" class="grid-mode-btn" data-grid="9" title="九分割" aria-label="九分割">
+                            <span class="grid-mode-icon grid-mode-icon--9" aria-hidden="true">
+                                <span></span><span></span><span></span>
+                                <span></span><span></span><span></span>
+                                <span></span><span></span><span></span>
+                            </span>
+                            <span class="sr-only">九分割</span>
+                        </button>
+                        <button type="button" class="grid-mode-btn" data-grid="16" title="十六分割" aria-label="十六分割">
+                            <span class="grid-mode-icon grid-mode-icon--16" aria-hidden="true">
+                                <span></span><span></span><span></span><span></span>
+                                <span></span><span></span><span></span><span></span>
+                                <span></span><span></span><span></span><span></span>
+                                <span></span><span></span><span></span><span></span>
+                            </span>
+                            <span class="sr-only">十六分割</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar-group account-toolbar-group monitor-toolbar-right">
+                <a href="{% url 'dashboard:home' %}" class="back-dashboard-link">
+                    主頁面
+                </a>
+
+                <div class="operator-badge" title="目前登入角色與帳號">
+                    <span>{{ current_user_display|default:request.user.username }}</span>
+                </div>
+
+                <time
+                    id="monitorDateTime"
+                    class="monitor-datetime"
+                    datetime=""
+                    aria-label="系統日期與時間"
+                >
+                    {% now "Y/m/d H:i:s" %}
+                </time>
+
+                <form method="post" action="{% url 'logout' %}" class="logout-form">
+                    {% csrf_token %}
+                    <button type="submit" class="logout-button">
+                        登出
+                    </button>
+                </form>
+            </div>
+        </header>
+
+        <section class="monitor-event-alert" id="monitorEventAlert" hidden aria-live="assertive">
+            <div class="monitor-event-alert-indicator" aria-hidden="true"></div>
+            <div class="monitor-event-alert-copy">
+                <span>NEW AI EVENT</span>
+                <strong id="monitorEventType">偵測到新事件</strong>
+                <p id="monitorEventCamera">等待事件資料</p>
+                <time id="monitorEventTime">--</time>
+            </div>
+            <div class="monitor-event-alert-actions">
+                <a href="{% url 'dashboard:home' %}">前往 Dashboard</a>
+                <button type="button" id="dismissMonitorEventAlert" aria-label="關閉事件提示">×</button>
+            </div>
+        </section>
+
+        <main class="monitor-content" id="monitorContent">
+            <aside class="camera-sidebar" id="cameraSidebar">
+                <div class="camera-sidebar-header">
+                    <div>
+                        <h2>攝影機清單</h2>
+                        <p>{{ cameras|length }} 台啟用中</p>
+                    </div>
+                </div>
+
+                <div class="camera-search">
+                    <input
+                        type="search"
+                        id="cameraSearchInput"
+                        placeholder="搜尋攝影機、區域"
+                        autocomplete="off"
+                    >
+                </div>
+
+                <div class="camera-tree-list" id="cameraTreeList">
+                    {% for camera in cameras %}
+                        <button
+                            type="button"
+                            class="camera-tree-item"
+                            draggable="true"
+                            data-camera-tree-item
+                            data-camera-id="{{ camera.id }}"
+                            data-camera-code="{{ camera.camera_code }}"
+                            data-camera-search="{{ camera.camera_code }} {{ camera.name }} {{ camera.area }}"
+                        >
+                            <span class="camera-tree-status status-{{ camera.status|default:'unknown' }}"></span>
+                            <span class="camera-tree-copy">
+                                <strong>{{ camera.camera_code }}｜{{ camera.name }}</strong>
+                                <span>{{ camera.area|default:"未設定區域" }}</span>
+                                <small data-camera-assignment>尚未配置</small>
+                            </span>
+                        </button>
+                    {% empty %}
+                        <div class="camera-tree-empty">目前沒有啟用中的攝影機</div>
+                    {% endfor %}
+                </div>
+            </aside>
+
+            <section class="monitor-grid grid-4" id="monitorGrid">
+                {% for camera in cameras %}
+                    <div
+                        class="monitor-slot is-occupied"
+                        data-monitor-slot
+                        data-slot-index="{{ forloop.counter0 }}"
+                    >
+                        <span class="monitor-slot-label">
+                            SLOT {{ forloop.counter|stringformat:"02d" }}
+                        </span>
+
+                    <article
+                        class="monitor-camera-card stream-loading"
+                        data-monitor-camera-card
+                        data-camera-id="{{ camera.id }}"
+                        data-camera-code="{{ camera.camera_code }}"
+                        data-check-url="{% url 'cameras:camera_stream_check' camera.id %}"
+                    >
+                        <div class="monitor-camera-screen">
+                            <img
+                                alt="{{ camera.camera_code }}"
+                                class="camera-stream"
+                                data-camera-stream
+                                data-stream-url="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
+                                data-stream-active="false"
+                            >
+
+                            <div class="stream-overlay" data-stream-overlay>
+                                <div>
+                                    <div class="stream-overlay-title">{{ camera.camera_code }}</div>
+                                    <div class="stream-overlay-message">Loading stream...</div>
+                                    <div class="stream-overlay-small">正在連接攝影機串流</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="monitor-camera-info">
+                            <div class="monitor-camera-name">
+                                <h3>{{ camera.camera_code }}｜{{ camera.name }}</h3>
+
+                                {% if camera.area %}
+                                    <p>{{ camera.area }}</p>
+                                {% else %}
+                                    <p>未設定區域</p>
+                                {% endif %}
+                            </div>
+
+                            <span
+                                class="camera-status status-{{ camera.status|default:'unknown' }}"
+                                data-status-badge
+                            >
+                                {% if camera.get_status_display %}
+                                    {{ camera.get_status_display }}
+                                {% else %}
+                                    Unknown
+                                {% endif %}
+                            </span>
+                        </div>
+                    </article>
+                    </div>
+                {% endfor %}
+            </section>
+
+            <section
+                class="monitor-mosaic"
+                id="monitorMosaic"
+                data-mosaic-base-url="{% url 'cameras:camera_mosaic_stream' %}"
+                hidden
+            >
+                <div class="monitor-mosaic-stage" id="monitorMosaicStage">
+                    <img
+                        id="monitorMosaicStream"
+                        class="monitor-mosaic-stream"
+                        alt="多攝影機 Mosaic 即時影像"
+                    >
+                    <div
+                        class="monitor-mosaic-interaction-grid"
+                        id="monitorMosaicInteractionGrid"
+                        aria-label="Mosaic Camera 格位配置"
+                    ></div>
+                    <div class="monitor-mosaic-overlay" id="monitorMosaicOverlay">
+                        <strong>MOSAIC CONNECTING</strong>
+                        <span>正在建立多攝影機合成串流</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{% static 'js/monitor.js' %}?v=20260829-navfix"></script>
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const krtcDeveloperEntry = true;
+        const entry = document.querySelector("[data-developer-entry]");
+        if (!entry) {
+            return;
+        }
+
+        let busy = false;
+        entry.addEventListener("click", async function (event) {
+            event.preventDefault();
+            if (busy) {
+                return;
+            }
+            busy = true;
+
+            try {
+                const response = await fetch(entry.href, {
+                    method: "GET",
+                    headers: {"Accept": "application/json"},
+                    credentials: "same-origin",
+                    cache: "no-store"
+                });
+                const payload = await response.json().catch(function () { return {}; });
+
+                if (response.ok && payload.ok === true && payload.redirect) {
+                    window.location.assign(payload.redirect);
+                    return;
+                }
+            } catch (error) {
+                // Deliberately silent: failed authorization is represented only by the logo pulse.
+            } finally {
+                busy = false;
+            }
+
+            entry.classList.remove("usb-denied");
+            void entry.offsetWidth;
+            entry.classList.add("usb-denied");
+            window.setTimeout(function () {
+                entry.classList.remove("usb-denied");
+            }, 1100);
+        });
+    });
+    </script>
+
+</body>
+</html>

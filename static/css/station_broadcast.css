@@ -1,0 +1,983 @@
+:root{--navy:#0b1d3a;--blue:#087dbe;--cyan:#0498d2;--panel:#fff;--line:#d4e0ec;--bg:#edf3f8;--text:#10243f;--muted:#60758e;--ok:#0a8f53;--warn:#d97706;--bad:#c0392b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif}.broadcast-shell{padding:12px}.broadcast-banner{margin-top:14px;padding:28px 30px;border-radius:14px;background:linear-gradient(135deg,#0567a9,#0a86c8);color:#fff;display:flex;align-items:center;justify-content:space-between;box-shadow:0 6px 18px rgba(18,61,95,.12)}.broadcast-banner h1{margin:0 0 8px;font-size:28px}.broadcast-banner p{margin:0;opacity:.9}.mode-badge{padding:9px 15px;border-radius:9px;font-weight:700;background:#fff;color:#087dbe}.mode-badge.is-live{color:#087a47}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}.summary-grid article{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px}.summary-grid span{display:block;color:var(--muted);font-size:13px}.summary-grid strong{display:block;margin-top:7px;font-size:28px}.summary-grid .mode-text{font-size:20px}.broadcast-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,.8fr);gap:14px}.control-panel,.status-panel,.log-panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:20px}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.panel-heading h2,.status-panel h2{margin:0 0 5px;font-size:21px}.panel-heading p{margin:0;color:var(--muted);font-size:13px}.form-grid{display:grid;grid-template-columns:1fr 2fr;gap:16px}.form-grid label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}.form-grid .full-width{grid-column:1/-1}.form-grid select{width:100%;height:43px;border:1px solid #bfcfe0;border-radius:8px;padding:0 11px;background:#fff;color:var(--text)}.selection-preview{margin-top:18px;padding:15px 17px;border:1px dashed #9fc3dd;border-radius:10px;background:#f4faff;display:flex;flex-direction:column;gap:5px}.selection-preview span{color:var(--muted);font-size:13px}.form-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}.primary-button,.secondary-button{border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}.primary-button{border:1px solid #087dbe;background:#087dbe;color:#fff}.primary-button:disabled{opacity:.45;cursor:not-allowed}.secondary-button{border:1px solid #abc3d8;background:#fff;color:#174566}.broadcast-status{border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:6px;margin-bottom:17px}.broadcast-status.is-idle{background:#edf5fb}.broadcast-status.is-working{background:#fff5d9;color:#8a5a00}.broadcast-status.is-success{background:#e6f8ee;color:#087a47}.broadcast-status.is-error{background:#feecec;color:#a92f25}.broadcast-status span{font-size:13px}.status-panel dl{margin:0}.status-panel dl div{display:grid;grid-template-columns:95px 1fr;gap:10px;padding:11px 0;border-bottom:1px solid #e2eaf1}.status-panel dt{color:var(--muted)}.status-panel dd{margin:0}.log-panel{margin-top:14px}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:12px 11px;border-bottom:1px solid #dce5ed;text-align:left;font-size:13px;vertical-align:top}th{background:#edf3f8;color:#324e68}.message-cell{white-space:normal;word-break:break-word}.status-tag{display:inline-block;padding:4px 9px;border-radius:999px;font-weight:700}.status-success{background:#ddf7e8;color:#087a47}.status-failed{background:#fee5e3;color:#b12f24}.status-playing{background:#fff0cc;color:#9a6500}.status-pending{background:#e4f1fb;color:#126c9f}.status-skipped{background:#eceff3;color:#5a6470}.empty-row{text-align:center;color:var(--muted);padding:24px}.permission-notice{padding:18px;border-radius:9px;background:#fff4df;color:#8a5a00}@media(max-width:1100px){.summary-grid{grid-template-columns:repeat(2,1fr)}.broadcast-layout{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}}
+.schedule-panel{margin-top:14px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:20px}.schedule-form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.schedule-form-grid label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}.schedule-form-grid input,.schedule-form-grid select{width:100%;min-height:42px;border:1px solid #bfcfe0;border-radius:8px;padding:8px 10px;background:#fff;color:var(--text)}.schedule-form-grid .schedule-speakers{grid-column:span 2}.schedule-form-grid .schedule-speakers select{min-height:116px}.schedule-form-grid .schedule-active{flex-direction:row;align-items:center;align-self:end;padding-bottom:10px}.schedule-form-grid .schedule-active input{width:auto;min-height:0}.schedule-form-status{min-height:20px;margin-top:10px;font-size:13px;color:var(--muted)}.schedule-form-status.is-success{color:var(--ok)}.schedule-form-status.is-error{color:var(--bad)}.schedule-table-wrap{margin-top:18px}.schedule-actions{display:flex;gap:6px;flex-wrap:wrap}.schedule-actions .secondary-button{padding:5px 9px;font-size:12px}@media(max-width:1100px){.schedule-form-grid{grid-template-columns:1fr 1fr}.schedule-form-grid .schedule-speakers{grid-column:1/-1}}@media(max-width:720px){.schedule-form-grid{grid-template-columns:1fr}}
+.live-microphone-panel{margin-top:14px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:20px}.live-microphone-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(260px,.8fr);gap:16px}.live-microphone-grid label{display:flex;flex-direction:column;gap:7px;font-size:13px;font-weight:700}.live-microphone-grid select{width:100%;min-height:130px;border:1px solid #bfcfe0;border-radius:8px;padding:8px 10px;background:#fff;color:var(--text)}.live-microphone-info{border:1px solid #c9d9e7;border-radius:10px;background:#f5f9fc;padding:14px;display:flex;flex-direction:column;gap:7px}.live-microphone-info span{font-size:13px;color:var(--muted)}.live-microphone-status{margin-top:16px;border-radius:10px;padding:15px 17px;display:flex;flex-direction:column;gap:5px}.live-microphone-status span{font-size:13px}.live-microphone-status.is-idle{background:#edf5fb}.live-microphone-status.is-working{background:#fff5d9;color:#8a5a00}.live-microphone-status.is-active{background:#e6f8ee;color:#087a47}.live-microphone-status.is-error{background:#feecec;color:#a92f25}.live-status-badge{padding:7px 12px;border-radius:999px;font-weight:700;font-size:13px}.live-status-badge.is-idle{background:#e7eef5;color:#52677d}.live-status-badge.is-working{background:#fff0cc;color:#966000}.live-status-badge.is-active{background:#ddf7e8;color:#087a47}.live-status-badge.is-error{background:#fee5e3;color:#b12f24}.danger-button{border:1px solid #b8322a;background:#b8322a;color:#fff;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}.danger-button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:900px){.live-microphone-grid{grid-template-columns:1fr}}
+
+.volume-control{display:grid;gap:8px;margin:14px 0;padding:12px 14px;border:1px solid #d8e2ec;border-radius:8px;background:#f8fbfd}.volume-control input[type=range]{width:100%}.volume-control strong{color:#0a4f78}
+.status-panel-actions{display:flex;justify-content:flex-end;margin-top:18px}
+
+/* V4 broadcast console layout: manual/live side by side, schedule in first viewport. */
+.broadcast-banner{height:128px;min-height:128px;margin-top:10px;padding:0 30px}
+.broadcast-banner h1{margin-bottom:4px;font-size:23px}
+.broadcast-banner p{font-size:13px}
+.summary-grid{gap:9px;margin:9px 0}
+.summary-grid article{padding:10px 14px}
+.summary-grid strong{margin-top:3px;font-size:21px}
+.summary-grid .mode-text{font-size:17px}
+.primary-broadcast-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:stretch}
+.control-panel,.live-microphone-panel,.schedule-panel,.log-panel{padding:15px}
+.live-microphone-panel{margin-top:0}
+.panel-heading{margin-bottom:12px}
+.panel-heading h2{font-size:19px}
+.form-grid{gap:10px}
+.form-grid select{height:38px}
+.selection-preview{margin-top:10px;padding:10px 12px}
+.volume-control{margin:10px 0;padding:9px 11px}
+.broadcast-status,.live-microphone-status{margin:10px 0 0;padding:10px 12px}
+.form-actions{margin-top:10px}
+.live-microphone-grid{grid-template-columns:minmax(0,1.2fr) minmax(210px,.8fr);gap:10px}
+.live-microphone-grid select{min-height:112px}
+.live-microphone-info{padding:10px;gap:4px}
+.recovery-button{margin-right:auto;border-color:#d79d38;color:#7b5200;background:#fff8e8}
+.secondary-broadcast-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start;margin-top:12px}
+.secondary-broadcast-grid .schedule-panel,.secondary-broadcast-grid .log-panel{min-width:0;margin-top:0}
+.schedule-panel{margin-top:0}
+.schedule-form-grid{gap:9px}
+.schedule-form-grid input,.schedule-form-grid select{min-height:37px;padding:6px 9px}
+.schedule-form-grid .schedule-speakers select{min-height:82px}
+.schedule-table-wrap{margin-top:12px;max-height:190px}
+.log-panel{margin-top:0}
+th,td{padding:8px 9px}
+@media(max-width:1100px){
+  .primary-broadcast-grid{grid-template-columns:1fr}
+  .secondary-broadcast-grid{grid-template-columns:1fr}
+  .live-microphone-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:760px){
+  .summary-grid{grid-template-columns:1fr 1fr}
+  .live-microphone-grid{grid-template-columns:1fr}
+  .recovery-button{width:100%;margin-right:0}
+}
+
+/* KRTC V5.13 BLUE INFO BAR UNIFICATION START */
+:root {
+    --krtc-info-bar-blue: #0068b7;
+    --krtc-info-bar-radius: 14px;
+    --krtc-info-bar-divider: rgba(255, 255, 255, 0.22);
+    --krtc-info-bar-shadow: 0 7px 20px rgba(0, 104, 183, 0.14);
+}
+.broadcast-banner {
+    overflow: hidden;
+    border-radius: var(--krtc-info-bar-radius);
+    background: var(--krtc-info-bar-blue);
+    box-shadow: var(--krtc-info-bar-shadow);
+}
+/* KRTC V5.13 BLUE INFO BAR UNIFICATION END */
+
+/* KRTC V5.13 INFO BAR UNIT PLAN START */
+/* Broadcast banner uses 4 logical units: description 3, mode/status 1. */
+.broadcast-banner {
+    display: grid !important;
+    grid-template-columns: minmax(0, 3fr) minmax(180px, 1fr) !important;
+    align-items: center !important;
+    column-gap: 20px !important;
+}
+
+.broadcast-banner > div,
+.broadcast-banner .mode-badge {
+    min-width: 0;
+}
+
+.broadcast-banner .mode-badge {
+    justify-self: end;
+    text-align: center;
+}
+
+/* Four broadcast KPIs remain equal: 1 unit each. */
+.summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 1080px) {
+    .broadcast-banner {
+        grid-template-columns: 1fr !important;
+        row-gap: 12px;
+    }
+
+    .broadcast-banner .mode-badge {
+        justify-self: start;
+    }
+
+    .summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+/* KRTC V5.13 INFO BAR UNIT PLAN END */
+
+/* KRTC V5.13 BLUE INFO BAR VISUAL CONSISTENCY START */
+.broadcast-banner {
+    height: 128px !important;
+    min-height: 128px !important;
+    max-height: 128px !important;
+    margin-top: 10px !important;
+    padding: 16px 20px !important;
+    border-radius: 14px !important;
+    background: #0068b7 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    overflow: hidden !important;
+}
+.broadcast-banner > div {
+    min-width: 0 !important;
+}
+.broadcast-banner h1 {
+    margin: 0 !important;
+    font-size: 24px !important;
+    font-weight: 800 !important;
+    line-height: 1.15 !important;
+}
+.broadcast-banner p {
+    margin: 6px 0 0 !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.35 !important;
+}
+/* KRTC V5.13 BLUE INFO BAR VISUAL CONSISTENCY END */
+
+
+/* KRTC V5.15.6 - Schedule broadcast layout cleanup only */
+.schedule-panel .schedule-form-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px 14px !important;
+    align-items: end;
+}
+.schedule-panel .schedule-form-grid > label {
+    min-width: 0;
+}
+.schedule-panel .schedule-form-grid .schedule-name,
+.schedule-panel .schedule-form-grid .schedule-type,
+.schedule-panel .schedule-form-grid .schedule-time,
+.schedule-panel .schedule-form-grid .schedule-audio,
+.schedule-panel .schedule-form-grid .schedule-volume {
+    grid-column: auto !important;
+}
+.schedule-panel .schedule-form-grid .schedule-speakers {
+    grid-column: 1 / -1 !important;
+}
+.schedule-panel .schedule-form-grid .schedule-speakers select {
+    min-height: 112px !important;
+}
+.schedule-panel .schedule-form-grid .schedule-active {
+    min-height: 37px;
+    margin: 0;
+    padding: 0 12px !important;
+    border: 1px solid #bfcfe0;
+    border-radius: 8px;
+    background: #f8fbfd;
+    align-self: end !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+.schedule-panel .schedule-form-grid .schedule-active span {
+    font-weight: 700;
+}
+.schedule-panel .schedule-form-footer {
+    min-height: 42px;
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+.schedule-panel .schedule-form-footer .schedule-form-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 20px;
+    margin-top: 0;
+}
+.schedule-panel .schedule-form-footer .form-actions {
+    flex: 0 0 auto;
+    margin-top: 0 !important;
+}
+.schedule-panel .schedule-table-wrap {
+    margin-top: 14px !important;
+}
+@media (max-width: 760px) {
+    .schedule-panel .schedule-form-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .schedule-panel .schedule-form-grid .schedule-speakers {
+        grid-column: 1 !important;
+    }
+    .schedule-panel .schedule-form-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+    .schedule-panel .schedule-form-footer .form-actions {
+        justify-content: flex-end;
+    }
+}
+/* END KRTC V5.15.6 */
+
+/* KRTC V5.15.6A - Schedule broadcast stable three-column layout only */
+.schedule-panel .schedule-form-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px 14px !important;
+    align-items: end !important;
+}
+
+.schedule-panel .schedule-form-grid .schedule-name,
+.schedule-panel .schedule-form-grid .schedule-type,
+.schedule-panel .schedule-form-grid .schedule-time,
+.schedule-panel .schedule-form-grid .schedule-audio,
+.schedule-panel .schedule-form-grid .schedule-volume,
+.schedule-panel .schedule-form-grid .schedule-active {
+    grid-column: auto !important;
+}
+
+.schedule-panel .schedule-form-grid .schedule-speakers {
+    grid-column: 1 / -1 !important;
+}
+
+.schedule-panel .schedule-form-grid .schedule-speakers select {
+    min-height: 112px !important;
+}
+
+.schedule-panel .schedule-form-grid .schedule-active {
+    min-height: 37px !important;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    border: 1px solid #bfcfe0 !important;
+    border-radius: 8px !important;
+    background: #f8fbfd !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+@media (max-width: 1100px) {
+    .schedule-panel .schedule-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    .schedule-panel .schedule-form-grid .schedule-speakers {
+        grid-column: 1 / -1 !important;
+    }
+}
+
+@media (max-width: 760px) {
+    .schedule-panel .schedule-form-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .schedule-panel .schedule-form-grid .schedule-speakers {
+        grid-column: 1 !important;
+    }
+}
+/* END KRTC V5.15.6A */
+
+
+/* KRTC V5.15.6C - Broadcast schedule final 3-column layout START */
+.schedule-panel .schedule-form-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    column-gap: 14px !important;
+    row-gap: 12px !important;
+    align-items: start !important;
+}
+
+.schedule-panel .schedule-form-grid > label[hidden] {
+    display: none !important;
+}
+
+/* Row 1: schedule name | schedule type | once execution time */
+.schedule-panel .schedule-form-grid > label:nth-child(1) {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+}
+.schedule-panel .schedule-form-grid > label:nth-child(2) {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+}
+.schedule-panel .schedule-form-grid > #runAtField {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+}
+
+/* Row 2: daily time | audio | volume */
+.schedule-panel .schedule-form-grid > #dailyTimeField {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+}
+.schedule-panel .schedule-form-grid > label:nth-child(5) {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+}
+.schedule-panel .schedule-form-grid > label:nth-child(7) {
+    grid-column: 3 !important;
+    grid-row: 2 !important;
+}
+
+/* Lower area: speaker spans the left two columns only. */
+.schedule-panel .schedule-form-grid > .schedule-speakers {
+    grid-column: 1 / span 2 !important;
+    grid-row: 3 !important;
+}
+.schedule-panel .schedule-form-grid > .schedule-speakers select {
+    min-height: 116px !important;
+}
+
+/* Right-side operation area. */
+.schedule-panel .schedule-form-grid > .schedule-active {
+    grid-column: 3 !important;
+    grid-row: 3 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    align-self: start !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    border: 1px solid #bfcfe0 !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+}
+.schedule-panel .schedule-form-grid > .schedule-active input {
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 10px 0 0 !important;
+}
+
+/* Create button remains separate and anchored to the form's lower-right corner. */
+.schedule-panel #broadcastScheduleForm > .form-actions {
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    margin-top: 12px !important;
+    min-height: 46px !important;
+}
+.schedule-panel #broadcastScheduleForm > .form-actions .primary-button,
+.schedule-panel #broadcastScheduleForm > .form-actions button[type="submit"] {
+    margin-left: auto !important;
+}
+
+@media (max-width: 1100px) {
+    .schedule-panel .schedule-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    .schedule-panel .schedule-form-grid > label,
+    .schedule-panel .schedule-form-grid > #runAtField,
+    .schedule-panel .schedule-form-grid > #dailyTimeField,
+    .schedule-panel .schedule-form-grid > .schedule-speakers,
+    .schedule-panel .schedule-form-grid > .schedule-active {
+        grid-column: auto !important;
+        grid-row: auto !important;
+    }
+    .schedule-panel .schedule-form-grid > .schedule-speakers {
+        grid-column: 1 / -1 !important;
+    }
+}
+/* KRTC V5.15.6C - Broadcast schedule final 3-column layout END */
+
+
+
+/* KRTC V5.15.6E - Precise schedule layout based on current source START */
+.schedule-panel .schedule-form-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    column-gap: 14px !important;
+    row-gap: 12px !important;
+    align-items: stretch !important;
+}
+
+/* Row 1 */
+.schedule-panel .schedule-form-grid > .schedule-name { grid-column: 1 !important; grid-row: 1 !important; }
+.schedule-panel .schedule-form-grid > .schedule-type { grid-column: 2 !important; grid-row: 1 !important; }
+.schedule-panel .schedule-form-grid > #runAtField { grid-column: 3 !important; grid-row: 1 !important; }
+
+/* Row 2 */
+.schedule-panel .schedule-form-grid > #dailyTimeField {
+    display: flex !important;
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+}
+.schedule-panel .schedule-form-grid > .schedule-audio { grid-column: 2 !important; grid-row: 2 !important; }
+.schedule-panel .schedule-form-grid > .schedule-volume { grid-column: 3 !important; grid-row: 2 !important; }
+
+/* Row 3: Speaker uses the left two columns. */
+.schedule-panel .schedule-form-grid > .schedule-speakers {
+    grid-column: 1 / span 2 !important;
+    grid-row: 3 !important;
+}
+.schedule-panel .schedule-form-grid > .schedule-speakers select {
+    min-height: 116px !important;
+}
+
+/* Right operation column: active control at top, create button aligned to Speaker bottom. */
+.schedule-panel .schedule-form-grid > .schedule-operation-cell {
+    grid-column: 3 !important;
+    grid-row: 3 !important;
+    min-width: 0;
+    display: flex !important;
+    flex-direction: column !important;
+    align-self: stretch !important;
+}
+.schedule-panel .schedule-operation-cell > .schedule-active {
+    min-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 12px !important;
+    border: 1px solid #bfcfe0 !important;
+    border-radius: 8px !important;
+    background: #fff !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+.schedule-panel .schedule-operation-cell > .schedule-active input {
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+}
+.schedule-panel .schedule-operation-cell > .schedule-create-actions {
+    margin-top: auto !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: flex-end !important;
+}
+.schedule-panel .schedule-operation-cell > .schedule-create-actions .primary-button {
+    min-width: 110px;
+}
+
+.schedule-panel .schedule-form-footer {
+    min-height: 20px !important;
+    margin-top: 8px !important;
+    display: block !important;
+}
+.schedule-panel .schedule-form-footer .schedule-form-status {
+    min-height: 20px !important;
+    margin: 0 !important;
+}
+
+@media (max-width: 1100px) {
+    .schedule-panel .schedule-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .schedule-panel .schedule-form-grid > .schedule-name,
+    .schedule-panel .schedule-form-grid > .schedule-type,
+    .schedule-panel .schedule-form-grid > #runAtField,
+    .schedule-panel .schedule-form-grid > #dailyTimeField,
+    .schedule-panel .schedule-form-grid > .schedule-audio,
+    .schedule-panel .schedule-form-grid > .schedule-volume,
+    .schedule-panel .schedule-form-grid > .schedule-speakers,
+    .schedule-panel .schedule-form-grid > .schedule-operation-cell {
+        grid-column: auto !important;
+        grid-row: auto !important;
+    }
+    .schedule-panel .schedule-form-grid > .schedule-speakers { grid-column: 1 / -1 !important; }
+    .schedule-panel .schedule-form-grid > .schedule-operation-cell { grid-column: 1 / -1 !important; min-height: 92px; }
+}
+/* KRTC V5.15.6E - Precise schedule layout based on current source END */
+
+/* KRTC V5.15.8 - schedule action alignment START */
+.schedule-panel #broadcastScheduleForm {
+    position: relative !important;
+}
+
+/* Active checkbox: no bubble / border container. */
+.schedule-panel .schedule-form-grid > .schedule-active {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    align-self: start !important;
+}
+.schedule-panel .schedule-form-grid > .schedule-active input {
+    margin: 0 10px 0 0 !important;
+}
+
+/* Keep the footer from pushing the Create button below the speaker selector. */
+.schedule-panel #broadcastScheduleForm > .schedule-form-footer {
+    position: relative !important;
+    min-height: 0 !important;
+    height: 0 !important;
+    margin-top: 0 !important;
+    display: block !important;
+}
+
+/* Anchor Create button to the bottom-right edge of the schedule grid. */
+.schedule-panel #broadcastScheduleForm > .schedule-form-footer > .form-actions {
+    position: absolute !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: flex-end !important;
+    z-index: 2;
+}
+
+/* Status remains available without changing normal layout height. */
+.schedule-panel #broadcastScheduleForm > .schedule-form-footer > .schedule-form-status {
+    position: absolute !important;
+    left: 0 !important;
+    top: 8px !important;
+    width: calc(66.666% - 6px) !important;
+    margin: 0 !important;
+}
+
+@media (max-width: 760px) {
+    .schedule-panel #broadcastScheduleForm > .schedule-form-footer {
+        height: auto !important;
+        min-height: 42px !important;
+        margin-top: 10px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+    }
+    .schedule-panel #broadcastScheduleForm > .schedule-form-footer > .form-actions,
+    .schedule-panel #broadcastScheduleForm > .schedule-form-footer > .schedule-form-status {
+        position: static !important;
+        width: auto !important;
+    }
+}
+/* KRTC V5.15.8 - schedule action alignment END */
+
+
+/* KRTC V5.16 - Manual prerecorded broadcast two-panel layout only */
+.manual-broadcast-panel .manual-broadcast-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+    gap: 14px;
+    align-items: stretch;
+}
+.manual-broadcast-panel .manual-broadcast-settings,
+.manual-broadcast-panel .manual-broadcast-execution {
+    min-width: 0;
+    border: 1px solid #d8e2ec;
+    border-radius: 10px;
+    background: #fff;
+    padding: 14px;
+}
+.manual-broadcast-panel .manual-subpanel-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+.manual-broadcast-panel .manual-subpanel-heading > strong {
+    font-size: 16px;
+    color: var(--text);
+}
+.manual-broadcast-panel .manual-subpanel-heading > span {
+    font-size: 12px;
+    color: var(--muted);
+}
+.manual-broadcast-panel .manual-broadcast-settings .form-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+.manual-broadcast-panel .manual-broadcast-settings .volume-control {
+    margin: 12px 0 0;
+}
+.manual-broadcast-panel .manual-broadcast-execution {
+    display: flex;
+    flex-direction: column;
+}
+.manual-broadcast-panel .manual-broadcast-execution .selection-preview {
+    margin-top: 0;
+}
+.manual-broadcast-panel .manual-broadcast-execution .broadcast-status {
+    margin: 12px 0 0;
+}
+.manual-broadcast-panel .manual-broadcast-execution .form-actions {
+    margin-top: auto;
+    padding-top: 14px;
+}
+@media (max-width: 1100px) {
+    .manual-broadcast-panel .manual-broadcast-layout {
+        grid-template-columns: 1fr;
+    }
+    .manual-broadcast-panel .manual-broadcast-settings .form-grid {
+        grid-template-columns: 1fr 2fr;
+    }
+}
+@media (max-width: 720px) {
+    .manual-broadcast-panel .manual-broadcast-settings .form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+/* END KRTC V5.16 */
+
+/* KRTC V5.16.1 - Live microphone broadcast two-panel layout only */
+.live-microphone-panel .live-broadcast-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+    gap: 14px;
+    align-items: stretch;
+}
+.live-microphone-panel .live-broadcast-settings,
+.live-microphone-panel .live-broadcast-execution {
+    min-width: 0;
+    border: 1px solid #d8e2ec;
+    border-radius: 10px;
+    background: #fff;
+    padding: 14px;
+}
+.live-microphone-panel .live-subpanel-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+.live-microphone-panel .live-subpanel-heading > strong {
+    font-size: 16px;
+    color: var(--text);
+}
+.live-microphone-panel .live-subpanel-heading > span {
+    font-size: 12px;
+    color: var(--muted);
+}
+.live-microphone-panel .live-speaker-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.live-microphone-panel .live-speaker-field select {
+    width: 100%;
+    min-height: 130px;
+    border: 1px solid #bfcfe0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #fff;
+    color: var(--text);
+}
+.live-microphone-panel .live-volume-control {
+    margin: 12px 0 0;
+}
+.live-microphone-panel .live-broadcast-execution {
+    display: flex;
+    flex-direction: column;
+}
+.live-microphone-panel .live-broadcast-execution .live-microphone-info {
+    margin: 0;
+}
+.live-microphone-panel .live-broadcast-execution .live-microphone-status {
+    margin: 12px 0 0;
+}
+.live-microphone-panel .live-broadcast-actions {
+    margin-top: auto;
+    padding-top: 14px;
+    flex-wrap: wrap;
+}
+.live-microphone-panel .live-broadcast-actions .recovery-button {
+    margin-right: auto;
+}
+@media (max-width: 1100px) {
+    .live-microphone-panel .live-broadcast-layout {
+        grid-template-columns: 1fr;
+    }
+}
+/* END KRTC V5.16.1 */
+
+
+/* KRTC V5.16.2 - Live microphone panel label/action refinement only */
+.live-microphone-panel .live-recovery-actions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-start;
+}
+.live-microphone-panel .live-recovery-actions .recovery-button {
+    margin: 0;
+}
+.live-microphone-panel .live-broadcast-actions {
+    justify-content: flex-end;
+}
+/* END KRTC V5.16.2 */
+
+/* KRTC V5.17 - PAO local microphone recorder START */
+.audio-recorder-panel {
+  margin-top: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 15px;
+}
+.audio-recorder-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+.audio-recorder-settings,
+.audio-recorder-execution {
+  min-width: 0;
+  border: 1px solid #c9d9e7;
+  border-radius: 10px;
+  background: #f8fbfd;
+  padding: 14px;
+}
+.audio-recorder-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.audio-recorder-execution {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.recorder-subpanel-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.recorder-subpanel-heading strong {
+  font-size: 16px;
+}
+.recorder-subpanel-heading span,
+.recorder-format-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.recorder-name-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.recorder-name-field input {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #bfcfe0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #fff;
+  color: var(--text);
+}
+.recorder-name-field input:disabled {
+  background: #eef3f7;
+  color: #7a8b9b;
+}
+.recorder-format-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid #d5e2ec;
+  border-radius: 9px;
+  background: #fff;
+  padding: 11px 12px;
+}
+.recorder-format-card span {
+  color: #23425f;
+  font-size: 13px;
+}
+.recorder-capture-actions,
+.recorder-save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+}
+.audio-recorder-execution .live-microphone-status {
+  margin-top: 0;
+}
+.audio-recorder-execution .live-microphone-status.is-recording {
+  background: #feecec;
+  color: #a92f25;
+}
+.recorder-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.recorder-metadata > div {
+  border: 1px solid #d5e2ec;
+  border-radius: 9px;
+  background: #fff;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.recorder-metadata span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.recorder-metadata strong {
+  font-size: 15px;
+}
+@media (max-width: 900px) {
+  .audio-recorder-layout {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .recorder-metadata {
+    grid-template-columns: 1fr;
+  }
+  .recorder-capture-actions,
+  .recorder-save-actions {
+    flex-wrap: wrap;
+  }
+}
+/* KRTC V5.17 - PAO local microphone recorder END */
+
+
+/* KRTC V5.17.1 - voice recording half-width panel START */
+@media (min-width: 1101px) {
+  .audio-recorder-panel {
+    width: calc(50% - 6px);
+    margin-right: auto;
+  }
+}
+@media (max-width: 1100px) {
+  .audio-recorder-panel {
+    width: 100%;
+  }
+}
+/* KRTC V5.17.1 - voice recording half-width panel END */
+
+
+/* KRTC V5.17.2 - voice recording workflow UI START */
+.audio-recorder-panel .audio-recorder-settings {
+  justify-content: flex-start;
+}
+.audio-recorder-panel .audio-recorder-execution {
+  justify-content: flex-start;
+}
+.audio-recorder-panel .recorder-result-name {
+  margin-top: 0;
+}
+.audio-recorder-panel .recorder-result-name small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.audio-recorder-panel .recorder-save-actions {
+  margin-top: auto;
+}
+/* KRTC V5.17.2 - voice recording workflow UI END */
+
+/* KRTC V5.17.3 - voice recording panel swap + 6:4 ratio START */
+@media (min-width: 901px) {
+  .audio-recorder-panel .audio-recorder-layout {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+/* KRTC V5.17.3 - voice recording panel swap + 6:4 ratio END */
+
+
+/* KRTC V5.17.4 - secondary feature grid + automatic broadcast rules START */
+@media (min-width: 1101px) {
+  .secondary-feature-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: stretch !important;
+  }
+  .secondary-feature-grid > .audio-recorder-panel,
+  .secondary-feature-grid > .schedule-panel {
+    width: auto !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    margin-top: 0 !important;
+  }
+}
+.auto-broadcast-rules-panel,
+.broadcast-log-fullwidth {
+  margin-top: 12px;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+}
+.auto-broadcast-rules-panel .panel-heading {
+  align-items: center;
+}
+.auto-broadcast-rules-panel .panel-heading .primary-button {
+  text-decoration: none;
+  white-space: nowrap;
+}
+.auto-rule-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.auto-rule-summary article {
+  border: 1px solid #d5e2ec;
+  border-radius: 9px;
+  background: #f8fbfd;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.auto-rule-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.auto-rule-summary strong {
+  font-size: 18px;
+}
+.auto-rule-table-wrap {
+  max-height: 260px;
+}
+.auto-rule-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  min-height: 32px;
+}
+.broadcast-log-fullwidth {
+  width: 100%;
+}
+@media (max-width: 1100px) {
+  .secondary-feature-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .auto-rule-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .auto-rule-summary {
+    grid-template-columns: 1fr;
+  }
+}
+/* KRTC V5.17.4 - secondary feature grid + automatic broadcast rules END */
+
+
+/* KRTC V5.17.5 - four-feature semantic layout START
+   Desktop columns are semantic:
+   left  = prerecorded workflow (manual -> schedule)
+   right = microphone workflow (live -> recording)
+   Both rows stretch to equal card height. */
+@media (min-width: 1101px) {
+  .primary-broadcast-grid,
+  .secondary-feature-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 12px !important;
+    align-items: stretch !important;
+  }
+
+  .primary-broadcast-grid > .manual-broadcast-panel,
+  .primary-broadcast-grid > .live-microphone-panel,
+  .secondary-feature-grid > .schedule-panel,
+  .secondary-feature-grid > .audio-recorder-panel {
+    width: auto !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    margin-top: 0 !important;
+  }
+
+  .primary-broadcast-grid > .manual-broadcast-panel,
+  .secondary-feature-grid > .schedule-panel {
+    grid-column: 1 !important;
+  }
+
+  .primary-broadcast-grid > .live-microphone-panel,
+  .secondary-feature-grid > .audio-recorder-panel {
+    grid-column: 2 !important;
+  }
+}
+/* KRTC V5.17.5 - four-feature semantic layout END */

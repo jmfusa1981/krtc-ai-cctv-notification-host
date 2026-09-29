@@ -1,0 +1,50 @@
+{
+  "total": 95,
+  "items": [
+    {
+      "id": 1,
+      "timestamp": "2026-07-21T18:00:00+08:00",
+      "station": null,
+      "camera_id": "cam_escalator_up",
+      "roi_id": "escalator_fall_zone",
+      "event_code": null,
+      "snapshot_url": null
+    },
+    {
+      "id": 95,
+      "timestamp": "2026-07-21T17:25:29.876559+08:00",
+      "station": null,
+      "camera_id": "cam_escalator_down",
+      "roi_id": "Full Frame",
+      "event_code": "EVT_LUGGAGE_LARGE",
+      "snapshot_url": "http://192.168.6.20:8000/snapshots/large_luggage_detected_cam_escalator_down_20260721_172529_876570.jpg"
+    },
+    {
+      "id": 94,
+      "timestamp": "2026-07-21T17:25:26.807745+08:00",
+      "station": null,
+      "camera_id": "cam_escalator_down",
+      "roi_id": "Full Frame",
+      "event_code": "EVT_LUGGAGE_LARGE",
+      "snapshot_url": "http://192.168.6.20:8000/snapshots/large_luggage_detected_cam_escalator_down_20260721_172526_807754.jpg"
+    },
+    {
+      "id": 93,
+      "timestamp": "2026-07-21T17:25:22.149144+08:00",
+      "station": null,
+      "camera_id": "cam_escalator_down",
+      "roi_id": "Full Frame",
+      "event_code": "EVT_LUGGAGE_LARGE",
+      "snapshot_url": "http://192.168.6.20:8000/snapshots/large_luggage_detected_cam_escalator_down_20260721_172522_149155.jpg"
+    },
+    {
+      "id": 92,
+      "timestamp": "2026-07-21T17:25:16.888844+08:00",
+      "station": null,
+      "camera_id": "cam_escalator_down",
+      "roi_id": "Full Frame",
+      "event_code": "EVT_LUGGAGE_LARGE",
+      "snapshot_url": "http://192.168.6.20:8000/snapshots/large_luggage_detected_cam_escalator_down_20260721_172516_888859.jpg"
+    }
+  ]
+}

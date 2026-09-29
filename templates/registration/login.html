@@ -1,0 +1,318 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>KRTC AI CCTV 通報主機登入</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{% static 'css/display_mode.css' %}?v=20260829">
+    <script src="{% static 'js/display_mode.js' %}?v=20260829"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            background:
+                {% if login_background_url %}
+                linear-gradient(
+                    rgba(5, 18, 35, {{ ui_config.login_overlay_opacity|default:"0.78" }}),
+                    rgba(5, 18, 35, {{ ui_config.login_overlay_opacity|default:"0.78" }})
+                ),
+                url("{{ login_background_url }}") center / cover no-repeat fixed;
+                {% else %}
+                radial-gradient(circle at top left, rgba(0, 140, 255, 0.25), transparent 36%),
+                linear-gradient(135deg, #07111f 0%, #0c1726 48%, #101827 100%);
+                {% endif %}
+            color: #e5eefc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-page {
+            width: 50%;
+            max-width: none;
+            margin-left: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .login-card,
+        .footer-note {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .login-card {
+            border-radius: 18px;
+            padding: 32px;
+            backdrop-filter: blur(12px);
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .login-theme-dark .login-card {
+            background: rgba(10, 21, 36, 0.92);
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+        }
+
+        .login-theme-bright .login-card {
+            background: rgba(255, 255, 255, 0.90);
+            border: 1px solid rgba(203, 213, 225, 0.92);
+            box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+            color: #0f172a;
+        }
+
+        .system-label {
+            font-size: 13px;
+            letter-spacing: 0.14em;
+            color: #38bdf8;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .login-theme-bright .system-label {
+            color: #0284c7;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 26px;
+            line-height: 1.35;
+            font-weight: 700;
+        }
+
+        .login-theme-bright h1 {
+            color: #0f172a;
+        }
+
+        .subtitle {
+            margin-top: 10px;
+            margin-bottom: 28px;
+            color: #94a3b8;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .login-theme-bright .subtitle {
+            color: #475569;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+
+        .login-theme-bright label {
+            color: #334155;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .login-theme-dark input[type="text"],
+        .login-theme-dark input[type="password"] {
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            background: rgba(15, 23, 42, 0.95);
+            color: #f8fafc;
+        }
+
+        .login-theme-bright input[type="text"],
+        .login-theme-bright input[type="password"] {
+            border: 1px solid #cbd5e1;
+            background: rgba(255, 255, 255, 0.96);
+            color: #0f172a;
+        }
+
+        input[type="text"]::placeholder,
+        input[type="password"]::placeholder {
+            color: #64748b;
+        }
+
+        .login-theme-bright input[type="text"]::placeholder,
+        .login-theme-bright input[type="password"]::placeholder {
+            color: #94a3b8;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+        }
+
+        .error-box {
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #fecaca;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        .login-theme-bright .error-box {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #b91c1c;
+        }
+
+        .login-button {
+            width: 100%;
+            border: none;
+            border-radius: 10px;
+            padding: 13px 16px;
+            font-size: 15px;
+            font-weight: 700;
+            color: #03111f;
+            background: linear-gradient(135deg, #38bdf8, #22c55e);
+            cursor: pointer;
+            transition: transform 0.12s ease, filter 0.12s ease;
+        }
+
+        .login-button:hover {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+
+        .login-button:active {
+            transform: translateY(0);
+        }
+
+        .hint {
+            margin-top: 18px;
+            font-size: 13px;
+            color: #64748b;
+            line-height: 1.6;
+            text-align: center;
+        }
+
+        .login-theme-bright .hint {
+            color: #64748b;
+        }
+
+        .footer-note {
+            margin-top: 16px;
+            text-align: center;
+            color: #475569;
+            font-size: 12px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+        }
+
+        .login-theme-bright .footer-note {
+            color: rgba(255, 255, 255, 0.88);
+        }
+
+        @media (max-width: 768px) {
+            .login-page {
+                width: 100%;
+                margin-left: 0;
+                padding: 24px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 26px 22px;
+            }
+
+            h1 {
+                font-size: 23px;
+            }
+        }
+    </style>
+</head>
+<body class="login-theme-{{ ui_config.login_theme|default:'dark' }}">
+    <main class="login-page">
+        <section class="login-card">
+            <div class="system-label">KRTC AI CCTV</div>
+
+            <h1>{{ ui_config.login_title|default:"通報主機操作員登入" }}</h1>
+
+            {% if ui_config.login_subtitle %}
+            <p class="subtitle">{{ ui_config.login_subtitle }}</p>
+            {% endif %}
+
+            {% if form.errors %}
+                <div class="error-box">
+                    帳號或密碼不正確，請重新輸入。
+                </div>
+            {% endif %}
+
+            {% if next %}
+                {% if user.is_authenticated %}
+                    <div class="error-box">
+                        目前帳號沒有權限進入此頁面。
+                    </div>
+                {% else %}
+                    <div class="error-box">
+                        請先登入後再進入系統。
+                    </div>
+                {% endif %}
+            {% endif %}
+
+            <form method="post" action="{% url 'login' %}">
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="id_username">操作員帳號</label>
+                    <input
+                        type="text"
+                        name="username"
+                        id="id_username"
+                        placeholder="請輸入操作員帳號"
+                        autocomplete="username"
+                        autofocus
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="id_password">密碼</label>
+                    <input
+                        type="password"
+                        name="password"
+                        id="id_password"
+                        placeholder="請輸入密碼"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+
+                <input type="hidden" name="next" value="{{ next }}">
+
+                <button type="submit" class="login-button">
+                    登入通報主機
+                </button>
+            </form>
+
+        </section>
+
+        {% if ui_config.login_footer_text %}
+        <div class="footer-note">
+            {{ ui_config.login_footer_text }}
+        </div>
+        {% endif %}
+    </main>
+</body>
+</html>

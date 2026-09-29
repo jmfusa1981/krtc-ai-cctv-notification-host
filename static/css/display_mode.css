@@ -1,0 +1,652 @@
+/* Shared landscape/portrait display modes for public-area monitors. */
+:root {
+    --display-mode-accent: #0876be;
+    --display-mode-border: #b8c6d8;
+    --display-mode-surface: #f4f7fb;
+}
+
+.display-mode-toggle {
+    display: inline-grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    min-width: 116px;
+    height: 36px;
+    flex: 0 0 auto;
+    padding: 3px;
+    border: 1px solid var(--display-mode-border);
+    border-radius: 9px;
+    background: var(--display-mode-surface);
+    color: #52647a;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.display-mode-toggle:focus-visible {
+    outline: 3px solid rgba(8, 118, 190, 0.25);
+    outline-offset: 2px;
+}
+
+.display-mode-toggle__option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 7px;
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.display-mode-toggle__option.is-active {
+    background: var(--display-mode-accent);
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(8, 118, 190, 0.24);
+}
+
+/* Shared header: allow the new control and navigation to fit before clipping. */
+.system-header {
+    grid-template-columns: minmax(280px, 0.8fr) minmax(610px, 1.55fr) minmax(500px, 1.1fr);
+}
+
+.system-header__controls {
+    gap: 10px;
+}
+
+@media (max-width: 1550px) {
+    .system-header {
+        grid-template-areas:
+            "brand controls"
+            "nav nav";
+        grid-template-columns: minmax(260px, 1fr) auto;
+        grid-template-rows: auto auto;
+        height: auto;
+        min-height: 126px;
+        overflow: visible;
+    }
+
+    .system-header__brand {
+        grid-area: brand;
+    }
+
+    .system-header__nav {
+        grid-area: nav;
+        justify-content: flex-start;
+        overflow-x: auto;
+        padding-top: 7px;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .system-header__controls {
+        grid-area: controls;
+        flex-wrap: wrap;
+    }
+}
+
+/* Portrait mode removes page-level desktop minimum widths. */
+html[data-display-mode="portrait"],
+html[data-display-mode="portrait"] body {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0 !important;
+}
+
+html[data-display-mode="portrait"] body {
+    overflow-x: hidden !important;
+}
+
+html[data-display-mode="portrait"] .dashboard-shell,
+html[data-display-mode="portrait"] .device-page-shell,
+html[data-display-mode="portrait"] .snapshot-shell,
+html[data-display-mode="portrait"] .record-shell,
+html[data-display-mode="portrait"] .system-log-shell,
+html[data-display-mode="portrait"] .broadcast-shell,
+html[data-display-mode="portrait"] .settings-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+/* Portrait shared header uses a full-width navigation row. */
+html[data-display-mode="portrait"] .system-header {
+    grid-template-areas:
+        "brand controls"
+        "nav nav";
+    grid-template-columns: minmax(260px, 1fr) auto !important;
+    grid-template-rows: auto auto;
+    height: auto !important;
+    min-height: 136px !important;
+    gap: 10px 14px;
+    padding: 10px 14px;
+    overflow: visible !important;
+}
+
+html[data-display-mode="portrait"] .system-header__brand {
+    grid-area: brand;
+}
+
+html[data-display-mode="portrait"] .system-header__logo {
+    width: 90px;
+    height: 68px;
+    flex-basis: 90px;
+}
+
+html[data-display-mode="portrait"] .system-header__system-title {
+    font-size: clamp(18px, 2.5vw, 23px);
+}
+
+html[data-display-mode="portrait"] .system-header__nav {
+    grid-area: nav;
+    justify-content: flex-start;
+    width: 100%;
+    overflow-x: auto;
+    padding-top: 9px;
+    border-top: 1px solid #e2e8f0;
+    scrollbar-width: thin;
+}
+
+html[data-display-mode="portrait"] .system-header__nav-group {
+    flex: 0 0 auto;
+}
+
+html[data-display-mode="portrait"] .system-header__controls {
+    grid-area: controls;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+html[data-display-mode="portrait"] .system-header__clock {
+    font-size: 12px;
+}
+
+html[data-display-mode="portrait"] .system-header__user {
+    padding: 0 8px;
+    font-size: 12px;
+}
+
+/* Dashboard portrait composition. */
+html[data-display-mode="portrait"] .dashboard-shell {
+    display: grid !important;
+    grid-template-rows: auto auto auto auto !important;
+    align-content: start;
+    height: auto !important;
+    min-height: 100vh;
+    overflow: visible !important;
+}
+
+html[data-display-mode="portrait"] .summary-strip {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: hidden !important;
+}
+
+html[data-display-mode="portrait"] .latest-event-summary {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    padding: 9px 16px !important;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+html[data-display-mode="portrait"] .latest-event-title,
+html[data-display-mode="portrait"] .latest-event-meta {
+    margin-top: 0;
+}
+
+html[data-display-mode="portrait"] .latest-event-title {
+    font-size: 20px !important;
+}
+
+html[data-display-mode="portrait"] .latest-event-meta {
+    justify-self: end;
+    gap: 12px;
+    white-space: nowrap;
+}
+
+html[data-display-mode="portrait"] .metric-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+
+html[data-display-mode="portrait"] .metric-card {
+    min-height: 96px;
+    padding: 9px 11px !important;
+    border-bottom: 0;
+}
+
+html[data-display-mode="portrait"] .metric-card > strong,
+html[data-display-mode="portrait"] .metric-card .metric-text {
+    font-size: 20px !important;
+}
+
+html[data-display-mode="portrait"] .inference-host-detail {
+    margin-top: 3px;
+    font-size: 9px;
+}
+
+html[data-display-mode="portrait"] .inference-host-detail-viewport {
+    height: 28px;
+}
+
+html[data-display-mode="portrait"] .crowd-flow-metric {
+    padding: 8px 9px !important;
+}
+
+html[data-display-mode="portrait"] .area-flow-header {
+    margin-bottom: 4px;
+}
+
+html[data-display-mode="portrait"] .area-flow-grid {
+    height: 58px;
+    gap: 3px;
+}
+
+html[data-display-mode="portrait"] .area-flow-cell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: 2px;
+    padding: 4px;
+}
+
+html[data-display-mode="portrait"] .area-flow-camera,
+html[data-display-mode="portrait"] .area-flow-area,
+html[data-display-mode="portrait"] .area-flow-count {
+    grid-column: 1;
+}
+
+html[data-display-mode="portrait"] .area-flow-count {
+    grid-row: 3;
+    justify-self: start;
+    font-size: 12px !important;
+}
+
+html[data-display-mode="portrait"] .event-warning-metric > span,
+html[data-display-mode="portrait"] .event-warning-light,
+html[data-display-mode="portrait"] .event-warning-action {
+    transform: none !important;
+}
+
+html[data-display-mode="portrait"] .event-warning-metric > span {
+    top: 0 !important;
+}
+
+html[data-display-mode="portrait"] .event-warning-light {
+    width: 118px;
+    height: 42px;
+    margin: 7px auto 0;
+}
+
+html[data-display-mode="portrait"] .event-warning-action,
+html[data-display-mode="portrait"] .event-warning-light .event-warning-action {
+    top: -27px !important;
+    right: -30px !important;
+    left: auto !important;
+}
+
+html[data-display-mode="portrait"] .workspace-grid {
+    display: grid !important;
+    grid-template-areas:
+        "camera camera"
+        "events details";
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+    min-height: 0 !important;
+}
+
+html[data-display-mode="portrait"] .camera-panel {
+    grid-area: camera;
+    height: min(720px, 66vh);
+    min-height: 560px;
+}
+
+html[data-display-mode="portrait"] .event-panel {
+    grid-area: events;
+    height: 540px;
+}
+
+html[data-display-mode="portrait"] .detail-panel {
+    grid-area: details;
+    height: 540px;
+}
+
+html[data-display-mode="portrait"] .event-media-workspace {
+    grid-template-columns: 150px minmax(0, 1fr) 104px !important;
+}
+
+/* List, record, log, and settings pages keep wide data inside local scrollers. */
+html[data-display-mode="portrait"] .device-summary-grid,
+html[data-display-mode="portrait"] .settings-shell > .summary-grid,
+html[data-display-mode="portrait"] .broadcast-shell > .summary-grid,
+html[data-display-mode="portrait"] .restore-meta-grid,
+html[data-display-mode="portrait"] .backup-summary-grid,
+html[data-display-mode="portrait"] .log-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-display-mode="portrait"] .device-list-grid,
+html[data-display-mode="portrait"] .local-device-grid,
+html[data-display-mode="portrait"] .backup-action-grid,
+html[data-display-mode="portrait"] .primary-broadcast-grid,
+html[data-display-mode="portrait"] .secondary-broadcast-grid {
+    grid-template-columns: 1fr !important;
+}
+
+html[data-display-mode="portrait"] .snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-display-mode="portrait"] .filter-grid,
+html[data-display-mode="portrait"] .audit-filter-grid,
+html[data-display-mode="portrait"] .form-grid,
+html[data-display-mode="portrait"] .management-form-grid,
+html[data-display-mode="portrait"] .schedule-form-grid,
+html[data-display-mode="portrait"] .speaker-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-display-mode="portrait"] .filter-actions,
+html[data-display-mode="portrait"] .panel-heading,
+html[data-display-mode="portrait"] .settings-page-heading,
+html[data-display-mode="portrait"] .broadcast-banner {
+    flex-wrap: wrap;
+}
+
+html[data-display-mode="portrait"] .table-scroll,
+html[data-display-mode="portrait"] .table-wrap,
+html[data-display-mode="portrait"] .record-table-panel,
+html[data-display-mode="portrait"] .system-log-table-panel,
+html[data-display-mode="portrait"] .device-table-section {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: auto !important;
+}
+
+html[data-display-mode="portrait"] .record-main,
+html[data-display-mode="portrait"] .system-log-main,
+html[data-display-mode="portrait"] .settings-content,
+html[data-display-mode="portrait"] .management-form-card,
+html[data-display-mode="portrait"] .restore-preview-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+html[data-display-mode="portrait"] .record-table,
+html[data-display-mode="portrait"] .system-log-table {
+    width: max-content;
+    max-width: none;
+}
+
+html[data-display-mode="portrait"] .record-banner,
+html[data-display-mode="portrait"] .system-log-banner,
+html[data-display-mode="portrait"] .snapshot-summary-bar {
+    height: auto !important;
+    min-height: 108px !important;
+    max-height: none !important;
+}
+
+html[data-display-mode="portrait"] .settings-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible;
+}
+
+html[data-display-mode="portrait"] .settings-tab {
+    flex: 1 1 150px;
+}
+
+/* Monitor wall has its own toolbar and layout system. */
+.monitor-toolbar .display-mode-toggle {
+    --display-mode-accent: #19a7e0;
+    --display-mode-border: #38506f;
+    --display-mode-surface: #13253e;
+    color: #a9bed6;
+}
+
+html[data-display-mode="portrait"] .monitor-wall-layout {
+    height: auto !important;
+    min-height: 100vh;
+    overflow: visible !important;
+}
+
+html[data-display-mode="portrait"] .monitor-toolbar {
+    display: grid !important;
+    grid-template-areas:
+        "brand account"
+        "tools tools";
+    grid-template-columns: minmax(240px, 1fr) auto !important;
+    grid-template-rows: auto auto;
+    height: auto !important;
+    min-height: 138px;
+    gap: 10px 14px;
+    padding: 10px 14px;
+    overflow: visible !important;
+}
+
+html[data-display-mode="portrait"] .monitor-brand {
+    grid-area: brand;
+}
+
+html[data-display-mode="portrait"] .monitor-brand .station-name {
+    max-width: none;
+}
+
+html[data-display-mode="portrait"] .monitor-toolbar-center {
+    grid-area: tools;
+    width: 100%;
+    overflow-x: auto;
+    padding-top: 9px;
+    border-top: 1px solid #263b57;
+}
+
+html[data-display-mode="portrait"] .monitor-toolbar-center .monitor-actions {
+    justify-content: flex-start;
+    width: max-content;
+    min-width: 100%;
+}
+
+html[data-display-mode="portrait"] .monitor-toolbar-right {
+    grid-area: account;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+html[data-display-mode="portrait"] .monitor-content,
+html[data-display-mode="portrait"] .monitor-content.sidebar-collapsed {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: max-content minmax(620px, 1fr);
+    height: auto !important;
+    min-height: 0;
+    overflow: visible !important;
+}
+
+html[data-display-mode="portrait"] .camera-sidebar {
+    display: grid !important;
+    grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 290px;
+    border-right: 0;
+    border-bottom: 1px solid #263b57;
+}
+
+html[data-display-mode="portrait"] .camera-sidebar-header,
+html[data-display-mode="portrait"] .camera-search {
+    grid-column: 1;
+}
+
+html[data-display-mode="portrait"] .camera-tree-list {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 7px;
+    overflow-y: auto;
+}
+
+html[data-display-mode="portrait"] .monitor-grid {
+    width: 100%;
+    height: auto !important;
+    min-height: 620px;
+    overflow: visible !important;
+}
+
+html[data-display-mode="portrait"] .monitor-grid.grid-1 {
+    grid-template-columns: 1fr !important;
+}
+
+html[data-display-mode="portrait"] .monitor-grid.grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+html[data-display-mode="portrait"] .monitor-grid.grid-9 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+html[data-display-mode="portrait"] .monitor-grid.grid-16 {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+html[data-display-mode="portrait"] .monitor-slot {
+    min-height: 240px;
+}
+
+/* Login can also set the monitor mode before authentication. */
+.login-display-mode-control {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 10;
+}
+
+html[data-display-mode="portrait"] .login-page {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 84px 24px 24px !important;
+}
+
+@media (max-width: 700px) {
+    .system-header,
+    html[data-display-mode="portrait"] .system-header {
+        grid-template-areas:
+            "brand"
+            "controls"
+            "nav";
+        grid-template-columns: 1fr !important;
+    }
+
+    .system-header__controls,
+    html[data-display-mode="portrait"] .system-header__controls {
+        justify-content: flex-start;
+    }
+
+    .system-header__nav {
+        padding-bottom: 3px;
+    }
+
+    html[data-display-mode="portrait"] .device-summary-grid,
+    html[data-display-mode="portrait"] .settings-shell > .summary-grid,
+    html[data-display-mode="portrait"] .broadcast-shell > .summary-grid,
+    html[data-display-mode="portrait"] .restore-meta-grid,
+    html[data-display-mode="portrait"] .backup-summary-grid,
+    html[data-display-mode="portrait"] .log-summary-grid,
+    html[data-display-mode="portrait"] .snapshot-grid,
+    html[data-display-mode="portrait"] .filter-grid,
+    html[data-display-mode="portrait"] .audit-filter-grid,
+    html[data-display-mode="portrait"] .form-grid,
+    html[data-display-mode="portrait"] .management-form-grid,
+    html[data-display-mode="portrait"] .schedule-form-grid,
+    html[data-display-mode="portrait"] .speaker-form-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    html[data-display-mode="portrait"] .latest-event-summary {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    html[data-display-mode="portrait"] .latest-event-meta {
+        justify-self: start;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        white-space: normal;
+    }
+
+    html[data-display-mode="portrait"] .metric-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    html[data-display-mode="portrait"] .workspace-grid {
+        grid-template-areas:
+            "camera"
+            "events"
+            "details";
+        grid-template-columns: 1fr !important;
+    }
+
+    html[data-display-mode="portrait"] .camera-panel {
+        height: 560px;
+        min-height: 0;
+    }
+
+    html[data-display-mode="portrait"] .event-media-workspace {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto minmax(320px, 1fr) auto;
+    }
+
+    html[data-display-mode="portrait"] .camera-thumbnail-strip.camera-thumbnail-rail,
+    html[data-display-mode="portrait"] .media-toolbar.media-mode-rail {
+        flex-direction: row;
+        overflow-x: auto;
+    }
+
+    html[data-display-mode="portrait"] .camera-thumbnail-rail .camera-thumbnail {
+        width: 150px;
+        flex-basis: 150px;
+    }
+
+    html[data-display-mode="portrait"] .monitor-toolbar {
+        grid-template-areas:
+            "brand"
+            "account"
+            "tools";
+        grid-template-columns: 1fr !important;
+    }
+
+    html[data-display-mode="portrait"] .monitor-toolbar-right {
+        justify-content: flex-start;
+    }
+
+    html[data-display-mode="portrait"] .camera-sidebar {
+        display: block !important;
+        max-height: 340px;
+    }
+
+    html[data-display-mode="portrait"] .camera-tree-list {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    html[data-display-mode="portrait"] .monitor-grid.grid-9,
+    html[data-display-mode="portrait"] .monitor-grid.grid-16 {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .display-mode-toggle__option {
+        transition: none;
+    }
+}

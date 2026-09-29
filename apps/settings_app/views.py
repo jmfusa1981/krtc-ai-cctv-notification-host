@@ -1,0 +1,1215 @@
+import json
+import logging
+import socket
+import time
+from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+
+from django.apps import apps
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import Group
+from django.contrib import messages
+from django.core.exceptions import PermissionDenied
+from django.http import FileResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+from apps.notifications.services import get_broadcast_playback_mode
+from apps.accounts.permissions import hidden_forbidden_response
+from apps.station_api.security_audit import record_security_audit
+from apps.notifications.speaker_health import clear_speaker_fault_if_monitoring_disabled, record_speaker_probe_result
+from .forms import (
+    AIModelForm, AlertSoundSettingsForm, AudioFileForm, BroadcastRuleForm,
+    BroadcastScheduleForm, CameraForm, FrontendUserForm, InferenceCameraMappingForm,
+    InferenceHostForm, LoginBackgroundUploadForm, NtpSettingsForm,
+    NtpSourceTestForm, SpeakerDeviceForm, StationLocalSettingsForm,
+)
+from .models import StationLocalSettings, UIConfiguration
+from .services.frontend_assets import (
+    FrontendAssetError,
+    activate_login_background,
+    alert_sound_status,
+    reset_alert_sound,
+    reset_login_background,
+    resolve_login_background_url,
+    save_alert_sound,
+)
+from .services.ntp_time import (
+    SOURCE_LABELS,
+    check_time_sources,
+    load_ntp_configuration,
+    reset_ntp_settings,
+    save_ntp_settings,
+    status_for_template,
+    synchronize_now,
+    test_ntp_source,
+)
+from .services.config_backup import (
+    ConfigurationBackupError,
+    configuration_counts,
+    export_configuration_archive,
+    inspect_configuration_archive,
+    restore_configuration_archive,
+    stage_uploaded_archive,
+    staged_archive_path,
+)
+
+
+STATUS_LABELS = {
+    "online": "連線正常",
+    "offline": "離線",
+    "maintenance": "維護中",
+    "error": "異常",
+    "unknown": "未知",
+}
+
+logger = logging.getLogger(__name__)
+
+
+def get_model_or_none(app_label, model_name):
+    try:
+        return apps.get_model(app_label, model_name)
+    except LookupError:
+        return None
+
+
+def _is_settings_editor(user):
+    from apps.accounts.permissions import can_manage_frontend_settings
+    return can_manage_frontend_settings(user)
+
+
+def _can_view_advanced_settings(user):
+    from apps.accounts.permissions import can_view_advanced_settings
+    return can_view_advanced_settings(user)
+
+
+def _can_manage_ai_settings(user):
+    from apps.accounts.permissions import can_manage_ai_settings
+    return can_manage_ai_settings(user)
+
+
+
+
+def _can_manage_accounts(user):
+    if not user or not user.is_authenticated:
+        return False
+    return user.is_superuser or user.groups.filter(name="Administrator").exists()
+
+
+def _first_form_error(form):
+    for errors in form.errors.values():
+        if errors:
+            return str(errors[0])
+    return "上傳內容無效，請重新選擇檔案。"
+
+
+def _json_body(request):
+    try:
+        return json.loads(request.body.decode("utf-8") or "{}")
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+
+
+def _tcp_probe(host, port, timeout=3):
+    started = time.perf_counter()
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            return True, elapsed_ms, f"TCP {host}:{port} 連線成功。"
+    except (OSError, ValueError) as exc:
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        return False, elapsed_ms, f"TCP {host}:{port} 連線失敗：{exc}"
+
+
+def _url_probe(url, timeout=5):
+    started = time.perf_counter()
+    request = Request(url, headers={"User-Agent": "KRTC-Notification-Host/3"})
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            status = getattr(response, "status", 200)
+            return True, elapsed_ms, f"HTTP {status}，服務回應正常。"
+    except Exception as exc:  # diagnostics should return the original reason to UI
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        return False, elapsed_ms, f"服務無法連線：{exc}"
+
+
+def _inference_host_network_location(host):
+    """Return the configured inference-host IP without exposing URL paths or ports."""
+    configured_ip = str(getattr(host, "ip_address", "") or "").strip()
+    if configured_ip:
+        return configured_ip
+    try:
+        return urlparse(getattr(host, "normalized_base_url", "") or "").hostname or "未設定"
+    except (TypeError, ValueError):
+        return "未設定"
+
+
+def _safe_stream_endpoint(stream_url):
+    """Return host:port only; never expose camera credentials in the UI."""
+    if not stream_url:
+        return "未設定"
+    try:
+        parsed = urlparse(stream_url)
+        if not parsed.hostname:
+            return "格式無效"
+        default_ports = {"rtsp": 554, "http": 80, "https": 443}
+        port = parsed.port or default_ports.get(parsed.scheme.lower(), 554)
+        return f"{parsed.hostname}:{port}"
+    except ValueError:
+        return "格式無效"
+
+
+def _audio_file_health(audio):
+    if not audio.file:
+        return False, "未上傳", "資料庫未綁定任何檔案。"
+    try:
+        path = Path(audio.file.path)
+        relative_name = str(audio.file.name)
+        if not path.is_file():
+            return False, "檔案遺失", f"預期位置：{relative_name}"
+        size = path.stat().st_size
+        if size <= 0:
+            return False, "空白檔案", f"檔案大小為 0 bytes：{relative_name}"
+        return True, f"可用 · {size:,} bytes", f"媒體路徑：{relative_name}"
+    except (NotImplementedError, OSError) as exc:
+        return False, "無法讀取", f"檔案系統錯誤：{exc}"
+
+
+@login_required
+def station_settings(request):
+    """單站通報主機系統設定與診斷頁。"""
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    local_settings = StationLocalSettings.load()
+    if request.method == "POST":
+        if not _is_settings_editor(request.user):
+            return JsonResponse({"success": False, "message": "權限不足。"}, status=403)
+        form = StationLocalSettingsForm(request.POST, instance=local_settings)
+        if form.is_valid():
+            local_settings = form.save(commit=False)
+            local_settings.config_version += 1
+            local_settings.save()
+            record_security_audit(action="STATION_SETTINGS_UPDATED", result="success", request=request, user=request.user, detail="Station local settings updated")
+            return redirect(f"{reverse('settings_app:station_settings')}?saved=1")
+    else:
+        form = StationLocalSettingsForm(instance=local_settings)
+
+    InferenceHost = get_model_or_none("ai_bridge", "InferenceHost")
+    InferenceCameraMapping = get_model_or_none("ai_bridge", "InferenceCameraMapping")
+    AIModel = get_model_or_none("ai_bridge", "AIModel")
+    Camera = get_model_or_none("cameras", "Camera")
+    SpeakerDevice = get_model_or_none("notifications", "SpeakerDevice")
+    AudioFile = get_model_or_none("notifications", "AudioFile")
+    BroadcastRule = get_model_or_none("notifications", "BroadcastRule")
+    BroadcastLog = get_model_or_none("notifications", "BroadcastLog")
+    BroadcastSchedule = get_model_or_none("notifications", "BroadcastSchedule")
+    OccSyncState = get_model_or_none("station_api", "OccSyncState")
+    OccSyncLog = get_model_or_none("station_api", "OccSyncLog")
+    ConfigurationAuditLog = get_model_or_none("station_api", "ConfigurationAuditLog")
+
+    inference_hosts = list(InferenceHost.objects.all().order_by("host_code")) if InferenceHost else []
+    for host in inference_hosts:
+        host.status_label_zh = STATUS_LABELS.get(host.status, "未知")
+        host.network_location = _inference_host_network_location(host)
+
+    cameras = list(Camera.objects.all().order_by("camera_code")) if Camera else []
+    for camera in cameras:
+        camera.status_label_zh = STATUS_LABELS.get(camera.status, "未知")
+        camera.diagnostic_endpoint = _safe_stream_endpoint(camera.rtsp_url)
+        camera.mapping_count = 0
+
+    mappings = list(
+        InferenceCameraMapping.objects.select_related("inference_host", "camera").order_by(
+            "inference_host__host_code", "source_camera_id"
+        )
+    ) if InferenceCameraMapping else []
+    camera_by_id = {camera.id: camera for camera in cameras}
+    for mapping in mappings:
+        if mapping.is_active and mapping.camera_id in camera_by_id:
+            camera_by_id[mapping.camera_id].mapping_count += 1
+        mapping.health_ok = bool(
+            mapping.is_active
+            and mapping.inference_host.is_active
+            and mapping.camera.is_active
+        )
+        mapping.health_label = "完整" if mapping.health_ok else "需檢查"
+
+    ai_models = list(AIModel.objects.all().order_by("model_code")) if AIModel else []
+    for model in ai_models:
+        model.health_ok = 0 <= model.confidence_threshold <= 1
+        model.health_label = "正常" if model.health_ok else "門檻異常"
+
+    speakers = list(SpeakerDevice.objects.all().order_by("speaker_code")) if SpeakerDevice else []
+    for speaker in speakers:
+        speaker.status_label_zh = STATUS_LABELS.get(speaker.status, "未知")
+        speaker.deployment_label_zh = {"planned": "未部署", "deployed": "已部署", "maintenance": "維護中", "retired": "已退役"}.get(speaker.deployment_state, speaker.get_deployment_state_display())
+        speaker.monitor_label_zh = "監測中" if speaker.health_monitor_active else "不監測"
+
+    audio_files = list(AudioFile.objects.all().order_by("audio_code")) if AudioFile else []
+    audio_health_by_id = {}
+    for audio in audio_files:
+        audio.health_ok, audio.health_label, audio.health_detail = _audio_file_health(audio)
+        audio_health_by_id[audio.id] = audio.health_ok
+
+    broadcast_rules = list(
+        BroadcastRule.objects.select_related("camera", "speaker", "audio_file")
+        .prefetch_related("speakers")
+        .order_by("priority", "rule_code")
+    ) if BroadcastRule else []
+    for rule in broadcast_rules:
+        issues = []
+        if not rule.is_active:
+            issues.append("規則停用")
+        target_speakers = list(rule.target_speakers_queryset())
+        rule.speaker_targets_label = "、".join(
+            speaker.speaker_code for speaker in target_speakers
+        ) or "—"
+        if not target_speakers:
+            issues.append("未指定 Speaker")
+        elif any(not speaker.is_active for speaker in target_speakers):
+            issues.append("Speaker 停用")
+        if not rule.audio_file.is_active:
+            issues.append("音檔停用")
+        if not audio_health_by_id.get(rule.audio_file_id, False):
+            issues.append("音檔不可用")
+        if rule.camera_id and not rule.camera.is_active:
+            issues.append("攝影機停用")
+        rule.health_ok = not issues
+        rule.health_label = "完整" if rule.health_ok else "、".join(issues)
+    broadcast_schedules = list(
+        BroadcastSchedule.objects.prefetch_related("speakers").select_related("audio_file").order_by("next_run_at", "name")
+    ) if BroadcastSchedule else []
+    occ_sync_state = OccSyncState.load() if OccSyncState else None
+    occ_sync_logs = list(OccSyncLog.objects.all().order_by("-started_at")[:50]) if OccSyncLog else []
+    configuration_audit_logs = list(ConfigurationAuditLog.objects.all().order_by("-received_at")[:50]) if ConfigurationAuditLog else []
+    recent_broadcast_logs = list(
+        BroadcastLog.objects.select_related("event", "speaker", "audio_file", "rule").order_by("-created_at")[:8]
+    ) if BroadcastLog else []
+
+    active_camera_count = sum(1 for item in cameras if item.is_active)
+    online_camera_count = sum(1 for item in cameras if item.is_active and item.status == "online")
+    active_speaker_count = sum(1 for item in speakers if item.is_active)
+    online_speaker_count = sum(1 for item in speakers if item.is_active and item.status == "online")
+    monitored_speaker_count = sum(1 for item in speakers if item.health_monitor_active)
+    online_inference_host_count = sum(
+        1 for item in inference_hosts if item.is_active and item.status == "online"
+    )
+    mapped_active_camera_count = sum(1 for item in cameras if item.is_active and item.mapping_count > 0)
+    unmapped_active_cameras = [item for item in cameras if item.is_active and item.mapping_count == 0]
+    healthy_mapping_count = sum(1 for item in mappings if item.health_ok)
+    healthy_rule_count = sum(1 for item in broadcast_rules if item.health_ok)
+    healthy_audio_count = sum(1 for item in audio_files if item.health_ok)
+    frontend_ui_config = UIConfiguration.load()
+    frontend_alert_sound_state = alert_sound_status()
+    ntp_config = load_ntp_configuration()
+
+    initial_issues = []
+    for host in inference_hosts:
+        if host.is_active and host.status != "online":
+            initial_issues.append(f"推論主機 {host.host_code}：{host.status_label_zh}")
+    for camera in cameras:
+        if camera.is_active and camera.status != "online":
+            initial_issues.append(f"攝影機 {camera.camera_code}：{camera.status_label_zh}")
+        if camera.is_active and camera.mapping_count == 0:
+            initial_issues.append(f"攝影機 {camera.camera_code}：尚未建立推論映射")
+    for speaker in speakers:
+        if speaker.is_active and speaker.status != "online":
+            initial_issues.append(f"IP 廣播喇叭 {speaker.speaker_code}：{speaker.status_label_zh}")
+    for model in ai_models:
+        if model.is_active and not model.health_ok:
+            initial_issues.append(f"AI 模型 {model.model_code}：{model.health_label}")
+    for mapping in mappings:
+        if mapping.is_active and not mapping.health_ok:
+            initial_issues.append(f"Camera 映射 {mapping.source_camera_id}：{mapping.health_label}")
+    for audio in audio_files:
+        if audio.is_active and not audio.health_ok:
+            initial_issues.append(f"音檔 {audio.audio_code}：{audio.health_label}")
+    for rule in broadcast_rules:
+        if rule.is_active and not rule.health_ok:
+            initial_issues.append(f"廣播規則 {rule.rule_code}：{rule.health_label}")
+
+    context = {
+        "station_name": local_settings.station_name,
+        "local_settings": local_settings,
+        "settings_form": form,
+        "settings_saved": request.GET.get("saved") == "1",
+        "settings_save_failed": request.method == "POST" and not form.is_valid(),
+        "server_time": timezone.localtime(timezone.now()),
+        "broadcast_playback_mode": get_broadcast_playback_mode(),
+        "inference_hosts": inference_hosts,
+        "cameras": cameras,
+        "mappings": mappings,
+        "ai_models": ai_models,
+        "speakers": speakers,
+        "audio_files": audio_files,
+        "broadcast_rules": broadcast_rules,
+        "recent_broadcast_logs": recent_broadcast_logs,
+        "broadcast_schedules": broadcast_schedules,
+        "occ_sync_state": occ_sync_state,
+        "occ_sync_logs": occ_sync_logs,
+        "configuration_audit_logs": configuration_audit_logs,
+        "inference_host_count": len(inference_hosts),
+        "active_inference_host_count": sum(1 for item in inference_hosts if item.is_active),
+        "online_inference_host_count": online_inference_host_count,
+        "camera_count": len(cameras),
+        "active_camera_count": active_camera_count,
+        "online_camera_count": online_camera_count,
+        "speaker_count": len(speakers),
+        "active_speaker_count": active_speaker_count,
+        "online_speaker_count": online_speaker_count,
+        "monitored_speaker_count": monitored_speaker_count,
+        "ai_model_count": len(ai_models),
+        "active_ai_model_count": sum(1 for item in ai_models if item.is_active),
+        "broadcast_rule_count": len(broadcast_rules),
+        "active_broadcast_rule_count": sum(1 for item in broadcast_rules if item.is_active),
+        "mapped_active_camera_count": mapped_active_camera_count,
+        "unmapped_active_cameras": unmapped_active_cameras,
+        "healthy_mapping_count": healthy_mapping_count,
+        "healthy_rule_count": healthy_rule_count,
+        "healthy_audio_count": healthy_audio_count,
+        "initial_issues": initial_issues,
+        "initial_issue_count": len(initial_issues),
+        "can_edit_settings": _is_settings_editor(request.user),
+        "can_open_django_admin": request.user.is_superuser,
+        "can_manage_accounts": _can_manage_accounts(request.user),
+        "show_advanced_settings": _can_view_advanced_settings(request.user),
+        "can_edit_ai_settings": _can_manage_ai_settings(request.user),
+        "persistent_root": getattr(settings, "KRTC_PERSISTENT_ROOT", settings.BASE_DIR),
+        "persistent_data_dir": getattr(settings, "KRTC_DATA_DIR", settings.BASE_DIR),
+        "persistent_media_dir": getattr(settings, "KRTC_MEDIA_DIR", settings.MEDIA_ROOT),
+        "persistent_backup_dir": getattr(settings, "KRTC_BACKUP_DIR", settings.BASE_DIR / "backups"),
+        "can_manage_frontend_assets": _can_manage_accounts(request.user),
+        "login_background_form": LoginBackgroundUploadForm(),
+        "login_background_url": resolve_login_background_url(frontend_ui_config),
+        "alert_sound_form": AlertSoundSettingsForm(
+            initial={"alert_sound_enabled": frontend_alert_sound_state["enabled"]}
+        ),
+        "alert_sound_state": frontend_alert_sound_state,
+        "ntp_settings_form": NtpSettingsForm(
+            initial={
+                "enabled": ntp_config.enabled,
+                "station_clock_lan1": ntp_config.sources.station_clock_lan1,
+                "station_clock_lan2": ntp_config.sources.station_clock_lan2,
+                "occ_backup_clock_lan1": ntp_config.sources.occ_backup_clock_lan1,
+                "occ_backup_clock_lan2": ntp_config.sources.occ_backup_clock_lan2,
+            }
+        ),
+        "ntp_status": status_for_template(ntp_config),
+    }
+    return render(request, "settings_app/station_settings.html", context)
+
+
+@login_required
+@require_POST
+def save_ntp_configuration(request):
+    """驗證並保存本站的時間同步設定。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    form = NtpSettingsForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, _first_form_error(form))
+        return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+    try:
+        save_ntp_settings(
+            enabled=form.cleaned_data["enabled"],
+            sources=form.source_values(),
+        )
+        record_security_audit(
+            action="NTP_SETTINGS_UPDATED",
+            result="success",
+            request=request,
+            user=request.user,
+            detail="時間同步設定已更新",
+        )
+        messages.success(request, "時間同步設定已儲存。")
+    except Exception:
+        logger.exception("儲存時間同步設定失敗。")
+        messages.error(request, "時間同步設定無法儲存，原設定未變更。")
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def test_ntp_configuration_source(request):
+    """測試單一 NTP 來源，不變更 Windows 系統時間。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    source_key = str(request.POST.get("source_key") or "")
+    field_name = NtpSettingsForm.source_field_map.get(source_key, "")
+    form = NtpSourceTestForm(
+        {
+            "source_key": source_key,
+            "source_address": request.POST.get(field_name, "") if field_name else "",
+        }
+    )
+    if not form.is_valid():
+        messages.error(request, _first_form_error(form))
+        return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+    try:
+        result = test_ntp_source(
+            form.cleaned_data["source_key"],
+            form.cleaned_data["source_address"],
+        )
+    except Exception:
+        logger.exception("測試時間來源失敗。")
+        messages.error(request, "目前無法完成時間來源測試，請稍後再試。")
+        return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+    record_security_audit(
+        action="NTP_SOURCE_TEST",
+        result="success" if result.success else "failed",
+        request=request,
+        user=request.user,
+        detail=f"時間來源測試：{SOURCE_LABELS[form.cleaned_data['source_key']]}",
+    )
+    message = result.message
+    if result.offset:
+        message = f"{message} 觀測偏差：{result.offset}。"
+    if result.success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def check_all_ntp_sources(request):
+    """一次檢查所有已儲存的時間來源，但不修改系統時間。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    try:
+        summary = check_time_sources()
+    except Exception:
+        logger.exception("檢查時間來源時發生未預期錯誤。")
+        messages.error(request, "目前無法完成時間來源檢查，請稍後再試。")
+        return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+    record_security_audit(
+        action="NTP_SOURCES_CHECK",
+        result="success" if summary.success else "failed",
+        request=request,
+        user=request.user,
+        detail="已執行一鍵時間來源檢查",
+    )
+    if summary.success:
+        messages.success(request, summary.message)
+    else:
+        messages.error(request, summary.message)
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def synchronize_ntp_now(request):
+    """依固定優先序選擇來源並要求 Windows 立即校時。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    try:
+        result = synchronize_now()
+    except Exception:
+        logger.exception("立即校時流程發生未預期錯誤。")
+        messages.error(request, "目前無法完成立即校時，請稍後再試。")
+        return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+    record_security_audit(
+        action="NTP_SYNC_NOW",
+        result="success" if result.success else "failed",
+        request=request,
+        user=request.user,
+        detail="已執行立即校時流程",
+    )
+    if result.success:
+        messages.success(request, result.message)
+    else:
+        messages.error(request, result.message)
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def restore_default_ntp_configuration(request):
+    """只清除時間同步設定與其應用程式狀態。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    try:
+        reset_ntp_settings()
+        record_security_audit(
+            action="NTP_SETTINGS_RESET",
+            result="success",
+            request=request,
+            user=request.user,
+            detail="時間同步設定已恢復預設",
+        )
+        messages.success(request, "時間同步設定已恢復預設。")
+    except Exception:
+        logger.exception("恢復時間同步預設設定失敗。")
+        messages.error(request, "目前無法恢復時間同步預設設定。")
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def save_login_background(request):
+    """驗證並啟用持久化登入背景。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+
+    form = LoginBackgroundUploadForm(request.POST, request.FILES)
+    if not form.is_valid():
+        messages.error(request, _first_form_error(form))
+        return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+    try:
+        activate_login_background(form.cleaned_data["login_background"])
+        record_security_audit(
+            action="LOGIN_BACKGROUND_UPDATED",
+            result="success",
+            request=request,
+            user=request.user,
+            detail="登入頁背景已更新",
+        )
+        messages.success(request, "登入頁背景已儲存並啟用。")
+    except Exception:
+        logger.exception("儲存登入頁背景失敗。")
+        messages.error(request, "登入頁背景無法儲存，系統將繼續使用原設定。")
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def restore_default_login_background(request):
+    """停用並安全移除本功能管理的登入背景。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    try:
+        reset_login_background()
+        record_security_audit(
+            action="LOGIN_BACKGROUND_RESET",
+            result="success",
+            request=request,
+            user=request.user,
+            detail="登入頁背景已恢復系統預設",
+        )
+        messages.success(request, "已恢復系統預設登入背景。")
+    except Exception:
+        logger.exception("恢復系統預設登入背景失敗。")
+        messages.error(request, "目前無法恢復預設背景，請稍後再試。")
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def save_event_alert_sound(request):
+    """儲存自訂警示音及其啟用狀態。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+
+    form = AlertSoundSettingsForm(request.POST, request.FILES)
+    if not form.is_valid():
+        messages.error(request, _first_form_error(form))
+        return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+    try:
+        save_alert_sound(
+            form.cleaned_data.get("alert_sound"),
+            enabled=form.cleaned_data["alert_sound_enabled"],
+        )
+        record_security_audit(
+            action="EVENT_ALERT_SOUND_UPDATED",
+            result="success",
+            request=request,
+            user=request.user,
+            detail="事件警示音設定已更新",
+        )
+        messages.success(request, "事件警示音設定已儲存。")
+    except FrontendAssetError as exc:
+        messages.error(request, str(exc))
+    except Exception:
+        logger.exception("儲存事件警示音失敗。")
+        messages.error(request, "事件警示音無法儲存，系統將繼續使用原設定。")
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def restore_default_event_alert_sound(request):
+    """停用自訂警示音並恢復既有內建提示聲。"""
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    try:
+        reset_alert_sound()
+        record_security_audit(
+            action="EVENT_ALERT_SOUND_RESET",
+            result="success",
+            request=request,
+            user=request.user,
+            detail="事件警示音已恢復系統預設",
+        )
+        messages.success(request, "已恢復系統預設事件警示音。")
+    except Exception:
+        logger.exception("恢復系統預設事件警示音失敗。")
+        messages.error(request, "目前無法恢復預設音效，請稍後再試。")
+    return redirect(f"{reverse('settings_app:station_settings')}?tab=general")
+
+
+@login_required
+@require_POST
+def test_inference_host(request):
+    InferenceHost = get_model_or_none("ai_bridge", "InferenceHost")
+    payload = _json_body(request)
+    host = get_object_or_404(InferenceHost, pk=payload.get("id"))
+    test_url = f"{host.normalized_base_url}/health"
+    ok, elapsed_ms, message = _url_probe(test_url, timeout=min(max(host.timeout_seconds, 1), 20))
+    now = timezone.now()
+    host.last_health_at = now
+    if ok:
+        host.status = "online"
+        host.last_success_at = now
+        host.last_error = ""
+    else:
+        host.status = "error"
+        host.last_error_at = now
+        host.last_error = message
+    host.save(update_fields=["status", "last_health_at", "last_success_at", "last_error_at", "last_error", "updated_at"])
+    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "status": host.status, "status_label": STATUS_LABELS.get(host.status, "未知"), "tested_at": timezone.localtime(now).strftime("%Y-%m-%d %H:%M:%S")})
+
+
+def _save_camera_probe_state(camera, ok):
+    camera.status = "online" if ok else "offline"
+    camera.is_online = bool(ok)
+    camera.last_checked_at = timezone.now()
+    camera.save(update_fields=["status", "is_online", "last_checked_at"])
+    return timezone.localtime(camera.last_checked_at).strftime("%Y-%m-%d %H:%M:%S")
+
+
+@login_required
+@require_POST
+def test_camera(request):
+    Camera = get_model_or_none("cameras", "Camera")
+    payload = _json_body(request)
+    camera = get_object_or_404(Camera, pk=payload.get("id"))
+    if not camera.rtsp_url:
+        tested_at = _save_camera_probe_state(camera, False)
+        return JsonResponse({
+            "success": False,
+            "message": "攝影機尚未設定串流 URL。",
+            "elapsed_ms": 0,
+            "status": "offline",
+            "status_label": "離線",
+            "tested_at": tested_at,
+        })
+
+    parsed = urlparse(camera.rtsp_url)
+    host = parsed.hostname
+    if not host:
+        tested_at = _save_camera_probe_state(camera, False)
+        return JsonResponse({
+            "success": False,
+            "message": "串流 URL 格式無效。",
+            "elapsed_ms": 0,
+            "status": "offline",
+            "status_label": "離線",
+            "tested_at": tested_at,
+        })
+    default_ports = {"rtsp": 554, "http": 80, "https": 443}
+    port = parsed.port or default_ports.get(parsed.scheme.lower(), 554)
+    ok, elapsed_ms, message = _tcp_probe(host, port)
+    tested_at = _save_camera_probe_state(camera, ok)
+    return JsonResponse({
+        "success": ok,
+        "message": message,
+        "elapsed_ms": elapsed_ms,
+        "status": "online" if ok else "offline",
+        "status_label": "連線正常" if ok else "離線",
+        "tested_at": tested_at,
+    })
+
+
+@login_required
+@require_POST
+def test_speaker(request):
+    SpeakerDevice = get_model_or_none("notifications", "SpeakerDevice")
+    payload = _json_body(request)
+    speaker = get_object_or_404(SpeakerDevice, pk=payload.get("id"))
+    ok, elapsed_ms, message = _tcp_probe(str(speaker.ip_address), speaker.port)
+    speaker.status = "online" if ok else "offline"
+    speaker.last_checked_at = timezone.now()
+    speaker.save(update_fields=["status", "last_checked_at", "updated_at"])
+    system_log_action = "skipped"
+    try:
+        system_log_action = record_speaker_probe_result(speaker, ok, message)
+    except Exception:
+        pass
+    if not speaker.health_monitor_active:
+        message = f"{message}（目前未啟用 Speaker System Log 健康監測）"
+    return JsonResponse({
+        "success": ok,
+        "message": message,
+        "elapsed_ms": elapsed_ms,
+        "system_log_action": system_log_action,
+        "monitoring_enabled": speaker.health_monitor_active,
+        "status": speaker.status,
+        "status_label": STATUS_LABELS.get(speaker.status, "未知"),
+        "tested_at": timezone.localtime(speaker.last_checked_at).strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+@login_required
+@require_POST
+def test_audio_file(request):
+    AudioFile = get_model_or_none("notifications", "AudioFile")
+    payload = _json_body(request)
+    audio = get_object_or_404(AudioFile, pk=payload.get("id"))
+    started = time.perf_counter()
+    if not audio.file:
+        return JsonResponse({"success": False, "message": "尚未上傳音檔。", "elapsed_ms": 0})
+    try:
+        file_path = Path(audio.file.path)
+        relative_name = str(audio.file.name)
+        ok = file_path.is_file() and file_path.stat().st_size > 0
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        if ok:
+            message = f"音檔可讀，大小 {file_path.stat().st_size:,} bytes；路徑 {relative_name}。"
+        else:
+            media_root = Path(settings.MEDIA_ROOT)
+            message = f"音檔不存在或內容為空；請確認 {media_root / relative_name}。"
+    except (NotImplementedError, OSError) as exc:
+        ok = False
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        message = f"音檔檢查失敗：{exc}"
+    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "tested_at": timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M:%S")})
+
+
+@login_required
+@require_POST
+def test_maintenance_host(request):
+    local_settings = StationLocalSettings.load()
+    payload = _json_body(request)
+    maintenance_host_url = (payload.get("url") or local_settings.maintenance_host_url or "").strip()
+    if not maintenance_host_url:
+        return JsonResponse({"success": False, "message": "尚未設定中央維護主機 URL。", "elapsed_ms": 0})
+    parsed = urlparse(maintenance_host_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return JsonResponse({"success": False, "message": "中央維護主機 URL 格式無效。", "elapsed_ms": 0})
+    test_url = f"{maintenance_host_url.rstrip('/')}/health"
+    ok, elapsed_ms, message = _url_probe(test_url, timeout=5)
+    return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "tested_at": timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M:%S")})
+
+
+@login_required
+@require_POST
+def save_speaker(request):
+    if not _is_settings_editor(request.user):
+        return JsonResponse({"success": False, "message": "權限不足。"}, status=403)
+
+    payload = request.POST
+    speaker_id = payload.get("id")
+    speaker = None
+    if speaker_id:
+        SpeakerDevice = get_model_or_none("notifications", "SpeakerDevice")
+        speaker = get_object_or_404(SpeakerDevice, pk=speaker_id)
+
+    form = SpeakerDeviceForm(payload, instance=speaker)
+    if not form.is_valid():
+        return JsonResponse(
+            {"success": False, "message": "請修正設備設定。", "errors": form.errors.get_json_data()},
+            status=400,
+        )
+
+    speaker = form.save()
+    try:
+        clear_speaker_fault_if_monitoring_disabled(speaker)
+    except Exception:
+        pass
+    return JsonResponse({
+        "success": True,
+        "message": f"{speaker.speaker_code} 已儲存。",
+        "speaker": {
+            "id": speaker.id,
+            "speaker_code": speaker.speaker_code,
+            "name": speaker.name,
+            "area": speaker.area,
+            "network_mode": speaker.network_mode,
+            "network_mode_label": speaker.get_network_mode_display(),
+            "ip_address": str(speaker.ip_address),
+            "port": speaker.port,
+            "username": speaker.username,
+            "preferred_codec": speaker.preferred_codec,
+            "preferred_codec_label": speaker.get_preferred_codec_display(),
+            "sip_uri": speaker.resolved_sip_uri,
+            "deployment_state": speaker.deployment_state,
+            "health_monitor_enabled": speaker.health_monitor_enabled,
+            "health_monitor_active": speaker.health_monitor_active,
+            "is_active": speaker.is_active,
+        },
+    })
+
+
+@login_required
+@require_POST
+def delete_speaker(request, speaker_id):
+    """Delete an IP speaker from station-local configuration."""
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    SpeakerDevice = get_model_or_none("notifications", "SpeakerDevice")
+    speaker = get_object_or_404(SpeakerDevice, pk=speaker_id)
+    speaker.delete()
+    return _settings_scroll_redirect("devices", request.POST.get("return_scroll_y"))
+
+
+
+MANAGEMENT_REGISTRY = {
+    "inference-host": {
+        "model": ("ai_bridge", "InferenceHost"),
+        "form": InferenceHostForm,
+        "title": "推論主機",
+        "plural": "推論主機",
+        "tab": "hosts",
+    },
+    "camera": {
+        "model": ("cameras", "Camera"),
+        "form": CameraForm,
+        "title": "攝影機",
+        "plural": "攝影機",
+        "tab": "devices",
+    },
+    "speaker-device": {
+        "model": ("notifications", "SpeakerDevice"),
+        "form": SpeakerDeviceForm,
+        "title": "廣播喇叭",
+        "plural": "廣播喇叭",
+        "tab": "devices",
+    },
+    "camera-mapping": {
+        "model": ("ai_bridge", "InferenceCameraMapping"),
+        "form": InferenceCameraMappingForm,
+        "title": "Camera ID 映射",
+        "plural": "Camera ID 映射",
+        "tab": "ai",
+    },
+    "ai-model": {
+        "model": ("ai_bridge", "AIModel"),
+        "form": AIModelForm,
+        "title": "AI 模型",
+        "plural": "AI 模型",
+        "tab": "ai",
+    },
+    "audio-file": {
+        "model": ("notifications", "AudioFile"),
+        "form": AudioFileForm,
+        "title": "廣播音檔",
+        "plural": "廣播音檔",
+        "tab": "broadcast",
+    },
+    "broadcast-rule": {
+        "model": ("notifications", "BroadcastRule"),
+        "form": BroadcastRuleForm,
+        "title": "廣播規則",
+        "plural": "廣播規則",
+        "tab": "broadcast",
+    },
+    "broadcast-schedule": {
+        "model": ("notifications", "BroadcastSchedule"),
+        "form": BroadcastScheduleForm,
+        "title": "廣播排程",
+        "plural": "廣播排程",
+        "tab": "broadcast",
+    },
+}
+
+
+def _management_config(kind):
+    config = MANAGEMENT_REGISTRY.get(kind)
+    if not config:
+        raise PermissionDenied("不支援的設定類型。")
+    return config
+
+
+@login_required
+def manage_object(request, kind, object_id=None):
+    """Create or edit operational configuration without exposing Django admin."""
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+
+    config = _management_config(kind)
+    if kind in {"ai-model", "camera-mapping"} and not _can_manage_ai_settings(request.user):
+        raise PermissionDenied("目前帳號只有 AI / 映射檢視權限，不能修改。")
+    Model = get_model_or_none(*config["model"])
+    instance = get_object_or_404(Model, pk=object_id) if object_id else None
+    FormClass = config["form"]
+
+    # BroadcastRule is now managed from the station broadcast console.
+    # Keep the existing management form, but allow that console to be the
+    # explicit return target without introducing a generic open redirect.
+    return_to = request.POST.get("return_to") if request.method == "POST" else request.GET.get("return_to")
+    if return_to != "broadcast" or kind != "broadcast-rule":
+        return_to = ""
+
+    if request.method == "POST":
+        form = FormClass(request.POST, request.FILES, instance=instance)
+        if form.is_valid():
+            saved = form.save(commit=False)
+            if kind == "broadcast-schedule":
+                if not saved.pk and hasattr(saved, "created_by"):
+                    saved.created_by = request.user
+                saved.next_run_at = saved.calculate_next_run()
+            saved.save()
+            if hasattr(form, "save_m2m"):
+                form.save_m2m()
+            if kind == "speaker-device":
+                try:
+                    clear_speaker_fault_if_monitoring_disabled(saved)
+                except Exception:
+                    pass
+            if return_to == "broadcast":
+                return redirect(f"{reverse('dashboard:station_broadcast')}?saved=1#auto-broadcast-rules")
+            return redirect(
+                f"{reverse('settings_app:station_settings')}?saved=1&tab={config['tab']}#management-saved"
+            )
+    else:
+        form = FormClass(instance=instance)
+
+    return render(request, "settings_app/manage_object.html", {
+        "form": form,
+        "kind": kind,
+        "object": instance,
+        "management_title": config["title"],
+        "management_plural": config["plural"],
+        "return_tab": config["tab"],
+        "return_to": return_to,
+        "station_name": StationLocalSettings.load().station_name,
+    })
+
+
+def _settings_scroll_redirect(tab, raw_scroll_y=None):
+    try:
+        scroll_y = max(0, int(float(raw_scroll_y or 0)))
+    except (TypeError, ValueError):
+        scroll_y = 0
+    url = f"{reverse('settings_app:station_settings')}?saved=1&tab={tab}"
+    if scroll_y:
+        url += f"&scroll_y={scroll_y}"
+    return redirect(url)
+
+
+@login_required
+@require_POST
+def remove_object(request, kind, object_id):
+    """Delete editable operational settings from the maintenance UI."""
+    if not _is_settings_editor(request.user):
+        raise PermissionDenied("目前帳號沒有修改系統設定的權限。")
+    config = _management_config(kind)
+    if kind not in {"broadcast-rule", "camera", "inference-host"}:
+        raise PermissionDenied("此設定類型不支援在維運頁刪除。")
+    Model = get_model_or_none(*config["model"])
+    instance = get_object_or_404(Model, pk=object_id)
+    instance.delete()
+    if kind == "broadcast-rule" and request.POST.get("return_to") == "broadcast":
+        return redirect(f"{reverse('dashboard:station_broadcast')}?saved=1#auto-broadcast-rules")
+    return _settings_scroll_redirect(config["tab"], request.POST.get("return_scroll_y"))
+
+
+@login_required
+@require_POST
+def toggle_object(request, kind, object_id):
+    """Disable/enable objects instead of deleting operational history."""
+    if not _is_settings_editor(request.user):
+        raise PermissionDenied("目前帳號沒有修改系統設定的權限。")
+    config = _management_config(kind)
+    if kind in {"ai-model", "camera-mapping"} and not _can_manage_ai_settings(request.user):
+        raise PermissionDenied("目前帳號只有 AI / 映射檢視權限，不能修改。")
+    Model = get_model_or_none(*config["model"])
+    instance = get_object_or_404(Model, pk=object_id)
+    if not hasattr(instance, "is_active"):
+        return JsonResponse({"success": False, "message": "此設定不支援啟用／停用。"}, status=400)
+    instance.is_active = not instance.is_active
+    instance.save(update_fields=["is_active", "updated_at"] if hasattr(instance, "updated_at") else ["is_active"])
+    return redirect(f"{reverse('settings_app:station_settings')}?tab={config['tab']}")
+
+
+
+@login_required
+def user_management(request):
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+
+    users = list(
+        get_user_model().objects.filter(is_superuser=False)
+        .prefetch_related("groups")
+        .order_by("username")
+    )
+    for account in users:
+        account.frontend_role = (
+            account.groups.filter(name__in=["Operator", "Maintainer", "Administrator"])
+            .values_list("name", flat=True)
+            .first()
+            or "未指派"
+        )
+
+    return render(request, "settings_app/user_management.html", {
+        "frontend_users": users,
+        "settings_saved": request.GET.get("saved") == "1",
+        "server_time": timezone.localtime(timezone.now()),
+        "broadcast_playback_mode": get_broadcast_playback_mode(),
+        "station_name": StationLocalSettings.load().station_name,
+    })
+
+
+@login_required
+@require_POST
+def remove_user(request, object_id):
+    if not _can_manage_accounts(request.user):
+        raise PermissionDenied("只有系統管理員或 Superuser 可以移除使用者。")
+    user = get_object_or_404(get_user_model(), pk=object_id, is_superuser=False)
+    if user.pk == request.user.pk:
+        return JsonResponse({"success": False, "message": "不可移除目前登入帳號。"}, status=400)
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    record_security_audit(action="USER_DISABLED", result="success", request=request, user=request.user, detail=f"Disabled user {user.username}", metadata={"target_username": user.username})
+    return redirect(reverse("settings_app:user_management"))
+
+@login_required
+def manage_user(request, object_id=None):
+    if not _can_manage_accounts(request.user):
+        return hidden_forbidden_response()
+    User = get_user_model()
+    instance = get_object_or_404(User, pk=object_id, is_superuser=False) if object_id else None
+    if request.method == "POST":
+        form = FrontendUserForm(request.POST, user_instance=instance)
+        if form.is_valid():
+            user = instance or User()
+            user.username = form.cleaned_data["username"]
+            user.first_name = form.cleaned_data["first_name"]
+            user.email = form.cleaned_data["email"]
+            user.is_active = form.cleaned_data["is_active"]
+            user.is_staff = False
+            user.is_superuser = False
+            password = form.cleaned_data.get("password")
+            if password:
+                user.set_password(password)
+            created = instance is None
+            user.save()
+            role_group, _ = Group.objects.get_or_create(name=form.cleaned_data["role"])
+            user.groups.set([role_group])
+            record_security_audit(
+                action="USER_CREATED" if created else "USER_UPDATED",
+                result="success",
+                request=request,
+                user=request.user,
+                detail=f"{'Created' if created else 'Updated'} user {user.username}",
+                metadata={"target_username": user.username, "target_role": role_group.name, "target_active": user.is_active},
+            )
+            return redirect(f"{reverse('settings_app:user_management')}?saved=1")
+    else:
+        form = FrontendUserForm(user_instance=instance)
+    return render(request, "settings_app/manage_object.html", {
+        "form": form,
+        "kind": "user",
+        "object": instance,
+        "management_title": "使用者帳號",
+        "management_plural": "使用者管理",
+        "return_tab": "users",
+        "return_url_name": "settings_app:user_management",
+        "station_name": StationLocalSettings.load().station_name,
+    })
+
+
+@login_required
+@require_POST
+def toggle_user(request, object_id):
+    if not _can_manage_accounts(request.user):
+        raise PermissionDenied("只有 Administrator 或 Superuser 可以管理帳號。")
+    user = get_object_or_404(get_user_model(), pk=object_id, is_superuser=False)
+    if user.pk == request.user.pk:
+        return JsonResponse({"success": False, "message": "不可停用目前登入帳號。"}, status=400)
+    user.is_active = not user.is_active
+    user.save(update_fields=["is_active"])
+    record_security_audit(
+        action="USER_ENABLED" if user.is_active else "USER_DISABLED",
+        result="success",
+        request=request,
+        user=request.user,
+        detail=f"{'Enabled' if user.is_active else 'Disabled'} user {user.username}",
+        metadata={"target_username": user.username},
+    )
+    return redirect(reverse("settings_app:user_management"))
+
+
+@login_required
+def export_station_configuration(request):
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    path, manifest = export_configuration_archive()
+    record_security_audit(
+        action="STATION_CONFIG_EXPORTED",
+        result="success",
+        request=request,
+        user=request.user,
+        detail=f"Configuration backup exported: {path.name}",
+    )
+    return FileResponse(
+        open(path, "rb"),
+        as_attachment=True,
+        filename=path.name,
+        content_type="application/zip",
+    )
+
+
+@login_required
+@require_POST
+def preview_station_configuration_restore(request):
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    uploaded = request.FILES.get("backup_file")
+    if uploaded is None:
+        return render(request, "settings_app/configuration_restore_preview.html", {
+            "error": "請選擇 KRTC 設定備份 ZIP。",
+            "server_time": timezone.localtime(timezone.now()),
+        }, status=400)
+    try:
+        token, path, manifest, payload = stage_uploaded_archive(uploaded)
+    except ConfigurationBackupError as exc:
+        return render(request, "settings_app/configuration_restore_preview.html", {
+            "error": str(exc),
+            "server_time": timezone.localtime(timezone.now()),
+        }, status=400)
+    return render(request, "settings_app/configuration_restore_preview.html", {
+        "restore_token": token,
+        "manifest": manifest,
+        "counts": configuration_counts(payload),
+        "station": payload.get("station") or {},
+        "server_time": timezone.localtime(timezone.now()),
+    })
+
+
+@login_required
+@require_POST
+def restore_station_configuration(request):
+    if not _is_settings_editor(request.user):
+        return hidden_forbidden_response()
+    token = (request.POST.get("restore_token") or "").strip()
+    try:
+        path = staged_archive_path(token)
+        result = restore_configuration_archive(path)
+        path.unlink(missing_ok=True)
+    except ConfigurationBackupError as exc:
+        return render(request, "settings_app/configuration_restore_preview.html", {
+            "error": str(exc),
+            "server_time": timezone.localtime(timezone.now()),
+        }, status=400)
+    record_security_audit(
+        action="STATION_CONFIG_RESTORED",
+        result="success",
+        request=request,
+        user=request.user,
+        detail=f"Configuration restored; DB restore point: {result['restore_point']}",
+    )
+    return render(request, "settings_app/configuration_restore_complete.html", {
+        "result": result,
+        "server_time": timezone.localtime(timezone.now()),
+    })

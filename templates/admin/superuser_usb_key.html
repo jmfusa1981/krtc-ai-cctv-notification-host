@@ -1,0 +1,96 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<style>
+.krtc-usb-wrap{max-width:980px}
+.krtc-card{background:var(--body-bg,#fff);border:1px solid var(--hairline-color,#ddd);border-radius:10px;padding:20px;margin-bottom:18px}
+.krtc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.krtc-kpi{border:1px solid var(--hairline-color,#ddd);border-radius:8px;padding:14px}
+.krtc-kpi strong{display:block;font-size:18px;margin-top:6px}
+.krtc-ok{color:#15803d}.krtc-bad{color:#b91c1c}.krtc-muted{color:#64748b}
+.krtc-actions{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.krtc-actions label{display:block;font-weight:600;margin-bottom:5px}
+.krtc-actions select{min-width:260px}
+.krtc-actions button{min-height:36px;padding:0 14px}
+.krtc-table{width:100%;border-collapse:collapse}.krtc-table th,.krtc-table td{padding:10px;border-bottom:1px solid var(--hairline-color,#ddd);text-align:left}
+@media(max-width:780px){.krtc-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="krtc-usb-wrap">
+  <div class="krtc-card">
+    <h1>Superuser USB Key 管理</h1>
+    <p class="krtc-muted">Skynet / Superuser 進入開發者後台時的實體第二因素。一般前台登入不受此功能影響。</p>
+
+    <div class="krtc-grid">
+      <div class="krtc-kpi">
+        USB 二次驗證
+        <strong class="{% if config.superuser_usb_required %}krtc-ok{% else %}krtc-bad{% endif %}">
+          {% if config.superuser_usb_required %}已啟用{% else %}未啟用{% endif %}
+        </strong>
+      </div>
+      <div class="krtc-kpi">
+        已信任 Key
+        <strong>{{ config.superuser_usb_key_id|default:"尚未登錄" }}</strong>
+      </div>
+      <div class="krtc-kpi">
+        即時驗證
+        <strong class="{% if verified %}krtc-ok{% else %}krtc-bad{% endif %}">
+          {% if verified %}驗證成功{% else %}未偵測到有效 Key{% endif %}
+        </strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="krtc-card">
+    <h2>可移除式 USB</h2>
+    {% if drives %}
+    <table class="krtc-table">
+      <thead><tr><th>磁碟</th><th>標籤</th><th>KRTC Key</th><th>Key ID</th></tr></thead>
+      <tbody>
+      {% for drive in drives %}
+        <tr>
+          <td>{{ drive.drive }}</td>
+          <td>{{ drive.label|default:"-" }}</td>
+          <td>{% if drive.has_krtc_key %}已有 Key{% else %}尚無 Key{% endif %}</td>
+          <td>{{ drive.key_id|default:"-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p>目前未偵測到可移除式 USB。</p>
+    {% endif %}
+  </div>
+
+  <div class="krtc-card">
+    <h2>建立或登錄 Master Key</h2>
+    <p>若 USB 尚無 KRTC Key，系統會建立新的 Master Key；若已有有效 Key，則只登錄既有 Key，不覆寫 Token。</p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="krtc-actions">
+        <div>
+          <label for="drive">USB 裝置</label>
+          <select name="drive" id="drive">
+            <option value="">自動偵測（僅一支 USB 時）</option>
+            {% for drive in drives %}
+            <option value="{{ drive.drive }}">{{ drive.drive }}{% if drive.label %} - {{ drive.label }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" name="action" value="create_register" class="default">建立 / 登錄 USB Key</button>
+        <button type="submit" name="action" value="verify">驗證目前 USB</button>
+      </div>
+    </form>
+  </div>
+
+  {% if config.superuser_usb_required %}
+  <div class="krtc-card">
+    <h2>停用此主機 USB 驗證</h2>
+    <p class="krtc-muted">只取消本機對該 Key 的信任，不會刪除 USB 裡的 Master Key；其他已登錄此 Key 的主機不受影響。</p>
+    <form method="post" onsubmit="return confirm('確定要停用此主機的 Superuser USB 驗證？');">
+      {% csrf_token %}
+      <button type="submit" name="action" value="disable">停用 USB 二次驗證</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

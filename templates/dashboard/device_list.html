@@ -1,0 +1,130 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>設備清單｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/device_list.css' %}?v=20260827h">
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/display_mode.css' %}?v=20260829">
+    <script src="{% static 'js/display_mode.js' %}?v=20260829"></script>
+</head>
+<body>
+    <div class="device-page-shell">
+        {% include "dashboard/includes/system_header.html" with current_page="devices" page_title="設備清單" show_dashboard_status=True hide_mode_badge=True show_home_button=True %}
+
+        <section class="device-summary-grid" aria-label="設備統計">
+            <article class="summary-card">
+                <span>攝影機總數</span>
+                <strong>{{ camera_count }}</strong>
+                <small>資料來源：攝影機系統設定</small>
+            </article>
+            <article class="summary-card summary-card--abnormal{% if camera_abnormal_count > 0 %} has-abnormal{% endif %}">
+                <span>攝影機異常</span>
+                <strong>{{ camera_abnormal_count }}</strong>
+                <small>包含離線、維護與異常</small>
+            </article>
+            <article class="summary-card">
+                <span>廣播喇叭總數</span>
+                <strong>{{ speaker_count }}</strong>
+                <small>資料來源：廣播喇叭系統設定</small>
+            </article>
+            <article class="summary-card summary-card--abnormal{% if speaker_abnormal_count > 0 %} has-abnormal{% endif %}">
+                <span>廣播喇叭異常</span>
+                <strong>{{ speaker_abnormal_count }}</strong>
+                <small>包含離線、未知、維護與異常</small>
+            </article>
+        </section>
+
+        <section class="device-content-panel">
+            <div class="device-panel-header">
+                <div>
+                    <h1>站區設備清單</h1>
+                    <p>此頁為唯讀設備總覽；新增與修改資料請至系統設定。</p>
+                </div>
+
+            </div>
+
+            <div class="device-list-grid" aria-label="站區設備清單">
+                <section class="device-table-section device-list-block camera-list-block">
+                    <div class="device-list-block-heading">
+                        <div>
+                            <h2>攝影機清單</h2>
+                            <span>共 {{ camera_count }} 台</span>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="device-table device-table--camera">
+                            <thead>
+                                <tr>
+                                    <th>攝影機編號</th>
+                                    <th>區域</th>
+                                    <th>連線狀態</th>
+                                    <th>啟用狀態</th>
+                                    <th>串流狀態</th>
+                                    <th>說明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for camera in cameras %}
+                                    <tr data-device-row data-search-text="{{ camera.camera_code }} {{ camera.area }} {{ camera.description }} {{ camera.connection_status_label }} {{ camera.active_status_label }} {{ camera.stream_status_label }}">
+                                        <td class="device-code">{{ camera.camera_code }}</td>
+                                        <td>{{ camera.area|default:"未設定" }}</td>
+                                        <td><span class="status-badge status-{{ camera.status|default:'unknown' }}">{{ camera.connection_status_label }}</span></td>
+                                        <td><span class="status-badge {% if camera.is_active %}status-enabled{% else %}status-disabled{% endif %}">{{ camera.active_status_label }}</span></td>
+                                        <td><span class="status-badge {% if camera.status == 'online' and camera.is_active %}status-online{% elif camera.status == 'maintenance' %}status-maintenance{% else %}status-error{% endif %}">{{ camera.stream_status_label }}</span></td>
+                                        <td class="description-cell">{{ camera.description|default:"—" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="6" class="empty-row">目前尚未設定攝影機。</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="device-table-section device-list-block speaker-list-block">
+                    <div class="device-list-block-heading">
+                        <div>
+                            <h2>廣播喇叭清單</h2>
+                            <span>共 {{ speaker_count }} 台</span>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="device-table device-table--speaker">
+                            <thead>
+                                <tr>
+                                    <th>喇叭編號</th>
+                                    <th>區域</th>
+                                    <th>SIP URI</th>
+                                    <th>啟用狀態</th>
+                                    <th>設備狀態</th>
+                                    <th>說明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for speaker in speakers %}
+                                    <tr data-device-row data-search-text="{{ speaker.speaker_code }} {{ speaker.device_area }} {{ speaker.sip_uri }} {{ speaker.description }} {{ speaker.device_status_label }} {{ speaker.active_status_label }}">
+                                        <td class="device-code">{{ speaker.speaker_code }}</td>
+                                        <td>{{ speaker.device_area }}</td>
+                                        <td class="sip-uri">{{ speaker.sip_uri|default:"未設定" }}</td>
+                                        <td><span class="status-badge {% if speaker.is_active %}status-enabled{% else %}status-disabled{% endif %}">{{ speaker.active_status_label }}</span></td>
+                                        <td><span class="status-badge status-{{ speaker.status|default:'unknown' }}">{{ speaker.device_status_label }}</span></td>
+                                        <td class="description-cell">{{ speaker.description|default:"—" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="6" class="empty-row">目前尚未設定廣播喇叭。</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+        </section>
+    </div>
+
+    <script src="{% static 'js/device_list.js' %}?v=20260827h"></script>
+</body>
+</html>

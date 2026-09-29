@@ -1,0 +1,143 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>事件快照｜KRTC AI CCTV 通報主機</title>
+    <link rel="stylesheet" href="{% static 'css/event_snapshot_list.css' %}">
+    <link rel="stylesheet" href="{% static 'css/system_header.css' %}">
+    <link rel="stylesheet" href="{% static 'css/back_to_top.css' %}">
+    <link rel="stylesheet" href="{% static 'css/display_mode.css' %}?v=20260829">
+    <script src="{% static 'js/display_mode.js' %}?v=20260829"></script>
+</head>
+<body>
+    <div class="snapshot-shell">
+        {% include "dashboard/includes/system_header.html" with current_page="snapshots" page_title="事件快照" show_dashboard_status=True hide_mode_badge=True show_home_button=True %}
+
+        <section class="snapshot-summary-bar" aria-label="事件快照資訊">
+            <div class="snapshot-summary-bar__main">
+                <strong>事件快照</strong>
+                <small>事件快照與篩選資訊</small>
+            </div>
+            <div class="snapshot-summary-bar__metric">
+                <span>快照筆數</span>
+                <strong>{{ snapshot_count }}</strong>
+                <small>符合目前篩選條件</small>
+            </div>
+        </section>
+
+        <form class="filter-bar" method="get">
+            <label class="snapshot-filter-keyword">
+                <span>搜尋</span>
+                <input
+                    id="snapshotSearch"
+                    name="q"
+                    type="search"
+                    value="{{ snapshot_keyword }}"
+                    placeholder="事件類型、攝影機編號、區域或事件編號"
+                >
+            </label>
+            <label class="snapshot-filter-date">
+                <span>開始日期</span>
+                <input name="start_date" type="date" value="{{ snapshot_start_date }}">
+            </label>
+            <label class="snapshot-filter-date">
+                <span>結束日期</span>
+                <input name="end_date" type="date" value="{{ snapshot_end_date }}">
+            </label>
+            <div class="snapshot-filter-actions">
+                <button type="submit">套用篩選</button>
+                <a href="{% url 'dashboard:event_snapshot_list' %}">清除</a>
+            </div>
+            <span class="filter-result" id="snapshotResultCount">符合條件 {{ snapshot_count }} 筆</span>
+            {% if snapshot_filter_error %}
+                <p class="snapshot-filter-error" role="alert">{{ snapshot_filter_error }}</p>
+            {% endif %}
+        </form>
+
+        <main class="snapshot-grid" id="snapshotGrid">
+            {% for event in snapshot_events %}
+                <article
+                    class="snapshot-card"
+                    data-snapshot-card
+                    data-search="{{ event.id }} {{ event.get_event_type_display }} {{ event.camera.camera_code }} {{ event.camera.area }} {{ event.source_event_id }}"
+                >
+                    <button
+                        type="button"
+                        class="snapshot-preview-button"
+                        data-preview-url="{{ event.snapshot_display_url }}"
+                        data-preview-title="{{ event.get_event_type_display }}｜事件 {{ event.id }}"
+                        aria-label="查看事件 {{ event.id }} 快照大圖"
+                    >
+                        <img
+                            src="{{ event.snapshot_display_url }}"
+                            alt="事件 {{ event.id }} 快照"
+                            loading="lazy"
+                            referrerpolicy="no-referrer"
+                        >
+                        <span class="image-fallback">快照載入失敗</span>
+                    </button>
+
+                    <div class="snapshot-card-body">
+                        <div class="snapshot-title-row">
+                            <h3>{{ event.get_event_type_display }}</h3>
+                            <span class="status-tag status-{{ event.status }}">{{ event.status_display_zh }}</span>
+                        </div>
+
+                        <dl>
+                            <div><dt>事件編號</dt><dd>{{ event.id }}</dd></div>
+                            <div><dt>攝影機</dt><dd>{{ event.camera.camera_code }}</dd></div>
+                            <div><dt>區域</dt><dd>{{ event.camera.area|default:"未設定" }}</dd></div>
+                            <div><dt>偵測時間</dt><dd>{{ event.detected_at|date:"Y-m-d H:i:s" }}</dd></div>
+                            <div><dt>儲存位置</dt><dd>{{ event.snapshot_storage_label }}</dd></div>
+                        </dl>
+
+                        <div class="snapshot-card-actions">
+                            <button
+                                type="button"
+                                data-preview-url="{{ event.snapshot_display_url }}"
+                                data-preview-title="{{ event.get_event_type_display }}｜事件 {{ event.id }}"
+                            >
+                                查看大圖
+                            </button>
+                            <a href="{% url 'dashboard:home' %}?event={{ event.id }}">前往事件處理</a>
+                        </div>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="empty-state">
+                    <strong>沒有可顯示的事件快照</strong>
+                </div>
+            {% endfor %}
+        </main>
+
+        {% if page_obj.paginator.num_pages > 1 %}
+            <nav class="snapshot-pagination" aria-label="事件快照分頁">
+                {% if page_obj.has_previous %}
+                    <a href="?{% if query_without_page %}{{ query_without_page }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">上一頁</a>
+                {% endif %}
+                <span>第 {{ page_obj.number }} / {{ page_obj.paginator.num_pages }} 頁</span>
+                {% if page_obj.has_next %}
+                    <a href="?{% if query_without_page %}{{ query_without_page }}&amp;{% endif %}page={{ page_obj.next_page_number }}">下一頁</a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    </div>
+
+    <dialog class="snapshot-dialog" id="snapshotDialog">
+        <div class="dialog-header">
+            <strong id="snapshotDialogTitle">事件快照</strong>
+            <button type="button" id="snapshotDialogClose" aria-label="關閉">×</button>
+        </div>
+        <div class="dialog-content">
+            <img id="snapshotDialogImage" alt="事件快照大圖">
+        </div>
+    </dialog>
+
+    <script src="{% static 'js/event_snapshot_list.js' %}"></script>
+
+    <button type="button" class="krtc-back-to-top" data-krtc-back-to-top aria-label="回到頂端">Top</button>
+    <script src="{% static 'js/back_to_top.js' %}"></script>
+</body>
+</html>
