@@ -42,3 +42,6 @@ build/
 # KRTC runtime
 runtime/
 _update_backups/
+
+# Windows shortcuts
+*.lnk

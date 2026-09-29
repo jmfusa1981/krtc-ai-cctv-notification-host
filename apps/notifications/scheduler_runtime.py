@@ -1,8 +1,7 @@
 import logging
-import os
-import sys
 import threading
 
+from config.runtime_policy import should_start_web_background_services
 from django.conf import settings
 from django.db import close_old_connections
 
@@ -18,19 +17,6 @@ logger = logging.getLogger(__name__)
 _start_lock = threading.Lock()
 _scheduler_started = False
 _scheduler_thread = None
-
-
-def _is_runserver_worker():
-    # 正式版使用單一 Waitress process；只在明確的 Web server process 啟動排程器。
-    if getattr(settings, "KRTC_PRODUCTION", False) and any(
-        "waitress" in str(item).lower() for item in sys.argv
-    ):
-        return True
-    if "runserver" not in sys.argv:
-        return False
-    if "--noreload" in sys.argv:
-        return True
-    return os.environ.get("RUN_MAIN", "").lower() == "true"
 
 
 def _scheduler_loop(interval_seconds):
@@ -117,7 +103,7 @@ def start_scheduler_for_current_process():
 
     if not getattr(settings, "BROADCAST_SCHEDULER_AUTOSTART", True):
         return False
-    if not _is_runserver_worker():
+    if not should_start_web_background_services():
         return False
 
     with _start_lock:

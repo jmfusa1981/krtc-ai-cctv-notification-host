@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import sys
 import threading
 import time
 from pathlib import Path
@@ -11,6 +9,8 @@ from pathlib import Path
 from django.conf import settings
 from django.db import close_old_connections
 from django.utils import timezone
+
+from config.runtime_policy import should_start_web_background_services
 
 from .device_faults import recover_device_fault, report_device_fault
 from .models import DeviceFaultLog
@@ -178,20 +178,6 @@ def evaluate_services() -> dict[str, dict[str, object]]:
     return results
 
 
-def _is_runserver_worker() -> bool:
-    argv = [str(item).lower() for item in sys.argv]
-    # 正式版以單一 Waitress process 提供 Web；management command 不會符合此條件。
-    if getattr(settings, "KRTC_PRODUCTION", False) and any(
-        "waitress" in item for item in argv
-    ):
-        return True
-    if "runserver" not in argv:
-        return False
-    if "--noreload" in argv:
-        return True
-    return os.environ.get("RUN_MAIN", "").lower() == "true"
-
-
 def _watchdog_loop() -> None:
     startup_delay = max(5, int(getattr(settings, "PAO_SERVICE_WATCHDOG_STARTUP_DELAY_SECONDS", 20)))
     interval = max(10, int(getattr(settings, "PAO_SERVICE_WATCHDOG_INTERVAL_SECONDS", 30)))
@@ -216,7 +202,7 @@ def start_service_watchdog_for_current_process() -> bool:
 
     if not getattr(settings, "PAO_SERVICE_WATCHDOG_ENABLED", True):
         return False
-    if not _is_runserver_worker():
+    if not should_start_web_background_services():
         return False
 
     with _start_lock:
