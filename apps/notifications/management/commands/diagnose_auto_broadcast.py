@@ -7,6 +7,7 @@ from django.db.models import Q
 from apps.ai_bridge.services.event_importer import matching_auto_broadcast_rules_for_event
 from apps.events.models import Event
 from apps.notifications.models import BroadcastLog, BroadcastRule, SpeakerDevice
+from apps.notifications.runtime_config import get_broadcast_runtime_config
 
 
 class Command(BaseCommand):
@@ -20,8 +21,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         events = self._get_events(options)
 
+        runtime_config = get_broadcast_runtime_config()
+
         self.stdout.write("Auto broadcast diagnostics")
-        self.stdout.write(f"Playback mode: {getattr(settings, 'BROADCAST_PLAYBACK_MODE', 'simulation')}")
+        self.stdout.write(f"Playback backend: {runtime_config.operational_backend}")
         self.stdout.write(
             "Auto process on import: "
             f"{getattr(settings, 'AUTO_BROADCAST_PROCESS_ON_IMPORT', True)}"

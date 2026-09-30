@@ -13,6 +13,7 @@ from apps.ai_bridge.models import AIModel, InferenceConnectionState, InferenceHo
 from apps.cameras.models import Camera
 from apps.events.models import Event, EventRecordingEvidence
 from apps.notifications.models import SpeakerDevice
+from apps.notifications.runtime_config import get_broadcast_runtime_config
 from apps.settings_app.models import StationLocalSettings
 
 from .auth import require_occ_token
@@ -54,6 +55,9 @@ def status(request):
     local = StationLocalSettings.load()
     sync = OccSyncState.load()
     connection_states = InferenceConnectionState.objects.select_related("inference_host")
+    runtime_config = get_broadcast_runtime_config()
+    broadcast_backend = runtime_config.operational_backend
+
     return JsonResponse({
         **_identity(),
         "host_status": "online",
@@ -73,7 +77,8 @@ def status(request):
         "speakers": {"total": speakers.count(), "online": speakers.filter(status="online").count()},
         "last_event_at": _iso(latest_event.detected_at) if latest_event else None,
         "config_version": str(local.config_version),
-        "broadcast_mode": settings.BROADCAST_PLAYBACK_MODE,
+        "broadcast_mode": broadcast_backend,
+        "broadcast_backend": broadcast_backend,
         "application_version": settings.KRTC_APP_VERSION,
         "occ_sync": {
             "enabled": settings.KRTC_OCC_SYNC_ENABLED,
@@ -349,10 +354,14 @@ def recording_download(request, evidence_id):
 def configuration(request):
     local = StationLocalSettings.load()
     host_configs = InferenceHostConfiguration.objects.select_related("inference_host", "selected_model")
+    runtime_config = get_broadcast_runtime_config()
+    broadcast_backend = runtime_config.operational_backend
+
     return JsonResponse({
         **_identity(),
         "config_version": str(local.config_version),
-        "broadcast_mode": settings.BROADCAST_PLAYBACK_MODE,
+        "broadcast_mode": broadcast_backend,
+        "broadcast_backend": broadcast_backend,
         "inference_models": [{
             "inference_host_code": item.inference_host.host_code,
             "model_code": item.selected_model.model_code,

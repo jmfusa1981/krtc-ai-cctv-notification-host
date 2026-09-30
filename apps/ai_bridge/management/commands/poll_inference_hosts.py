@@ -10,6 +10,7 @@ from django.db import close_old_connections
 from django.utils import timezone
 
 from apps.ai_bridge.models import InferenceConnectionState, InferenceHost
+from apps.notifications.runtime_config import get_broadcast_runtime_config
 from apps.station_api.device_faults import recover_device_fault, report_device_fault
 from apps.station_api.models import DeviceFaultLog
 from apps.ai_bridge.services.event_importer import (
@@ -109,8 +110,10 @@ class Command(BaseCommand):
         self.stdout.write(
             f"每台事件上限：{limit}"
         )
+        runtime_config = get_broadcast_runtime_config()
+
         self.stdout.write(
-            f"Playback mode：{getattr(settings, 'BROADCAST_PLAYBACK_MODE', 'simulation')}"
+            f"Playback backend：{runtime_config.operational_backend}"
         )
         self.stdout.write(
             "Auto broadcast process on import："

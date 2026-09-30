@@ -10,7 +10,10 @@ from django.conf import settings
 from django.db import close_old_connections
 from django.utils import timezone
 
-from config.runtime_policy import should_start_web_background_services
+from config.runtime_policy import (
+    is_runserver_worker,
+    should_start_web_background_services,
+)
 
 from .device_faults import recover_device_fault, report_device_fault
 from .models import DeviceFaultLog
@@ -21,6 +24,10 @@ logger = logging.getLogger(__name__)
 _start_lock = threading.Lock()
 _watchdog_started = False
 _watchdog_thread = None
+
+def _is_runserver_worker() -> bool:
+    """Compatibility wrapper for legacy callers and tests."""
+    return is_runserver_worker()
 
 
 def _host_code() -> str:

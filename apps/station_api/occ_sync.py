@@ -18,6 +18,7 @@ from apps.ai_bridge.models import InferenceConnectionState, InferenceHost
 from apps.cameras.models import Camera
 from apps.events.models import Event
 from apps.notifications.models import SpeakerDevice
+from apps.notifications.runtime_config import get_broadcast_runtime_config
 from apps.settings_app.models import StationLocalSettings
 
 from .device_faults import recover_device_fault, report_device_fault
@@ -385,9 +386,9 @@ class OccSyncClient:
 
     @staticmethod
     def _heartbeat_services():
-        playback_mode = str(
-            getattr(settings, "BROADCAST_PLAYBACK_MODE", "") or ""
-        ).strip()
+        runtime_config = get_broadcast_runtime_config()
+        playback_backend = runtime_config.operational_backend or "unknown"
+
         return {
             "django": "running",
             "database": "available",
@@ -396,8 +397,8 @@ class OccSyncClient:
                 if getattr(settings, "INFERENCE_POLL_AUTOSTART", False)
                 else "disabled"
             ),
-            "broadcast": playback_mode or "unknown",
-            "pjsip": "enabled" if playback_mode == "pjsip" else "disabled",
+            "broadcast": playback_backend,
+            "pjsip": "enabled" if playback_backend == "pjsip" else "disabled",
         }
 
     @staticmethod
@@ -614,13 +615,17 @@ class OccSyncClient:
         end = start + timedelta(days=1)
         local = StationLocalSettings.load()
         event_rows = list(Event.objects.filter(detected_at__gte=start, detected_at__lt=end).values("event_type").annotate(count=Count("id")).order_by("event_type"))
+        runtime_config = get_broadcast_runtime_config()
+        broadcast_backend = runtime_config.operational_backend
+
         payload = {
             **_identity(),
             "summary_date": target_date.isoformat(),
             "generated_at": _iso(timezone.now()),
             "config_version": str(local.config_version),
             "application_version": settings.KRTC_APP_VERSION,
-            "broadcast_mode": settings.BROADCAST_PLAYBACK_MODE,
+            "broadcast_mode": broadcast_backend,
+            "broadcast_backend": broadcast_backend,
             "event_summary": {row["event_type"]: row["count"] for row in event_rows},
             "event_total": sum(row["count"] for row in event_rows),
             "device_counts": {
