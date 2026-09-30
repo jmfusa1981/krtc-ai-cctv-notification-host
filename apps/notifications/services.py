@@ -17,6 +17,7 @@ from .backends.pjsip import (
     execute_pjsip_playback_plan,
 )
 from .models import BroadcastLog, SpeakerDevice
+from .runtime_config import get_broadcast_runtime_config
 
 
 DEFAULT_PLAYBACK_MODE = "simulation"
@@ -1287,14 +1288,13 @@ def get_microsip_paths():
 
 def get_broadcast_playback_mode():
     """
-    取得播放模式。
+    取得目前有效的廣播播放後端。
+
+    Development 可依現有設定使用 simulation / pjsip。
+    Production 由 runtime resolver 固定使用 pjsip。
     """
 
-    return getattr(
-        settings,
-        "BROADCAST_PLAYBACK_MODE",
-        DEFAULT_PLAYBACK_MODE,
-    )
+    return get_broadcast_runtime_config().operational_backend
 
 
 def get_play_after_dial_delay_seconds():
@@ -1434,18 +1434,20 @@ def play_audio_via_pjsip(speaker, audio_file, broadcast_log):
             "audio_code": audio_file.audio_code,
         }
 
+    runtime_config = get_broadcast_runtime_config()
+
     speaker_slot = SpeakerDevice.objects.filter(
         is_active=True,
         speaker_code__lt=speaker.speaker_code,
     ).count()
 
-    port_step = int(settings.PJSIP_PORT_STEP)
+    port_step = runtime_config.pjsip_port_step
     local_sip_port = (
-        int(settings.PJSIP_LOCAL_SIP_PORT_BASE)
+        runtime_config.pjsip_local_sip_port_base
         + speaker_slot * port_step
     )
     local_rtp_port = (
-        int(settings.PJSIP_LOCAL_RTP_PORT_BASE)
+        runtime_config.pjsip_local_rtp_port_base
         + speaker_slot * port_step
     )
 
@@ -1454,22 +1456,28 @@ def play_audio_via_pjsip(speaker, audio_file, broadcast_log):
         / f"dashboard_broadcast_{broadcast_log.id}_{speaker.speaker_code}.log"
     )
 
+    requested_volume = (broadcast_log.request_payload or {}).get(
+        "volume_percent",
+        runtime_config.pjsip_audio_gain_percent,
+    )
+    audio_gain_percent = float(requested_volume)
+
     try:
         plan = build_pjsip_playback_plan(
-            executable_path=settings.PJSIP_EXECUTABLE_PATH,
+            executable_path=runtime_config.pjsip_executable_path,
             audio_path=audio_path,
             log_path=log_path,
             speaker_ip=speaker.ip_address,
             sip_uri=speaker.resolved_sip_uri,
-            local_ip=settings.PJSIP_LOCAL_IP,
-            advertise_ip=settings.PJSIP_ADVERTISE_IP,
+            local_ip=runtime_config.pjsip_local_ip,
+            advertise_ip=runtime_config.pjsip_advertise_ip,
             local_sip_port=local_sip_port,
             local_rtp_port=local_rtp_port,
             disabled_codecs=settings.PJSIP_DISABLED_CODECS,
             preferred_codec=speaker.preferred_codec,
             log_level=settings.PJSIP_LOG_LEVEL,
             app_log_level=settings.PJSIP_APP_LOG_LEVEL,
-            audio_gain_percent=float((broadcast_log.request_payload or {}).get("volume_percent", settings.PJSIP_AUDIO_GAIN_PERCENT)),
+            audio_gain_percent=audio_gain_percent,
             check_ports=True,
         )
         result = execute_pjsip_playback_plan(
@@ -1503,6 +1511,6 @@ def play_audio_via_pjsip(speaker, audio_file, broadcast_log):
         "log_file": result.log_path.name,
         "local_sip_port": local_sip_port,
         "local_rtp_port": local_rtp_port,
-        "audio_gain_percent": float((broadcast_log.request_payload or {}).get("volume_percent", settings.PJSIP_AUDIO_GAIN_PERCENT)),
+        "audio_gain_percent": audio_gain_percent,
         "preferred_codec": speaker.preferred_codec,
     }
