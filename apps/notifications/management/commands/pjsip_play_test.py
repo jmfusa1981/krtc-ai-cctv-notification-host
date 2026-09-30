@@ -9,6 +9,7 @@ from apps.notifications.backends.pjsip import (
     execute_pjsip_playback_plan,
 )
 from apps.notifications.models import AudioFile, SpeakerDevice
+from apps.notifications.runtime_config import get_broadcast_runtime_config
 
 
 class Command(BaseCommand):
@@ -34,10 +35,18 @@ class Command(BaseCommand):
 
         speaker = self._get_speaker(speaker_code)
         audio_file = self._get_audio(options["audio"])
+        runtime_config = get_broadcast_runtime_config()
+
         slot = self._speaker_slot(speaker)
-        port_step = int(settings.PJSIP_PORT_STEP)
-        local_sip_port = int(settings.PJSIP_LOCAL_SIP_PORT_BASE) + slot * port_step
-        local_rtp_port = int(settings.PJSIP_LOCAL_RTP_PORT_BASE) + slot * port_step
+        port_step = runtime_config.pjsip_port_step
+        local_sip_port = (
+            runtime_config.pjsip_local_sip_port_base
+            + slot * port_step
+        )
+        local_rtp_port = (
+            runtime_config.pjsip_local_rtp_port_base
+            + slot * port_step
+        )
         log_path = Path(settings.PJSIP_LOG_DIR) / f"play_test_{speaker.speaker_code}.log"
 
         try:
@@ -47,19 +56,19 @@ class Command(BaseCommand):
 
         try:
             plan = build_pjsip_playback_plan(
-                executable_path=settings.PJSIP_EXECUTABLE_PATH,
+                executable_path=runtime_config.pjsip_executable_path,
                 audio_path=audio_path,
                 log_path=log_path,
                 speaker_ip=speaker.ip_address,
                 sip_uri=speaker.resolved_sip_uri,
-                local_ip=settings.PJSIP_LOCAL_IP,
-                advertise_ip=settings.PJSIP_ADVERTISE_IP,
+                local_ip=runtime_config.pjsip_local_ip,
+                advertise_ip=runtime_config.pjsip_advertise_ip,
                 local_sip_port=local_sip_port,
                 local_rtp_port=local_rtp_port,
                 disabled_codecs=settings.PJSIP_DISABLED_CODECS,
                 log_level=settings.PJSIP_LOG_LEVEL,
                 app_log_level=settings.PJSIP_APP_LOG_LEVEL,
-                audio_gain_percent=settings.PJSIP_AUDIO_GAIN_PERCENT,
+                audio_gain_percent=runtime_config.pjsip_audio_gain_percent,
                 check_ports=True,
             )
         except PjsipPreflightError as exc:
