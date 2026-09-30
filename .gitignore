@@ -45,3 +45,7 @@ _update_backups/
 
 # Windows shortcuts
 *.lnk
+
+# Local V6.8 runtime validation
+_runtime_test/
+_runtime_bad_db/
