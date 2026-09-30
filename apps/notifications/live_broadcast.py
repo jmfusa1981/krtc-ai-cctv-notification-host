@@ -9,6 +9,7 @@ from django.utils import timezone
 from .backends.pjsip_microphone import (PjsipMicrophoneError,build_pjsip_multi_microphone_plan,
     inspect_runtime,start_pjsip_multi_microphone,stop_pjsip_runtime)
 from .models import BroadcastLog
+from .runtime_config import get_broadcast_runtime_config
 from .services import SOURCE_PRIORITY_LIVE, active_broadcast_logs_for_speakers, broadcast_log_priority, clear_stale_schedule_broadcast_locks, interrupt_lower_priority_broadcasts
 
 @dataclass
@@ -51,7 +52,8 @@ class LiveBroadcastManager:
             if len(codecs)>1:raise PjsipMicrophoneError('多 Speaker 人聲廣播必須使用相同 Codec。')
             preferred_codec=next(iter(codecs)) if codecs else 'PCMU/8000'
             session_id=uuid.uuid4().hex; started_at=timezone.now(); max_duration=int(getattr(settings,'PJSIP_MIC_MAX_DURATION_SECONDS',300))
-            local_ip=str(getattr(settings,'PJSIP_LOCAL_IP','') or '').strip(); advertise_ip=str(getattr(settings,'PJSIP_ADVERTISE_IP',local_ip) or '').strip()
+            runtime_config=get_broadcast_runtime_config()
+            local_ip=runtime_config.pjsip_local_ip; advertise_ip=runtime_config.pjsip_advertise_ip
             if not local_ip:raise PjsipMicrophoneError('PJSIP local IP is required.')
             logs=[]
             with transaction.atomic():
@@ -62,11 +64,11 @@ class LiveBroadcastManager:
                         'capture_device':int(getattr(settings,'PJSIP_MIC_CAPTURE_DEVICE',-1)),'max_duration_seconds':max_duration,
                         'multi_speaker_count':len(speakers),'architecture':'single_pjsua_cli_multi_call','no_tones':True,
                         'volume_percent':volume_percent},message='即時人聲廣播正在建立 SIP 通話。',requested_at=started_at,started_at=started_at))
-            sip_port=int(getattr(settings,'PJSIP_LOCAL_SIP_PORT_BASE',64882))+200
-            rtp_port=int(getattr(settings,'PJSIP_LOCAL_RTP_PORT_BASE',4004))+200
+            sip_port=runtime_config.pjsip_local_sip_port_base+200
+            rtp_port=runtime_config.pjsip_local_rtp_port_base+200
             cli_port=int(getattr(settings,'PJSIP_MIC_CLI_PORT',23233))
             log_path=Path(getattr(settings,'PJSIP_LOG_DIR'))/'live_microphone'/f'live_{session_id}_multi.log'
-            plan=build_pjsip_multi_microphone_plan(executable_path=getattr(settings,'PJSIP_EXECUTABLE_PATH'),log_path=log_path,
+            plan=build_pjsip_multi_microphone_plan(executable_path=runtime_config.pjsip_executable_path,log_path=log_path,
                 speakers=speakers,local_ip=local_ip,advertise_ip=advertise_ip,local_sip_port=sip_port,local_rtp_port=rtp_port,
                 cli_port=cli_port,capture_device=int(getattr(settings,'PJSIP_MIC_CAPTURE_DEVICE',-1)),
                 playback_device=int(getattr(settings,'PJSIP_MIC_PLAYBACK_DEVICE',-1)),disabled_codecs=getattr(settings,'PJSIP_DISABLED_CODECS',()),

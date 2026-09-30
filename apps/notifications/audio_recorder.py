@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from .backends.pjsip_microphone import PjsipMicrophoneError, PjsuaCliClient
 from .models import AudioFile
+from .runtime_config import get_broadcast_runtime_config
 
 
 class AudioRecorderError(RuntimeError):
@@ -77,7 +78,8 @@ class AudioRecorderManager:
             session_id = uuid.uuid4().hex
             started_at = timezone.now()
             max_duration = int(getattr(settings, "PJSIP_MIC_MAX_DURATION_SECONDS", 300))
-            executable = Path(getattr(settings, "PJSIP_EXECUTABLE_PATH"))
+            runtime_config = get_broadcast_runtime_config()
+            executable = Path(runtime_config.pjsip_executable_path)
             if not executable.is_file():
                 raise AudioRecorderError(f"PJSUA executable not found: {executable}")
 
@@ -89,11 +91,11 @@ class AudioRecorderManager:
             log_path = log_dir / f"recording_{session_id}.log"
             log_path.write_text("", encoding="utf-8")
 
-            local_ip = str(getattr(settings, "PJSIP_LOCAL_IP", "") or "").strip()
+            local_ip = runtime_config.pjsip_local_ip
             if not local_ip:
                 raise AudioRecorderError("PJSIP local IP is required.")
 
-            sip_port = int(getattr(settings, "PJSIP_LOCAL_SIP_PORT_BASE", 64882)) + 300
+            sip_port = runtime_config.pjsip_local_sip_port_base + 300
             cli_port = int(getattr(settings, "PJSIP_MIC_CLI_PORT", 23233)) + 1
             capture_device = int(getattr(settings, "PJSIP_MIC_CAPTURE_DEVICE", -1))
             playback_device = int(getattr(settings, "PJSIP_MIC_PLAYBACK_DEVICE", -1))
