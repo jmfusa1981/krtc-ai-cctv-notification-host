@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
@@ -14,7 +14,9 @@ from apps.ai_bridge.services.event_mapper import (
     map_inference_event,
 )
 from apps.ai_bridge.services.inference_client import InferenceClient
+from apps.events.event_types import compatible_event_types
 from apps.events.models import Event
+from apps.events.services.nvr_recording import enqueue_recording_evidence
 from apps.events.services.event_identity import build_event_identity
 from apps.events.services.snapshot_localizer import (
     event_has_local_snapshot,
@@ -22,9 +24,30 @@ from apps.events.services.snapshot_localizer import (
 )
 from apps.notifications.models import BroadcastLog, BroadcastRule
 from apps.notifications.services import (
-    clear_stale_auto_broadcast_locks,
+    build_broadcast_dedup_key,
+    enqueue_broadcast_log,
+    get_broadcast_queue_cooldown_seconds,
     process_broadcast_logs_for_event_async,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+def _enqueue_recording_without_blocking(event_id: int) -> None:
+    """提交事件後建立錄影工作；設定錯誤不得回滾事件或廣播流程。"""
+
+    event = Event.objects.select_related("camera").filter(pk=event_id).first()
+    if event is None:
+        return
+    try:
+        enqueue_recording_evidence(event)
+    except Exception as exc:
+        logger.warning(
+            "NVR recording job was not queued event=%s error_type=%s",
+            event_id,
+            type(exc).__name__,
+        )
 
 
 @dataclass
@@ -131,6 +154,12 @@ class EventImporter:
         if existing_event is not None:
             self._repair_existing_event_mapping(existing_event, mapping)
             schedule_event_snapshot_download(existing_event.pk)
+            transaction.on_commit(
+                lambda event_id=existing_event.pk: _enqueue_recording_without_blocking(
+                    event_id
+                ),
+                robust=True,
+            )
             created_count, skipped_count = self._create_and_process_broadcasts(
                 event=existing_event,
                 mapping=mapping,
@@ -185,6 +214,12 @@ class EventImporter:
 
             if existing_event is not None:
                 self._repair_existing_event_mapping(existing_event, mapping)
+                transaction.on_commit(
+                    lambda event_id=existing_event.pk: _enqueue_recording_without_blocking(
+                        event_id
+                    ),
+                    robust=True,
+                )
                 created_count, skipped_count = self._create_and_process_broadcasts(
                     event=existing_event,
                     mapping=mapping,
@@ -203,6 +238,10 @@ class EventImporter:
             raise
 
         schedule_event_snapshot_download(event.pk)
+        transaction.on_commit(
+            lambda event_id=event.pk: _enqueue_recording_without_blocking(event_id),
+            robust=True,
+        )
 
         created_count, skipped_count = self._create_and_process_broadcasts(
             event=event,
@@ -380,27 +419,6 @@ class EventImporter:
                     skipped_count += 1
                     continue
 
-                if recent_auto_broadcast_exists_for_rule(rule, speaker=speaker):
-                    skipped_count += 1
-                    continue
-
-                clear_stale_auto_broadcast_locks(
-                    speakers=[speaker],
-                    reason="auto_recovery_before_next_event_broadcast",
-                )
-
-                active_log_exists = BroadcastLog.objects.filter(
-                    speaker=speaker,
-                    status__in=[
-                        BroadcastLog.STATUS_PENDING,
-                        BroadcastLog.STATUS_PLAYING,
-                    ],
-                ).exists()
-
-                if active_log_exists:
-                    skipped_count += 1
-                    continue
-
                 request_payload = {
                     "source": "formal_inference_host",
                     "inference_host_code": (
@@ -421,24 +439,41 @@ class EventImporter:
                     "cooldown_scope": "rule_speaker_audio_source",
                     "target_speaker_count": len(speakers),
                     "auto_process_on_import": getattr(settings, "AUTO_BROADCAST_PROCESS_ON_IMPORT", True),
-                    "cooldown_seconds": get_auto_broadcast_cooldown_seconds(),
+                    "cooldown_seconds": get_broadcast_queue_cooldown_seconds(),
                 }
 
+                event_source = ":".join(
+                    [
+                        self.inference_host.host_code,
+                        request_payload["camera_code"],
+                    ]
+                )
+                dedup_key = build_broadcast_dedup_key(
+                    rule_id=rule.pk,
+                    speaker_id=speaker.pk,
+                    event_source=event_source,
+                    event_type=event.event_type,
+                )
+
                 try:
-                    BroadcastLog.objects.create(
+                    _log, queued = enqueue_broadcast_log(
                         event=event,
                         rule=rule,
                         speaker=speaker,
                         audio_file=rule.audio_file,
-                        status=BroadcastLog.STATUS_PENDING,
+                        queue_priority=rule.priority,
+                        dedup_key=dedup_key,
+                        cooldown_seconds=get_broadcast_queue_cooldown_seconds(),
                         request_payload=request_payload,
-                        response_payload=None,
                         message=(
                             "正式 AI 推論主機事件匯入後建立的"
                             "自動廣播工作。"
                         ),
                     )
-                    created_count += 1
+                    if queued:
+                        created_count += 1
+                    else:
+                        skipped_count += 1
 
                 except IntegrityError:
                     skipped_count += 1
@@ -479,7 +514,7 @@ def matching_auto_broadcast_rules_for_event(event: Event):
         .select_related("speaker", "audio_file", "camera")
         .prefetch_related("speakers")
         .filter(
-            event_type=event.event_type,
+            event_type__in=compatible_event_types(event.event_type),
             is_active=True,
             auto_broadcast=True,
             audio_file__is_active=True,
@@ -505,33 +540,3 @@ def target_speakers_for_rule(rule: BroadcastRule):
     if rule.speaker_id and rule.speaker and rule.speaker.is_active:
         return [rule.speaker]
     return []
-
-
-def get_auto_broadcast_cooldown_seconds() -> int:
-    value = getattr(settings, "AUTO_BROADCAST_COOLDOWN_SECONDS", 15)
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError):
-        return 15
-
-
-def recent_auto_broadcast_exists_for_rule(rule: BroadcastRule, *, speaker) -> bool:
-    """Avoid repeatedly playing the same automatic rule for event bursts.
-
-    The cooldown scope is intentionally rule-based: another BroadcastRule can
-    still create its own BroadcastLog, while the speaker workflow lock prevents
-    overlapping playback on the same physical speaker.
-    """
-
-    cooldown_seconds = get_auto_broadcast_cooldown_seconds()
-    if cooldown_seconds <= 0:
-        return False
-
-    cutoff = timezone.now() - timedelta(seconds=cooldown_seconds)
-    return BroadcastLog.objects.filter(
-        rule=rule,
-        speaker=speaker,
-        audio_file=rule.audio_file,
-        request_payload__source="formal_inference_host",
-        created_at__gte=cutoff,
-    ).exists()

@@ -16,6 +16,7 @@ def clear_speaker_fault_if_monitoring_disabled(speaker):
     )
 
 def record_speaker_probe_result(speaker, ok, message=""):
+    """記錄 Speaker IP 網路可達性；不將 SIP TCP 連接埠狀態視為本故障依據。"""
     if not should_monitor_speaker(speaker):
         clear_speaker_fault_if_monitoring_disabled(speaker)
         return "skipped"
@@ -32,7 +33,7 @@ def record_speaker_probe_result(speaker, ok, message=""):
         device_name=speaker.name,
         area=speaker.area or "",
         fault_code=SPEAKER_FAULT_CODE,
-        fault_description=(message or "Speaker health probe failed.")[:500],
+        fault_description=(message or "Speaker IP／網路無法到達。")[:500],
         severity=DeviceFaultLog.SEVERITY_WARNING,
     )
     return "active"

@@ -96,7 +96,7 @@ class SpeakerPlaybackGuardTests(TestCase):
         self.assertEqual(result["reason"], "speaker_offline")
 
     @patch("apps.notifications.services.play_audio_to_speaker")
-    def test_auto_playback_completion_clears_older_formal_inference_locks(self, playback):
+    def test_auto_playback_completion_preserves_other_queued_workflows(self, playback):
         stale_speaker = self._speaker("SPK-STALE")
         stale_log = BroadcastLog.objects.create(
             speaker=stale_speaker,
@@ -121,8 +121,8 @@ class SpeakerPlaybackGuardTests(TestCase):
         result = process_single_broadcast_log(current_log)
 
         self.assertEqual(result["status"], BroadcastLog.STATUS_SUCCESS)
-        self.assertEqual(result["auto_recovered_workflows"][0]["broadcast_log_id"], stale_log.id)
+        self.assertNotIn("auto_recovered_workflows", result)
         stale_log.refresh_from_db()
         live_log.refresh_from_db()
-        self.assertEqual(stale_log.status, BroadcastLog.STATUS_FAILED)
+        self.assertEqual(stale_log.status, BroadcastLog.STATUS_PENDING)
         self.assertEqual(live_log.status, BroadcastLog.STATUS_PENDING)

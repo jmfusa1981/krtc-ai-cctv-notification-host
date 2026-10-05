@@ -74,8 +74,10 @@ class Phase2AutoBroadcastCommandTests(TestCase):
         luggage = BroadcastRule.objects.get(
             rule_code="RULE-LARGE-LUGGAGE-CAM003-SPK003"
         )
-        self.assertEqual(luggage.event_type, "large_luggage_intrusion")
+        self.assertEqual(luggage.event_type, "large_luggage_detected")
         self.assertEqual(luggage.camera.camera_code, "CAM-003")
         self.assertFalse(
-            BroadcastRule.objects.filter(event_type="luggage_roll").exists()
+            BroadcastRule.objects.filter(
+                event_type="luggage_roll_detected"
+            ).exists()
         )

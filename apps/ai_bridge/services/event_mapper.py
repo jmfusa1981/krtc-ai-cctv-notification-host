@@ -9,17 +9,9 @@ from django.utils.dateparse import parse_datetime
 
 from apps.ai_bridge.models import InferenceCameraMapping, InferenceHost
 from apps.cameras.models import Camera
-
-EVENT_TYPE_MAPPING = {
-    "EVT_FALL": "escalator_fall",
-    "EVT_LUGGAGE_ROLL": "luggage_roll",
-    "EVT_LUGGAGE_LARGE": "large_luggage_intrusion",
-    "EVT_WHEELCHAIR": "wheelchair_detected",
-    "EVT_DWELL": "passenger_loitering",
-    "EVT_CROWD": "crowd_count_abnormal",
-    "EVT_FIRE": "fire_detected",
-    "EVT_SMOKE": "smoke_detected",
-}
+from apps.events.event_types import (
+    CANONICAL_EVENT_CODE_TO_TYPE as EVENT_TYPE_MAPPING,
+)
 
 
 @dataclass(frozen=True)

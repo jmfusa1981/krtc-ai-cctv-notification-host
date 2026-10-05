@@ -1,8 +1,7 @@
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.contrib.auth.decorators import login_required
-from django.db import IntegrityError, close_old_connections, transaction
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -22,13 +21,10 @@ from .services import (
     PLAYBACK_MODE_PJSIP,
     PLAYBACK_MODE_SIMULATION,
     SOURCE_PRIORITY_WARNING,
-    active_broadcast_logs_for_speakers,
-    broadcast_log_priority,
-    clear_stale_schedule_broadcast_locks,
+    enqueue_broadcast_log,
     get_broadcast_playback_mode,
-    interrupt_lower_priority_broadcasts,
     process_pending_broadcast_logs,
-    process_single_broadcast_log,
+    process_queued_broadcasts,
     reset_all_speaker_workflows,
 )
 
@@ -83,9 +79,9 @@ def process_pending_broadcast_logs_api(request):
     return JsonResponse(
         {
             "success": True,
-            "message": "Pending BroadcastLog processed.",
+            "message": "Queued BroadcastLog processed.",
             "pending_count": BroadcastLog.objects.filter(
-                status=BroadcastLog.STATUS_PENDING
+                status__in=BroadcastLog.QUEUED_STATUSES
             ).count(),
             **result,
         }
@@ -211,40 +207,14 @@ def manual_event_broadcast_api(request, event_id):
             event=event,
             speaker=speaker,
             audio_file=audio_file,
-            status__in=[BroadcastLog.STATUS_PENDING, BroadcastLog.STATUS_PLAYING],
+            status__in=BroadcastLog.ACTIVE_STATUSES,
         )
         .order_by("-created_at")
         .first()
     )
-    if active_log and active_log.status == BroadcastLog.STATUS_PLAYING:
-        return JsonResponse(
-            {"success": False, "message": "This manual broadcast is already playing."},
-            status=409,
-        )
-
-    if active_log is None:
-        clear_stale_schedule_broadcast_locks()
-        interrupt_lower_priority_broadcasts([speaker], SOURCE_PRIORITY_WARNING, "manual_event_broadcast_start")
-        speaker_busy_log = next(
-            (
-                log for log in active_broadcast_logs_for_speakers([speaker])
-                if broadcast_log_priority(log) >= SOURCE_PRIORITY_WARNING
-            ),
-            None,
-        )
-        if speaker_busy_log:
-            return JsonResponse(
-                {
-                    "success": False,
-                    "reason": "speaker_busy",
-                    "message": f"Speaker {speaker.speaker_code} is currently busy.",
-                },
-                status=409,
-            )
-
     created = active_log is None
-    if created:
-        active_log = BroadcastLog.objects.create(
+    if active_log is None:
+        active_log, _queued = enqueue_broadcast_log(
             event=event,
             rule=default_rule if (
                 default_rule
@@ -253,28 +223,43 @@ def manual_event_broadcast_api(request, event_id):
             ) else None,
             speaker=speaker,
             audio_file=audio_file,
-            status=BroadcastLog.STATUS_PENDING,
+            queue_priority=SOURCE_PRIORITY_WARNING,
             request_payload={
                 "source": "dashboard_manual_event_broadcast",
                 "requested_by_id": request.user.id,
                 "requested_by_username": request.user.get_username(),
                 "event_id": event.id,
-                "camera_code": event.camera_code or (event.camera.camera_code if event.camera else ""),
+                "camera_code": event.camera_code or (
+                    event.camera.camera_code if event.camera else ""
+                ),
                 "rule_code": default_rule.rule_code if default_rule else "",
                 "speaker_code": speaker.speaker_code,
                 "audio_code": audio_file.audio_code,
                 "manual_selection": True,
             },
-            message="Manual event broadcast created from Dashboard selection.",
+            message="Manual event broadcast queued from Dashboard selection.",
             requested_at=timezone.now(),
         )
 
-    result = process_single_broadcast_log(active_log)
+    process_queued_broadcasts(
+        speaker_ids=[speaker.pk],
+        limit=10,
+        max_workers=1,
+    )
     active_log.refresh_from_db()
-    success = active_log.status == BroadcastLog.STATUS_SUCCESS
+    result = {
+        "broadcast_log_id": active_log.id,
+        "status": active_log.status,
+        "message": active_log.message,
+    }
+    accepted = active_log.status in {
+        BroadcastLog.STATUS_QUEUED,
+        BroadcastLog.STATUS_PLAYING,
+        BroadcastLog.STATUS_SUCCESS,
+    }
     return JsonResponse(
         {
-            "success": success,
+            "success": accepted,
             "message": result.get("message", "Manual broadcast processed."),
             "created": created,
             "event_id": event.id,
@@ -286,7 +271,9 @@ def manual_event_broadcast_api(request, event_id):
             "audio_code": audio_file.audio_code,
             "result": result,
         },
-        status=200 if success else 502,
+        status=200 if active_log.status == BroadcastLog.STATUS_SUCCESS else (
+            202 if accepted else 502
+        ),
     )
 
 
@@ -372,103 +359,67 @@ def manual_station_broadcast_api(request):
             status=409,
         )
 
-    clear_stale_schedule_broadcast_locks()
-    interrupt_lower_priority_broadcasts(speakers, SOURCE_PRIORITY_WARNING, "manual_station_broadcast_start")
-    busy_logs = [
-        log for log in active_broadcast_logs_for_speakers(speakers)
-        if broadcast_log_priority(log) >= SOURCE_PRIORITY_WARNING
-    ]
-    if busy_logs:
-        return JsonResponse(
-            {
-                "success": False,
-                "reason": "speaker_busy",
-                "message": "One or more selected Speakers are currently busy.",
-                "busy_speakers": [log.speaker.speaker_code for log in busy_logs],
-            },
-            status=409,
-        )
-
     logs = []
-    try:
-        with transaction.atomic():
-            for speaker in speakers:
-                logs.append(
-                    BroadcastLog.objects.create(
-                        speaker=speaker,
-                        audio_file=audio_file,
-                        status=BroadcastLog.STATUS_PENDING,
-                        request_payload={
-                            "source": "station_broadcast_console",
-                            "requested_by_id": request.user.id,
-                            "requested_by_username": request.user.get_username(),
-                            "speaker_code": speaker.speaker_code,
-                            "audio_code": audio_file.audio_code,
-                            "multi_speaker_count": len(speakers),
-                            "volume_percent": volume_percent,
-                        },
-                        message="Manual station broadcast created from broadcast console.",
-                        requested_at=timezone.now(),
-                    )
-                )
-    except IntegrityError:
-        return JsonResponse(
-            {
-                "success": False,
-                "reason": "speaker_busy",
-                "message": "A selected Speaker became busy before playback started.",
-            },
-            status=409,
-        )
+    with transaction.atomic():
+        for speaker in speakers:
+            log, _queued = enqueue_broadcast_log(
+                speaker=speaker,
+                audio_file=audio_file,
+                queue_priority=SOURCE_PRIORITY_WARNING,
+                request_payload={
+                    "source": "station_broadcast_console",
+                    "requested_by_id": request.user.id,
+                    "requested_by_username": request.user.get_username(),
+                    "speaker_code": speaker.speaker_code,
+                    "audio_code": audio_file.audio_code,
+                    "multi_speaker_count": len(speakers),
+                    "volume_percent": volume_percent,
+                },
+                message="Manual station broadcast queued from broadcast console.",
+                requested_at=timezone.now(),
+            )
+            logs.append(log)
 
-    def _process(log_id):
-        close_old_connections()
-        try:
-            log = BroadcastLog.objects.get(pk=log_id)
-            return process_single_broadcast_log(log)
-        finally:
-            close_old_connections()
-
-    results = []
-    worker_count = min(len(logs), 4)
-    if len(logs) == 1:
-        results.append(_process(logs[0].id))
-    else:
-        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="krtc-pjsip") as executor:
-            futures = {executor.submit(_process, log.id): log.id for log in logs}
-            for future in as_completed(futures):
-                log_id = futures[future]
-                try:
-                    results.append(future.result())
-                except Exception as exc:
-                    log = BroadcastLog.objects.get(pk=log_id)
-                    log.status = BroadcastLog.STATUS_FAILED
-                    log.message = f"Parallel playback worker failed: {exc}"
-                    log.finished_at = timezone.now()
-                    log.save(update_fields=["status", "message", "finished_at", "updated_at"])
-                    results.append(
-                        {
-                            "broadcast_log_id": log_id,
-                            "status": BroadcastLog.STATUS_FAILED,
-                            "message": log.message,
-                        }
-                    )
+    queue_result = process_queued_broadcasts(
+        speaker_ids=[speaker.pk for speaker in speakers],
+        limit=20,
+        max_workers=min(len(speakers), 4),
+    )
+    results = queue_result["results"]
 
     refreshed_logs = list(
         BroadcastLog.objects.filter(pk__in=[log.id for log in logs]).select_related("speaker")
     )
-    success_logs = [log for log in refreshed_logs if log.status == BroadcastLog.STATUS_SUCCESS]
-    failed_logs = [log for log in refreshed_logs if log.status != BroadcastLog.STATUS_SUCCESS]
-    success = not failed_logs
+    success_logs = [
+        log for log in refreshed_logs
+        if log.status == BroadcastLog.STATUS_SUCCESS
+    ]
+    queued_logs = [
+        log for log in refreshed_logs
+        if log.status in BroadcastLog.QUEUED_STATUSES
+    ]
+    failed_logs = [
+        log for log in refreshed_logs
+        if log.status not in {
+            BroadcastLog.STATUS_SUCCESS,
+            *BroadcastLog.QUEUED_STATUSES,
+        }
+    ]
+    accepted = not failed_logs
 
     return JsonResponse(
         {
-            "success": success,
+            "success": accepted,
             "message": (
-                f"Completed {len(success_logs)} of {len(refreshed_logs)} Speaker broadcasts."
+                f"Completed {len(success_logs)} and queued {len(queued_logs)} "
+                f"of {len(refreshed_logs)} Speaker broadcasts."
             ),
             "broadcast_log_ids": [log.id for log in refreshed_logs],
-            "status": "success" if success else "partial_or_failed",
+            "status": (
+                "queued" if queued_logs else (
+                    "success" if accepted else "partial_or_failed"
+                )
+            ),
             "speaker_codes": [log.speaker.speaker_code for log in refreshed_logs],
             "successful_speakers": [log.speaker.speaker_code for log in success_logs],
             "failed_speakers": [log.speaker.speaker_code for log in failed_logs],
@@ -476,7 +427,7 @@ def manual_station_broadcast_api(request):
             "results": results,
             "requested_at": timezone.localtime(logs[0].requested_at).strftime("%Y-%m-%d %H:%M:%S"),
         },
-        status=200 if success else 502,
+        status=202 if queued_logs and accepted else (200 if accepted else 502),
     )
 
 

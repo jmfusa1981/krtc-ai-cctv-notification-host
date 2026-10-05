@@ -5,7 +5,7 @@
 Run Django and the WebSocket receiver as separate processes:
 
 ```powershell
-python manage.py runserver 0.0.0.0:8000
+python manage.py runserver 127.0.0.1:8010 --noreload
 python manage.py listen_inference_events --host-code INF-TEST-001
 ```
 

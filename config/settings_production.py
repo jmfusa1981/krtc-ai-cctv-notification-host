@@ -147,7 +147,7 @@ if KRTC_ENABLE_HTTPS:
     CSRF_COOKIE_SECURE = True
 
     SECURE_HSTS_SECONDS = int(
-        os.getenv("DJANGO_SECURE_HSTS_SECONDS", "3600")
+        os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0")
     )
 
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False
@@ -163,6 +163,11 @@ SECURE_PROXY_SSL_HEADER = (
     "HTTP_X_FORWARDED_PROTO",
     "https",
 )
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
 
 
 # ============================================================

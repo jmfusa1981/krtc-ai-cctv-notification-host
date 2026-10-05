@@ -21,6 +21,13 @@ staticfiles/
 .env
 .env.*
 !.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+*.crt
+*.cer
+*.csr
 
 # IDE
 .vscode/
@@ -42,6 +49,9 @@ build/
 # KRTC runtime
 runtime/
 _update_backups/
+caddy/data/
+caddy/config/
+caddy/logs/
 
 # Windows shortcuts
 *.lnk
@@ -49,3 +59,6 @@ _update_backups/
 # Local V6.8 runtime validation
 _runtime_test/
 _runtime_bad_db/
+
+# Local backup files
+*.bak

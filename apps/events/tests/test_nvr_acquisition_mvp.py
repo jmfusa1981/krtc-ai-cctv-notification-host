@@ -1,10 +1,14 @@
 import io
+import inspect
 import tempfile
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -17,7 +21,12 @@ from apps.events.services.media_retention import (
 from apps.events.services.nvr_recording import (
     NvrRecordingError,
     NvrTerminalError,
+    NvrConfig,
+    _build_nvr_request,
+    _local_nvr_timestamp,
+    create_recording_evidence,
     download_completed_export,
+    enqueue_recording_evidence,
     redact_nvr_error,
     refresh_export_status,
     request_export,
@@ -122,6 +131,15 @@ class NvrAcquisitionMvpTests(TestCase):
 
         self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_FAILED)
 
+    @patch("apps.events.services.nvr_recording._request_json", return_value={})
+    def test_missing_export_id_is_terminal(self, request_json):
+        evidence = self._evidence()
+
+        request_export(evidence)
+
+        self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_FAILED)
+        self.assertFalse(evidence.export_id)
+
     @patch("apps.events.services.nvr_recording._request_json")
     def test_transient_request_error_remains_retryable(self, request_json):
         request_json.side_effect = NvrRecordingError("temporary network failure")
@@ -148,9 +166,9 @@ class NvrAcquisitionMvpTests(TestCase):
     @patch("apps.events.services.nvr_recording._request_json")
     def test_poll_state_mapping(self, request_json):
         cases = [
-            ({"Status": 0, "FFmpeg": 0, "Rate": 0}, "requested"),
+            ({"Status": 0, "FFmpeg": 0, "Rate": 0}, "exporting"),
             ({"Status": 0, "FFmpeg": 1, "Rate": 5}, "exporting"),
-            ({"Status": 1, "FFmpeg": 1, "Rate": 100}, "exporting"),
+            ({"Status": 1, "FFmpeg": 1, "Rate": 100}, "ready"),
         ]
         for index, (payload, expected) in enumerate(cases):
             with self.subTest(payload=payload):
@@ -243,7 +261,7 @@ class NvrAcquisitionMvpTests(TestCase):
 
         refresh.assert_not_called()
         evidence.refresh_from_db()
-        self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_FAILED)
+        self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_EXPIRED)
 
     @patch("apps.events.services.nvr_recording.urlopen")
     def test_completed_download_streams_and_finalizes_mp4(self, urlopen):
@@ -279,7 +297,7 @@ class NvrAcquisitionMvpTests(TestCase):
 
         download_completed_export(evidence)
 
-        self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_EXPORTING)
+        self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_READY)
         self.assertFalse(evidence.file)
         partial = self.media_root / "event_recordings" / ".partial"
         self.assertFalse(partial.exists() and any(partial.iterdir()))
@@ -408,3 +426,171 @@ class NvrAcquisitionMvpTests(TestCase):
 
         self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_FAILED)
         self.assertNotIn("vendor-password", evidence.last_error)
+
+    def test_event_time_window_is_exact_and_timezone_format_is_deterministic(self):
+        detected_at = timezone.datetime(
+            2026, 8, 3, 2, 30, 0, tzinfo=ZoneInfo("UTC")
+        )
+        self.event.detected_at = detected_at
+        self.event.save(update_fields=["detected_at"])
+
+        evidence = enqueue_recording_evidence(self.event)
+
+        self.assertEqual(
+            evidence.evidence_start_at,
+            detected_at - timedelta(seconds=30),
+        )
+        self.assertEqual(
+            evidence.evidence_end_at - evidence.evidence_start_at,
+            timedelta(seconds=120),
+        )
+        self.assertEqual(
+            _local_nvr_timestamp(evidence.evidence_start_at),
+            "2026-08-03T10:29:30",
+        )
+
+    def test_request_uses_encoded_query_and_separate_basic_auth(self):
+        config = NvrConfig(
+            host="192.0.2.10",
+            port=8080,
+            username="operator@lab",
+            password="p&?=@:ss",
+            channel=2,
+            video_format="MP4",
+        )
+        params = {
+            "channel": 2,
+            "start_time": "2026-08-03T10:29:30",
+            "end_time": "2026-08-03T10:31:30",
+            "format": "MP4",
+        }
+
+        request = _build_nvr_request(config, params, accept="application/json")
+        query = parse_qs(urlsplit(request.full_url).query)
+
+        self.assertNotIn(config.username, request.full_url)
+        self.assertNotIn(config.password, request.full_url)
+        self.assertTrue(request.get_header("Authorization").startswith("Basic "))
+        self.assertEqual(query["channel"], ["2"])
+        self.assertEqual(query["start_time"], [params["start_time"]])
+        self.assertEqual(query["end_time"], [params["end_time"]])
+        self.assertEqual(query["format"], ["MP4"])
+
+    def test_nvr_module_has_no_shell_or_subprocess_execution(self):
+        from apps.events.services import nvr_recording
+
+        source = inspect.getsource(nvr_recording)
+        self.assertNotIn("subprocess", source)
+        self.assertNotIn("shell=True", source)
+
+    @patch("apps.events.services.nvr_recording._request_json", return_value={"ID": "job-2"})
+    def test_export_request_passes_channel_and_mp4_params(self, request_json):
+        evidence = self._evidence()
+
+        request_export(evidence)
+
+        params = request_json.call_args.args[1]
+        self.assertEqual(params["channel"], 1)
+        self.assertEqual(params["format"], "MP4")
+        self.assertEqual(params["start_time"], _local_nvr_timestamp(evidence.evidence_start_at))
+        self.assertEqual(params["end_time"], _local_nvr_timestamp(evidence.evidence_end_at))
+
+    def test_missing_channel_mapping_fails_before_network(self):
+        self.camera.nvr_channel = None
+        self.camera.save(update_fields=["nvr_channel"])
+
+        with patch("apps.events.services.nvr_recording.urlopen") as urlopen:
+            with self.assertRaisesMessage(NvrRecordingError, "缺少 NVR Channel"):
+                enqueue_recording_evidence(self.event)
+
+        urlopen.assert_not_called()
+
+    @patch("apps.events.services.nvr_recording.urlopen")
+    def test_empty_download_is_failed_and_never_completed(self, urlopen):
+        urlopen.return_value = FakeNvrResponse(b"", {"Content-Length": "0"})
+        evidence = self._evidence(
+            status=EventRecordingEvidence.STATUS_READY,
+            export_id="empty-job",
+        )
+
+        download_completed_export(evidence)
+
+        self.assertEqual(evidence.export_status, EventRecordingEvidence.STATUS_FAILED)
+        self.assertFalse(evidence.file)
+        self.assertEqual(evidence.file_size, 0)
+
+    @patch("apps.events.services.nvr_recording.urlopen")
+    def test_two_export_ids_download_to_isolated_paths(self, urlopen):
+        content_a = b"\x00\x00\x00\x18ftypmp42-a"
+        content_b = b"\x00\x00\x00\x18ftypmp42-b"
+        urlopen.side_effect = [
+            FakeNvrResponse(content_a, {"Content-Length": str(len(content_a))}),
+            FakeNvrResponse(content_b, {"Content-Length": str(len(content_b))}),
+        ]
+        evidence_a = self._evidence(
+            status=EventRecordingEvidence.STATUS_READY,
+            export_id="101",
+        )
+        second_event = Event.objects.create(
+            camera=self.camera,
+            camera_code=self.camera.camera_code,
+            event_id="NVR-EVENT-002",
+            source_event_id="SOURCE-002",
+            detected_at=self.event.detected_at + timedelta(seconds=1),
+        )
+        evidence_b = EventRecordingEvidence.objects.create(
+            event=second_event,
+            camera=self.camera,
+            camera_code=self.camera.camera_code,
+            source_event_id=second_event.source_event_id,
+            event_time=second_event.detected_at,
+            nvr_host="192.0.2.10",
+            nvr_port=80,
+            nvr_channel=1,
+            evidence_start_at=second_event.detected_at - timedelta(seconds=30),
+            evidence_end_at=second_event.detected_at + timedelta(seconds=90),
+            export_status=EventRecordingEvidence.STATUS_READY,
+            export_id="102",
+        )
+
+        download_completed_export(evidence_a)
+        download_completed_export(evidence_b)
+
+        self.assertNotEqual(evidence_a.file.name, evidence_b.file.name)
+        self.assertEqual((self.media_root / evidence_a.file.name).read_bytes(), content_a)
+        self.assertEqual((self.media_root / evidence_b.file.name).read_bytes(), content_b)
+
+    @override_settings(
+        KRTC_NVR_EXPORT_WARNING_SECONDS=3600,
+        KRTC_NVR_EXPORT_TIMEOUT_SECONDS=7200,
+    )
+    @patch("apps.events.services.recording_worker.refresh_export_status")
+    def test_long_running_job_resumes_same_export_id_without_duplicate_request(self, refresh):
+        evidence = self._evidence(
+            status=EventRecordingEvidence.STATUS_EXPORTING,
+            export_id="long-job",
+            requested_at=timezone.now() - timedelta(minutes=41),
+        )
+        self._set_old_updated_at(evidence)
+
+        process_recording_cycle()
+
+        refresh.assert_called_once()
+        evidence.refresh_from_db()
+        self.assertEqual(evidence.export_id, "long-job")
+        self.assertEqual(self.event.recording_evidences.count(), 1)
+
+    def test_field_validation_command_is_dry_run_by_default(self):
+        output = io.StringIO()
+
+        with patch("apps.events.services.nvr_recording.urlopen") as urlopen:
+            call_command(
+                "validate_nvr_recording",
+                event_id=self.event.pk,
+                stdout=output,
+            )
+
+        urlopen.assert_not_called()
+        self.assertIn("DRY-RUN", output.getvalue())
+        self.assertIn("no database write and no NVR request", output.getvalue())
+        self.assertEqual(self.event.recording_evidences.count(), 0)

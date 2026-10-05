@@ -71,11 +71,26 @@ class RecordingServiceReleaseTests(SimpleTestCase):
         web_xml = (service_dir / "KRTCNotificationHost.xml").read_text(
             encoding="utf-8"
         )
+        proxy_script = (service_dir / "start_caddy.cmd").read_text(
+            encoding="utf-8"
+        )
+        proxy_xml = (service_dir / "KRTCNotificationProxy.xml").read_text(
+            encoding="utf-8"
+        )
+        caddyfile = (service_dir / "Caddyfile").read_text(
+            encoding="utf-8"
+        )
         recording_xml = (service_dir / "KRTCEventRecordingService.xml").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("--listen=0.0.0.0:8000 --threads=8", web_script)
+        self.assertIn("KRTC_WEB_BIND_HOST=127.0.0.1", web_script)
+        self.assertIn("KRTC_WEB_BIND_PORT=8000", web_script)
+        self.assertIn(
+            "--listen=%KRTC_WEB_BIND_HOST%:%KRTC_WEB_BIND_PORT%",
+            web_script,
+        )
+        self.assertNotIn("--listen=0.0.0.0:8000", web_script)
         self.assertIn("config.settings_production", web_script)
         self.assertIn("KRTC_PERSISTENT_ROOT", web_script)
         self.assertNotIn("runserver", web_script)
@@ -85,6 +100,13 @@ class RecordingServiceReleaseTests(SimpleTestCase):
         self.assertNotIn("PASSWORD", recording_script.upper())
         self.assertIn("<id>KRTCNotificationHost</id>", web_xml)
         self.assertIn("<startmode>Automatic</startmode>", web_xml)
+        self.assertIn("caddy.exe", proxy_script)
+        self.assertIn("XDG_DATA_HOME", proxy_script)
+        self.assertIn("<id>KRTCNotificationProxy</id>", proxy_xml)
+        self.assertIn("<startmode>Automatic</startmode>", proxy_xml)
+        self.assertIn("tls internal", caddyfile)
+        self.assertIn("reverse_proxy 127.0.0.1:8000", caddyfile)
+        self.assertNotRegex(caddyfile, r"(?i)password|private[_ -]?key")
         self.assertIn("<id>KRTCEventRecordingService</id>", recording_xml)
         self.assertIn("<startmode>Automatic</startmode>", recording_xml)
 

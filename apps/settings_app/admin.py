@@ -1,4 +1,8 @@
+from django import forms
 from django.contrib import admin
+
+from apps.notifications.runtime_config import get_broadcast_runtime_config
+from apps.station_api.security_audit import record_security_audit
 
 from .models import (
     BroadcastEngineeringSettings,
@@ -27,12 +31,42 @@ class StationLocalSettingsAdmin(admin.ModelAdmin):
 
 @admin.register(BroadcastEngineeringSettings)
 class BroadcastEngineeringSettingsAdmin(admin.ModelAdmin):
+    class BroadcastEngineeringSettingsAdminForm(forms.ModelForm):
+        broadcast_test_mode = forms.TypedChoiceField(
+            label="廣播運行模式",
+            choices=(
+                ("formal", "正式模式（PJSIP）"),
+                ("test", "測試模式（Simulation）"),
+            ),
+            coerce=lambda value: value == "test",
+            required=True,
+            widget=forms.RadioSelect,
+            help_text=(
+                "正式模式（PJSIP）：會實際呼叫站區 IP Speaker。"
+                "測試模式（Simulation）：只模擬廣播流程，不呼叫實體 Speaker。"
+            ),
+        )
+
+        class Meta:
+            model = BroadcastEngineeringSettings
+            fields = "__all__"
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            if not self.is_bound and self.instance.broadcast_test_mode is None:
+                backend = get_broadcast_runtime_config().operational_backend
+                self.initial["broadcast_test_mode"] = (
+                    "formal" if backend == "pjsip" else "test"
+                )
+
+    form = BroadcastEngineeringSettingsAdminForm
+
     fieldsets = (
         (
-            "正式廣播",
+            "廣播運行模式",
             {
                 "fields": (
-                    "production_backend",
+                    "broadcast_test_mode",
                 ),
             },
         ),
@@ -64,16 +98,11 @@ class BroadcastEngineeringSettingsAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = (
-        "production_backend",
         "last_diagnostic_status",
         "last_diagnostic_message",
         "last_diagnostic_at",
         "updated_at",
     )
-
-    @admin.display(description="正式廣播後端")
-    def production_backend(self, obj=None):
-        return "PJSIP"
 
     def has_module_permission(self, request):
         return bool(
@@ -102,6 +131,32 @@ class BroadcastEngineeringSettingsAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    def save_model(self, request, obj, form, change):
+        previous_backend = get_broadcast_runtime_config().operational_backend
+        previous = (
+            BroadcastEngineeringSettings.objects
+            .filter(pk=BroadcastEngineeringSettings.SINGLETON_PK)
+            .values_list("broadcast_test_mode", flat=True)
+            .first()
+        )
+        super().save_model(request, obj, form, change)
+
+        if not change or previous != obj.broadcast_test_mode:
+            new_backend = "simulation" if obj.broadcast_test_mode else "pjsip"
+            record_security_audit(
+                action="BROADCAST_RUNTIME_MODE_CHANGED",
+                result="success",
+                request=request,
+                user=request.user,
+                detail=(
+                    f"廣播運行模式由 {previous_backend} 變更為 {new_backend}。"
+                ),
+                metadata={
+                    "old_mode": previous_backend,
+                    "new_mode": new_backend,
+                },
+            )
 
 
 @admin.register(UIConfiguration)

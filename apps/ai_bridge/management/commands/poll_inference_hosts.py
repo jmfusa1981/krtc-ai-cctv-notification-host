@@ -424,7 +424,7 @@ class Command(BaseCommand):
 
         for item in items:
             try:
-                result = importer.import_payload(item)
+                result = importer.import_payload(item, ingestion_mode="rest")
 
             except Exception as exc:
                 summary.errors += 1

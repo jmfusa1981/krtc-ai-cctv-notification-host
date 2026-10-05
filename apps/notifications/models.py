@@ -4,6 +4,10 @@ from django.utils import timezone
 from django.core.validators import FileExtensionValidator
 
 from apps.cameras.models import Camera
+from apps.events.event_types import (
+    CANONICAL_EVENT_TYPE_CHOICES,
+    event_type_label,
+)
 from apps.events.models import Event
 
 
@@ -346,23 +350,23 @@ class BroadcastRule(models.Model):
     決定要讓哪一台 Speaker 播放哪一個音檔。
     """
 
-    EVENT_ESCALATOR_FALL = "escalator_fall"
-    EVENT_LUGGAGE_ROLL = "luggage_roll"
-    EVENT_LARGE_LUGGAGE_INTRUSION = "large_luggage_intrusion"
+    EVENT_FALL_DETECTED = "fall_detected"
+    EVENT_FIRE_DETECTED = "fire_detected"
+    EVENT_SMOKE_DETECTED = "smoke_detected"
+    EVENT_DWELL_ALERT = "dwell_alert"
+    EVENT_CROWD_ALERT = "crowd_alert"
+    EVENT_LUGGAGE_ROLL_DETECTED = "luggage_roll_detected"
+    EVENT_LARGE_LUGGAGE_DETECTED = "large_luggage_detected"
     EVENT_WHEELCHAIR_DETECTED = "wheelchair_detected"
-    EVENT_PASSENGER_LOITERING = "passenger_loitering"
-    EVENT_CROWD_COUNT_ABNORMAL = "crowd_count_abnormal"
-    EVENT_OTHER = "other"
 
-    EVENT_TYPE_CHOICES = [
-        (EVENT_ESCALATOR_FALL, "電扶梯人員跌倒"),
-        (EVENT_LUGGAGE_ROLL, "大行李箱滾落"),
-        (EVENT_LARGE_LUGGAGE_INTRUSION, "大件行李進入設定畫面區域"),
-        (EVENT_WHEELCHAIR_DETECTED, "辨識輪椅"),
-        (EVENT_PASSENGER_LOITERING, "旅客逾時滯留"),
-        (EVENT_CROWD_COUNT_ABNORMAL, "人流統計異常"),
-        (EVENT_OTHER, "其他"),
-    ]
+    # 保留舊常數名稱，讓既有呼叫端改用 canonical 值而不致中斷。
+    EVENT_ESCALATOR_FALL = EVENT_FALL_DETECTED
+    EVENT_LUGGAGE_ROLL = EVENT_LUGGAGE_ROLL_DETECTED
+    EVENT_LARGE_LUGGAGE_INTRUSION = EVENT_LARGE_LUGGAGE_DETECTED
+    EVENT_PASSENGER_LOITERING = EVENT_DWELL_ALERT
+    EVENT_CROWD_COUNT_ABNORMAL = EVENT_CROWD_ALERT
+
+    EVENT_TYPE_CHOICES = CANONICAL_EVENT_TYPE_CHOICES
 
     rule_code = models.CharField(
         max_length=50,
@@ -380,8 +384,13 @@ class BroadcastRule(models.Model):
     event_type = models.CharField(
         max_length=50,
         choices=EVENT_TYPE_CHOICES,
-        verbose_name="Event Type",
+        verbose_name="AI事件類別",
     )
+
+    def get_event_type_display(self):
+        """同時顯示 canonical 與既有歷史規則的事件類型。"""
+
+        return event_type_label(self.event_type)
 
     camera = models.ForeignKey(
         Camera,
@@ -488,18 +497,29 @@ class BroadcastLog(models.Model):
     """
 
     STATUS_PENDING = "pending"
+    STATUS_QUEUED = "queued"
     STATUS_PLAYING = "playing"
     STATUS_SUCCESS = "success"
     STATUS_FAILED = "failed"
     STATUS_SKIPPED = "skipped"
+    STATUS_SUPPRESSED = "suppressed"
+    STATUS_EXPIRED = "expired"
+    STATUS_CANCELLED = "cancelled"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
+        (STATUS_QUEUED, "Queued"),
         (STATUS_PLAYING, "Playing"),
         (STATUS_SUCCESS, "Success"),
         (STATUS_FAILED, "Failed"),
         (STATUS_SKIPPED, "Skipped"),
+        (STATUS_SUPPRESSED, "Suppressed"),
+        (STATUS_EXPIRED, "Expired"),
+        (STATUS_CANCELLED, "Cancelled"),
     ]
+
+    QUEUED_STATUSES = (STATUS_QUEUED, STATUS_PENDING)
+    ACTIVE_STATUSES = (STATUS_QUEUED, STATUS_PENDING, STATUS_PLAYING)
 
     event = models.ForeignKey(
         Event,
@@ -540,8 +560,30 @@ class BroadcastLog(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default=STATUS_PENDING,
+        default=STATUS_QUEUED,
         verbose_name="Status",
+    )
+
+    queue_priority = models.PositiveIntegerField(
+        default=100,
+        db_index=True,
+        verbose_name="Queue Priority",
+        help_text="數字越小，Speaker queue 中的執行優先權越高。",
+    )
+
+    dedup_key = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="Dedup Key",
+    )
+
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Queue Expires At",
     )
 
     request_payload = models.JSONField(
@@ -599,9 +641,9 @@ class BroadcastLog(models.Model):
                 fields=["speaker"],
                 condition=models.Q(
                     speaker__isnull=False,
-                    status__in=["pending", "playing"],
+                    status="playing",
                 ),
-                name="uniq_active_broadcast_per_speaker",
+                name="uniq_playing_broadcast_per_speaker",
             ),
         ]
 

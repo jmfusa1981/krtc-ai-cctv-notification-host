@@ -50,7 +50,7 @@ def _setting(name: str, default=None):
 
 
 def _settings_fallback() -> BroadcastRuntimeConfig:
-    """Build runtime configuration from Django settings / .env."""
+    """從 Django settings／.env 建立尚未由工程設定接管時的安全預設。"""
 
     is_production = bool(
         _setting("KRTC_PRODUCTION", False)
@@ -64,10 +64,7 @@ def _settings_fallback() -> BroadcastRuntimeConfig:
         or "simulation"
     ).strip().lower()
 
-    # Production operational broadcast is always PJSIP.
-    #
-    # Development keeps the existing configured mode so simulation remains
-    # available for development and engineering workflow validation.
+    # 正式環境未初始化時一律使用 PJSIP；開發環境保留舊版環境變數相容性。
     operational_backend = (
         "pjsip"
         if is_production
@@ -132,16 +129,13 @@ def _settings_fallback() -> BroadcastRuntimeConfig:
 
 
 def get_broadcast_runtime_config() -> BroadcastRuntimeConfig:
-    """Return effective broadcast runtime configuration.
+    """取得單一權威解析後的廣播 Runtime 設定。
 
-    Resolution policy:
+    解析優先順序：
 
-    1. Django settings / .env always provide a safe fallback.
-    2. BroadcastEngineeringSettings overrides mutable PJSIP values when
-       the singleton exists and the individual value is configured.
-    3. Production operational backend is always PJSIP.
-    4. Database unavailability must not break Django startup, migrations,
-       management commands, or unrelated Windows services.
+    1. BroadcastEngineeringSettings 已明確設定模式時，DB 是唯一可變的運行模式來源。
+    2. DB 模式尚未初始化時，才使用 Django settings／.env 安全預設。
+    3. DB 無法使用時必須回退，不可阻斷啟動、migration 或其他 Windows 服務。
     """
 
     fallback = _settings_fallback()
@@ -163,6 +157,13 @@ def get_broadcast_runtime_config() -> BroadcastRuntimeConfig:
     if engineering is None:
         return fallback
 
+    broadcast_test_mode = engineering.broadcast_test_mode
+    operational_backend = (
+        fallback.operational_backend
+        if broadcast_test_mode is None
+        else ("simulation" if broadcast_test_mode else "pjsip")
+    )
+
     executable_path = (
         str(engineering.pjsip_executable_path or "").strip()
         or fallback.pjsip_executable_path
@@ -173,19 +174,23 @@ def get_broadcast_runtime_config() -> BroadcastRuntimeConfig:
         or fallback.pjsip_local_ip
     )
 
+    engineering_local_ip = str(
+        engineering.pjsip_local_ip or ""
+    ).strip()
+    engineering_advertise_ip = str(
+        engineering.pjsip_advertise_ip or ""
+    ).strip()
+
     advertise_ip = (
-        str(engineering.pjsip_advertise_ip or "").strip()
+        engineering_advertise_ip
+        or engineering_local_ip
         or fallback.pjsip_advertise_ip
         or local_ip
     )
 
     return BroadcastRuntimeConfig(
         environment=fallback.environment,
-        operational_backend=(
-            "pjsip"
-            if fallback.is_production
-            else fallback.operational_backend
-        ),
+        operational_backend=operational_backend,
         pjsip_executable_path=executable_path,
         pjsip_local_ip=local_ip,
         pjsip_advertise_ip=advertise_ip,

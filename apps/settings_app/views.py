@@ -1,6 +1,7 @@
 import json
 import logging
 import socket
+import subprocess
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -124,6 +125,29 @@ def _tcp_probe(host, port, timeout=3):
     except (OSError, ValueError) as exc:
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         return False, elapsed_ms, f"TCP {host}:{port} 連線失敗：{exc}"
+
+
+def _speaker_reachability_probe(host, timeout=3):
+    """透過 Windows ICMP Ping 驗證主機路由是否可到達 Speaker IP。"""
+    started = time.perf_counter()
+    timeout_seconds = max(float(timeout), 0.001)
+    timeout_ms = max(round(timeout_seconds * 1000), 1)
+    try:
+        process = subprocess.run(
+            ["ping.exe", "-n", "1", "-w", str(timeout_ms), str(host)],
+            shell=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_seconds + 1,
+            check=False,
+        )
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        if process.returncode == 0:
+            return True, elapsed_ms, f"Speaker {host} 網路可達。"
+        return False, elapsed_ms, f"Speaker {host} 無法由目前 AIO 網路到達。"
+    except (OSError, subprocess.TimeoutExpired):
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        return False, elapsed_ms, f"Speaker {host} 無法由目前 AIO 網路到達。"
 
 
 def _url_probe(url, timeout=5):
@@ -736,7 +760,7 @@ def test_speaker(request):
     SpeakerDevice = get_model_or_none("notifications", "SpeakerDevice")
     payload = _json_body(request)
     speaker = get_object_or_404(SpeakerDevice, pk=payload.get("id"))
-    ok, elapsed_ms, message = _tcp_probe(str(speaker.ip_address), speaker.port)
+    ok, elapsed_ms, message = _speaker_reachability_probe(str(speaker.ip_address))
     speaker.status = "online" if ok else "offline"
     speaker.last_checked_at = timezone.now()
     speaker.save(update_fields=["status", "last_checked_at", "updated_at"])

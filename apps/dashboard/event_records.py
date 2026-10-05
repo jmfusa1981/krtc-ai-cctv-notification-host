@@ -190,11 +190,19 @@ def _recording_status_display(evidence: EventRecordingEvidence | None) -> str:
         EventRecordingEvidence.STATUS_REQUESTED,
     }:
         return "\u7b49\u5f85 NVR"
-    if evidence.export_status == EventRecordingEvidence.STATUS_EXPORTING:
+    if evidence.export_status in {
+        EventRecordingEvidence.STATUS_EXPORTING,
+        EventRecordingEvidence.STATUS_READY,
+        EventRecordingEvidence.STATUS_DOWNLOADING,
+    }:
         return "\u8655\u7406\u4e2d"
     if evidence.export_status == EventRecordingEvidence.STATUS_COMPLETED:
         return "\u7b49\u5f85\u672c\u5730 MP4"
-    if evidence.export_status == EventRecordingEvidence.STATUS_FAILED:
+    if evidence.export_status in {
+        EventRecordingEvidence.STATUS_FAILED,
+        EventRecordingEvidence.STATUS_EXPIRED,
+        EventRecordingEvidence.STATUS_CANCELLED,
+    }:
         return "\u53d6\u5f97\u5931\u6557"
     return evidence.get_export_status_display()
 
@@ -211,10 +219,16 @@ def _recording_ui_status(evidence: EventRecordingEvidence | None) -> str:
         return "waiting"
     if evidence.export_status in {
         EventRecordingEvidence.STATUS_EXPORTING,
+        EventRecordingEvidence.STATUS_READY,
+        EventRecordingEvidence.STATUS_DOWNLOADING,
         EventRecordingEvidence.STATUS_COMPLETED,
     }:
         return "processing"
-    if evidence.export_status == EventRecordingEvidence.STATUS_FAILED:
+    if evidence.export_status in {
+        EventRecordingEvidence.STATUS_FAILED,
+        EventRecordingEvidence.STATUS_EXPIRED,
+        EventRecordingEvidence.STATUS_CANCELLED,
+    }:
         return "failed"
     return "processing"
 

@@ -12,17 +12,19 @@ from django.views.decorators.http import require_POST
 
 from apps.accounts.permissions import can_process_events
 from apps.cameras.models import Camera
+from apps.events.event_types import compatible_event_types
 from apps.events.models import Event, EventRecordingEvidence, LocalAlarmPolicy
 from apps.events.services.nvr_recording import (
     NvrRecordingError,
-    create_recording_evidence,
+    enqueue_recording_evidence,
     refresh_export_status,
 )
 from apps.notifications.models import BroadcastLog, BroadcastRule
 from apps.notifications.services import (
+    build_broadcast_dedup_key,
+    enqueue_broadcast_log,
     get_broadcast_playback_mode,
-    mark_broadcast_failed,
-    process_single_broadcast_log,
+    process_queued_broadcasts,
 )
 
 
@@ -107,6 +109,7 @@ def ai_event_trigger_api(request):
     )
 
     broadcast_logs = []
+    queued_speaker_ids = set()
 
     for rule in matched_rules:
         speakers = list(rule.target_speakers_queryset(active_only=True))
@@ -115,29 +118,20 @@ def ai_event_trigger_api(request):
             continue
 
         for speaker in speakers:
-            active_log = BroadcastLog.objects.filter(
-                speaker=speaker,
-                status__in=[
-                    BroadcastLog.STATUS_PENDING,
-                    BroadcastLog.STATUS_PLAYING,
-                ],
-            ).order_by("created_at").first()
-
-            if active_log is not None:
-                broadcast_logs.append(
-                    serialize_busy_broadcast_result(rule, speaker, active_log)
-                )
-                continue
-
             try:
-                with transaction.atomic():
-                    broadcast_log = BroadcastLog.objects.create(
-                        event=event,
-                        rule=rule,
-                        speaker=speaker,
-                        audio_file=rule.audio_file,
-                        status=BroadcastLog.STATUS_PENDING,
-                        request_payload={
+                broadcast_log, queued = enqueue_broadcast_log(
+                    event=event,
+                    rule=rule,
+                    speaker=speaker,
+                    audio_file=rule.audio_file,
+                    queue_priority=rule.priority,
+                    dedup_key=build_broadcast_dedup_key(
+                        rule_id=rule.pk,
+                        speaker_id=speaker.pk,
+                        event_source=camera.camera_code,
+                        event_type=event_type,
+                    ),
+                    request_payload={
                             "source": "ai_event_trigger_api",
                             "mode": get_broadcast_playback_mode(),
                             "camera_code": camera.camera_code,
@@ -151,62 +145,31 @@ def ai_event_trigger_api(request):
                             "audio_name": rule.audio_file.name,
                             "target_speaker_count": len(speakers),
                             "raw_payload": payload,
-                        },
-                        message="Automatic broadcast task created.",
-                        requested_at=timezone.now(),
-                    )
+                    },
+                    message="Automatic broadcast task queued.",
+                    requested_at=timezone.now(),
+                )
             except IntegrityError:
-                active_log = BroadcastLog.objects.filter(
-                    speaker=speaker,
-                    status__in=[
-                        BroadcastLog.STATUS_PENDING,
-                        BroadcastLog.STATUS_PLAYING,
-                    ],
-                ).order_by("created_at").first()
                 broadcast_logs.append(
-                    serialize_busy_broadcast_result(rule, speaker, active_log)
+                    {
+                        "id": None,
+                        "status": BroadcastLog.STATUS_FAILED,
+                        "message": "Unable to enqueue broadcast.",
+                        "reason": "queue_write_conflict",
+                        "rule_code": rule.rule_code,
+                        "speaker_code": speaker.speaker_code,
+                    }
                 )
                 continue
 
-            try:
-                process_result = process_single_broadcast_log(broadcast_log)
-            except Exception as exc:  # Keep the event API usable and retain an audit log.
-                logger.exception(
-                    "Automatic broadcast failed unexpectedly. log_id=%s",
-                    broadcast_log.id,
-                )
-                broadcast_log.refresh_from_db()
-                if broadcast_log.status in {
-                    BroadcastLog.STATUS_PENDING,
-                    BroadcastLog.STATUS_PLAYING,
-                }:
-                    process_result = mark_broadcast_failed(
-                        log=broadcast_log,
-                        message=f"Unexpected automatic broadcast error: {exc}",
-                        response_payload={
-                            "success": False,
-                            "mode": get_broadcast_playback_mode(),
-                            "reason": "unexpected_auto_broadcast_error",
-                            "error_type": type(exc).__name__,
-                        },
-                    )
-                else:
-                    process_result = {
-                        "broadcast_log_id": broadcast_log.id,
-                        "status": broadcast_log.status,
-                        "message": broadcast_log.message,
-                    }
-
-            broadcast_log.refresh_from_db()
+            if queued:
+                queued_speaker_ids.add(speaker.pk)
             response_payload = broadcast_log.response_payload or {}
             broadcast_logs.append(
                 {
                     "id": broadcast_log.id,
                     "status": broadcast_log.status,
-                    "message": process_result.get(
-                        "message",
-                        broadcast_log.message,
-                    ),
+                    "message": broadcast_log.message,
                     "mode": response_payload.get(
                         "mode",
                         get_broadcast_playback_mode(),
@@ -217,6 +180,42 @@ def ai_event_trigger_api(request):
                     "speaker_sip_uri": speaker.resolved_sip_uri,
                     "audio_code": rule.audio_file.audio_code,
                     "audio_name": rule.audio_file.name,
+                }
+            )
+
+    if queued_speaker_ids:
+        try:
+            process_queued_broadcasts(
+                speaker_ids=queued_speaker_ids,
+                limit=10,
+                max_workers=min(len(queued_speaker_ids), 4),
+            )
+        except Exception:
+            logger.exception(
+                "Automatic broadcast queue dispatch failed. event_id=%s",
+                event.pk,
+            )
+
+        refreshed_logs = {
+            log.pk: log
+            for log in BroadcastLog.objects.filter(
+                pk__in=[item["id"] for item in broadcast_logs if item.get("id")]
+            )
+        }
+        for item in broadcast_logs:
+            refreshed_log = refreshed_logs.get(item.get("id"))
+            if refreshed_log is None:
+                continue
+            response_payload = refreshed_log.response_payload or {}
+            item.update(
+                {
+                    "status": refreshed_log.status,
+                    "message": refreshed_log.message,
+                    "mode": response_payload.get(
+                        "mode",
+                        get_broadcast_playback_mode(),
+                    ),
+                    "reason": response_payload.get("reason"),
                 }
             )
 
@@ -244,24 +243,6 @@ def ai_event_trigger_api(request):
         },
         status=201,
     )
-
-
-def serialize_busy_broadcast_result(rule, speaker, active_log):
-    """Return a stable API result when the target Speaker is already busy."""
-
-    return {
-        "id": None,
-        "status": BroadcastLog.STATUS_SKIPPED,
-        "message": "Speaker already has a pending or playing broadcast.",
-        "mode": get_broadcast_playback_mode(),
-        "reason": "speaker_busy",
-        "active_broadcast_log_id": active_log.id if active_log else None,
-        "rule_code": rule.rule_code,
-        "speaker_code": speaker.speaker_code,
-        "speaker_sip_uri": speaker.resolved_sip_uri,
-        "audio_code": rule.audio_file.audio_code,
-        "audio_name": rule.audio_file.name,
-    }
 
 
 def serialize_missing_speaker_result(rule):
@@ -332,11 +313,11 @@ def find_broadcast_rules(event_type, camera):
     """
 
     return BroadcastRule.objects.filter(
-        event_type=event_type,
+        event_type__in=compatible_event_types(event_type),
         is_active=True,
         auto_broadcast=True,
     ).filter(
-        camera__in=[camera, None],
+        Q(camera=camera) | Q(camera__isnull=True),
     ).filter(
         Q(speakers__is_active=True) | Q(speaker__is_active=True)
     ).prefetch_related("speakers").distinct().order_by(
@@ -365,7 +346,7 @@ def request_event_recording_api(request, event_id):
     )
 
     try:
-        evidence = create_recording_evidence(
+        evidence = enqueue_recording_evidence(
             event,
             force_new=request.POST.get("force_new") == "1",
         )
@@ -384,7 +365,7 @@ def request_event_recording_api(request, event_id):
         request,
         {
             "success": True,
-            "message": "Event recording evidence request processed.",
+            "message": "Event recording evidence queued.",
             "recording": serialize_recording_evidence(evidence),
         },
         status=201,
@@ -519,6 +500,17 @@ def serialize_recording_evidence(evidence):
         "download_url": evidence.file.url if evidence.file else evidence.download_url,
         "last_error": evidence.last_error,
         "requested_at": evidence.requested_at.isoformat() if evidence.requested_at else None,
+        "last_polled_at": evidence.last_polled_at.isoformat() if evidence.last_polled_at else None,
+        "next_poll_at": evidence.next_poll_at.isoformat() if evidence.next_poll_at else None,
+        "poll_count": evidence.poll_count,
+        "retry_count": evidence.retry_count,
+        "download_started_at": (
+            evidence.download_started_at.isoformat()
+            if evidence.download_started_at
+            else None
+        ),
+        "downloaded_at": evidence.downloaded_at.isoformat() if evidence.downloaded_at else None,
+        "file_size": evidence.file_size,
         "completed_at": evidence.completed_at.isoformat() if evidence.completed_at else None,
     }
 
@@ -704,9 +696,9 @@ def close_active_alarm_events_api(request):
         # play after the Dashboard alarm has been cleared.
         cancelled_broadcast_count = BroadcastLog.objects.filter(
             event_id__in=event_ids,
-            status=BroadcastLog.STATUS_PENDING,
+            status__in=BroadcastLog.QUEUED_STATUSES,
         ).update(
-            status=BroadcastLog.STATUS_SKIPPED,
+            status=BroadcastLog.STATUS_CANCELLED,
             message="Cancelled because the related event was closed by the operator.",
             finished_at=now,
             updated_at=now,

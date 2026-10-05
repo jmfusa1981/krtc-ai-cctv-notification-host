@@ -130,7 +130,7 @@ class Command(BaseCommand):
                     for rule in rules
                     for speaker in rule.target_speakers_queryset()
                 ],
-                status__in=[BroadcastLog.STATUS_PENDING, BroadcastLog.STATUS_PLAYING],
+                status__in=BroadcastLog.ACTIVE_STATUSES,
             )
             .select_related("speaker")
             .order_by("created_at")

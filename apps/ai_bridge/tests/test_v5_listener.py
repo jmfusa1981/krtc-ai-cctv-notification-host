@@ -2,6 +2,7 @@ import asyncio
 import json
 import shutil
 import tempfile
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -52,6 +53,32 @@ class V5ListenerContractTests(TestCase):
         self.assertEqual(event.roi_id, "luggage_zone_0")
         self.assertEqual(event.bbox, [0, 298, 219, 654])
         self.assertEqual(BroadcastLog.objects.count(), 0)
+
+    def test_formal_import_enqueues_recording_only_after_event_commit(self):
+        Camera.objects.create(
+            camera_code="cam2",
+            name="Camera 2",
+            rtsp_url="rtsp://127.0.0.1/cam2",
+            is_active=True,
+            nvr_host="192.0.2.10",
+            nvr_port=80,
+            nvr_username="operator",
+            nvr_password="secret",
+            nvr_channel=2,
+        )
+
+        with patch(
+            "apps.ai_bridge.services.event_importer.enqueue_recording_evidence"
+        ) as enqueue:
+            with patch(
+                "apps.ai_bridge.services.event_importer.schedule_event_snapshot_download"
+            ):
+                with self.captureOnCommitCallbacks(execute=True):
+                    result = self.importer.import_payload(self.payload())
+
+        self.assertEqual(result.status, "imported")
+        enqueue.assert_called_once()
+        self.assertIsNotNone(enqueue.call_args.args[0].pk)
 
     def test_websocket_rest_overlap_is_idempotent(self):
         first = self.importer.import_payload(self.payload(), ingestion_mode="websocket")
@@ -182,7 +209,13 @@ class V5ListenerContractTests(TestCase):
         second = self.importer.import_payload(self.payload(id=20260803000032))
         self.assertEqual(second.broadcast_logs_created, 0)
         self.assertEqual(second.broadcast_logs_skipped, 1)
-        self.assertEqual(BroadcastLog.objects.count(), 1)
+        self.assertEqual(BroadcastLog.objects.count(), 2)
+        self.assertEqual(
+            BroadcastLog.objects.filter(
+                status=BroadcastLog.STATUS_SUPPRESSED
+            ).count(),
+            1,
+        )
 
     def test_auto_broadcast_cooldown_does_not_block_different_rule(self):
         speaker_a = SpeakerDevice.objects.create(

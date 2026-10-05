@@ -43,6 +43,20 @@ class V665UiConsistencyTests(SimpleTestCase):
         self.assertNotIn('id="speaker-modal"', text)
         self.assertNotIn('id="speaker-add-button"', text)
 
+    def test_page_hero_headers_do_not_show_test_mode_controls(self):
+        base = Path(settings.BASE_DIR)
+        broadcast = (base / "templates/dashboard/station_broadcast.html").read_text(
+            encoding="utf-8"
+        )
+        station_settings = (
+            base / "templates/settings_app/station_settings.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn('class="mode-badge', broadcast)
+        self.assertNotIn("測試模式", broadcast)
+        self.assertNotIn('class="mode-pill', station_settings)
+        self.assertNotIn("測試模式", station_settings)
+
     def test_audio_file_picker_and_button_styles_are_present(self):
         template = (Path(settings.BASE_DIR) / "templates/settings_app/manage_object.html").read_text(encoding="utf-8")
         css = (Path(settings.BASE_DIR) / "static/css/station_settings.css").read_text(encoding="utf-8")

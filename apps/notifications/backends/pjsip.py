@@ -323,7 +323,11 @@ def _validate_gain(value):
         value = float(value)
     except (TypeError, ValueError) as exc:
         raise PjsipPreflightError("PJSIP audio gain must be numeric.") from exc
-    return max(0.0, min(200.0, value))
+    if not 0.0 <= value <= 200.0:
+        raise PjsipPreflightError(
+            "PJSIP audio gain must be between 0 and 200 percent."
+        )
+    return value
 
 
 def _prepare_audio_file(audio_path, output_dir, gain_percent):

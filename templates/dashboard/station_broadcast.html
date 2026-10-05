@@ -37,9 +37,6 @@
             <h1>站區廣播系統</h1>
             <p>選擇本站 IP Speaker 與預錄音檔，執行單站手動廣播。</p>
         </div>
-        <span class="mode-badge {% if broadcast_playback_mode_is_live %}is-live{% else %}is-test{% endif %}">
-            {% if broadcast_playback_mode_is_live %}廣播模式{% else %}測試模式{% endif %}
-        </span>
     </section>
 
     <section class="summary-grid">
@@ -408,7 +405,7 @@
                 {% for log in recent_broadcast_logs %}
                     <tr>
                         <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
-                        <td><span class="status-tag status-{{ log.status }}">{% if log.status == "pending" %}待處理{% elif log.status == "playing" %}播放中{% elif log.status == "success" %}成功{% elif log.status == "failed" %}失敗{% elif log.status == "skipped" %}略過{% else %}{{ log.get_status_display }}{% endif %}</span></td>
+                        <td><span class="status-tag status-{{ log.status }}">{% if log.status == "queued" or log.status == "pending" %}排隊中{% elif log.status == "playing" %}播放中{% elif log.status == "success" %}成功{% elif log.status == "failed" %}失敗{% elif log.status == "suppressed" %}已抑制{% elif log.status == "expired" %}已逾期{% elif log.status == "cancelled" %}已取消{% elif log.status == "skipped" %}略過{% else %}{{ log.get_status_display }}{% endif %}</span></td>
                         <td>{{ log.speaker.speaker_code|default:"—" }}</td>
                         <td>{{ log.audio_file.audio_code|default:"—" }}</td>
                         <td>{% if log.request_payload.source == "station_broadcast_console" %}手動廣播{% elif log.request_payload.source == "broadcast_schedule" %}排程廣播{% elif log.request_payload.source == "live_microphone" %}即時人聲{% elif log.event_id %}事件觸發{% else %}系統{% endif %}</td>

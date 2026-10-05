@@ -18,7 +18,7 @@ python manage.py test apps.ai_bridge.tests.test_v5_listener
 Run Django and the listener as two independent processes:
 
 ```powershell
-python manage.py runserver 0.0.0.0:8000
+python manage.py runserver 127.0.0.1:8010 --noreload
 python manage.py run_inference_listener --host-code INF-KRTC-ST-001-01
 ```
 

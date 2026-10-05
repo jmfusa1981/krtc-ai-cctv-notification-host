@@ -3,19 +3,14 @@ from django.db.models import Max, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from apps.events.event_types import (
+    CANONICAL_EVENT_TYPE_CHOICES,
+    event_type_label,
+)
+
 
 class Event(models.Model):
-    EVENT_TYPE_CHOICES = [
-        ("escalator_fall", "電扶梯跌倒"),
-        ("luggage_roll", "行李滾落"),
-        ("large_luggage_intrusion", "大型行李進入限制區域"),
-        ("wheelchair_detected", "輪椅偵測"),
-        ("passenger_loitering", "旅客逗留過久"),
-        ("crowd_count_abnormal", "人流數量異常"),
-        ("fire_detected", "火災偵測"),
-        ("smoke_detected", "煙霧偵測"),
-        ("other", "其他"),
-    ]
+    EVENT_TYPE_CHOICES = (*CANONICAL_EVENT_TYPE_CHOICES, ("other", "其他"))
 
     STATUS_CHOICES = [
         ("new", "New"),
@@ -49,6 +44,11 @@ class Event(models.Model):
         default="other",
         verbose_name="事件類型",
     )
+
+    def get_event_type_display(self):
+        """同時顯示 canonical 與既有歷史事件類型。"""
+
+        return event_type_label(self.event_type)
 
     confidence = models.FloatField(
         default=0.0,
@@ -282,15 +282,23 @@ class EventRecordingEvidence(models.Model):
     STATUS_PENDING = "pending"
     STATUS_REQUESTED = "requested"
     STATUS_EXPORTING = "exporting"
+    STATUS_READY = "ready"
+    STATUS_DOWNLOADING = "downloading"
     STATUS_COMPLETED = "completed"
     STATUS_FAILED = "failed"
+    STATUS_EXPIRED = "expired"
+    STATUS_CANCELLED = "cancelled"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "等待匯出"),
         (STATUS_REQUESTED, "已取得匯出 ID"),
         (STATUS_EXPORTING, "匯出中"),
+        (STATUS_READY, "可下載"),
+        (STATUS_DOWNLOADING, "下載中"),
         (STATUS_COMPLETED, "已完成"),
         (STATUS_FAILED, "失敗"),
+        (STATUS_EXPIRED, "已逾期"),
+        (STATUS_CANCELLED, "已取消"),
     ]
 
     event = models.ForeignKey(
@@ -310,6 +318,9 @@ class EventRecordingEvidence(models.Model):
     nvr_host = models.CharField(max_length=100, blank=True, db_index=True)
     nvr_port = models.PositiveIntegerField(null=True, blank=True)
     nvr_channel = models.IntegerField(null=True, blank=True)
+    source_event_id = models.CharField(max_length=150, blank=True, db_index=True)
+    camera_code = models.CharField(max_length=100, blank=True)
+    event_time = models.DateTimeField(null=True, blank=True)
     video_format = models.CharField(max_length=10, default="MP4")
     pre_event_seconds = models.PositiveIntegerField(default=30)
     post_event_seconds = models.PositiveIntegerField(default=90)
@@ -331,6 +342,14 @@ class EventRecordingEvidence(models.Model):
     response_payload = models.JSONField(default=dict, blank=True)
     last_error = models.CharField(max_length=500, blank=True)
     requested_at = models.DateTimeField(null=True, blank=True)
+    last_polled_at = models.DateTimeField(null=True, blank=True)
+    next_poll_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    poll_count = models.PositiveIntegerField(default=0)
+    retry_count = models.PositiveIntegerField(default=0)
+    warning_issued_at = models.DateTimeField(null=True, blank=True)
+    download_started_at = models.DateTimeField(null=True, blank=True)
+    downloaded_at = models.DateTimeField(null=True, blank=True)
+    file_size = models.PositiveBigIntegerField(default=0)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

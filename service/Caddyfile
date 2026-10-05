@@ -1,0 +1,18 @@
+{
+	admin 127.0.0.1:2019
+}
+
+{$KRTC_TLS_SITE:https://localhost} {
+	tls internal
+
+	reverse_proxy 127.0.0.1:8000
+
+	log {
+		output file "{$KRTC_CADDY_LOG_PATH:C:\KRTC\NotificationHost\logs\caddy\access.log}" {
+			roll_size 10MiB
+			roll_keep 8
+			roll_keep_for 720h
+		}
+		format json
+	}
+}

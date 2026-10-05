@@ -1,3 +1,5 @@
+import hashlib
+import json
 import subprocess
 import sys
 import threading
@@ -8,15 +10,15 @@ from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
-from django.db import OperationalError, close_old_connections, transaction
+from django.db import IntegrityError, OperationalError, close_old_connections, transaction
 from django.utils import timezone
 
 from .backends.pjsip import (
     PjsipPreflightError,
-    build_pjsip_playback_plan,
     execute_pjsip_playback_plan,
 )
 from .models import BroadcastLog, SpeakerDevice
+from .pjsip_readiness import prepare_pjsip_readiness
 from .runtime_config import get_broadcast_runtime_config
 
 
@@ -31,12 +33,11 @@ DEFAULT_HANGUP_AFTER_AUDIO_MARGIN_SECONDS = 2
 
 SOURCE_LIVE_MICROPHONE = "live_microphone"
 SOURCE_BROADCAST_SCHEDULE = "broadcast_schedule"
-SOURCE_PRIORITY_LIVE = 300
-SOURCE_PRIORITY_WARNING = 200
+SOURCE_PRIORITY_LIVE = 0
+SOURCE_PRIORITY_WARNING = 50
 SOURCE_PRIORITY_SCHEDULE = 100
 SCHEDULE_RETRY_DELAY_SECONDS = 30
 STALE_SCHEDULE_LOCK_SECONDS = 900
-STALE_AUTO_BROADCAST_LOCK_SECONDS = 30
 SQLITE_WRITE_RETRY_ATTEMPTS = 8
 SQLITE_WRITE_RETRY_DELAY_SECONDS = 0.05
 
@@ -61,6 +62,158 @@ def _run_broadcast_db_write(operation):
                         SQLITE_WRITE_RETRY_DELAY_SECONDS * (attempt + 1)
                     )
     raise last_error
+
+
+def get_broadcast_queue_cooldown_seconds():
+    """取得等價事件的 queue 去重秒數。"""
+
+    value = getattr(settings, "BROADCAST_QUEUE_COOLDOWN_SECONDS", 30)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 30
+
+
+def get_broadcast_queue_ttl_seconds():
+    """取得尚未開始播放工作的存活秒數。"""
+
+    value = getattr(settings, "BROADCAST_QUEUE_TTL_SECONDS", 120)
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return 120
+
+
+def build_broadcast_dedup_key(
+    *,
+    rule_id,
+    speaker_id,
+    event_source,
+    event_type,
+):
+    """依規則、Speaker、事件來源與類型建立穩定去重鍵。"""
+
+    identity = {
+        "event_source": str(event_source or ""),
+        "event_type": str(event_type or ""),
+        "rule_id": str(rule_id or ""),
+        "speaker_id": str(speaker_id or ""),
+    }
+    encoded = json.dumps(
+        identity,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def enqueue_broadcast_log(
+    *,
+    speaker,
+    audio_file,
+    event=None,
+    rule=None,
+    request_payload=None,
+    message="Broadcast queued.",
+    queue_priority=100,
+    dedup_key="",
+    cooldown_seconds=None,
+    ttl_seconds=None,
+    requested_at=None,
+):
+    """建立持久化 Speaker 工作；等價事件在 cooldown 內記為 suppressed。"""
+
+    now = requested_at or timezone.now()
+    cooldown_seconds = (
+        get_broadcast_queue_cooldown_seconds()
+        if cooldown_seconds is None
+        else max(0, int(cooldown_seconds))
+    )
+    ttl_seconds = (
+        get_broadcast_queue_ttl_seconds()
+        if ttl_seconds is None
+        else max(1, int(ttl_seconds))
+    )
+
+    def _enqueue():
+        suppressed = False
+        if dedup_key and cooldown_seconds:
+            cutoff = now - timedelta(seconds=cooldown_seconds)
+            suppressed = BroadcastLog.objects.filter(
+                dedup_key=dedup_key,
+                created_at__gte=cutoff,
+            ).exclude(
+                status__in=[
+                    BroadcastLog.STATUS_FAILED,
+                    BroadcastLog.STATUS_EXPIRED,
+                    BroadcastLog.STATUS_CANCELLED,
+                ]
+            ).exists()
+
+        status = (
+            BroadcastLog.STATUS_SUPPRESSED
+            if suppressed
+            else BroadcastLog.STATUS_QUEUED
+        )
+        payload = dict(request_payload or {})
+        payload.update(
+            {
+                "queue_priority": int(queue_priority),
+                "queue_ttl_seconds": ttl_seconds,
+                "dedup_key": dedup_key,
+            }
+        )
+        log = BroadcastLog.objects.create(
+            event=event,
+            rule=rule,
+            speaker=speaker,
+            audio_file=audio_file,
+            status=status,
+            queue_priority=max(0, int(queue_priority)),
+            dedup_key=dedup_key,
+            expires_at=now + timedelta(seconds=ttl_seconds),
+            request_payload=payload,
+            response_payload=(
+                {
+                    "success": False,
+                    "reason": "duplicate_within_cooldown",
+                    "cooldown_seconds": cooldown_seconds,
+                }
+                if suppressed
+                else None
+            ),
+            message=(
+                "Equivalent broadcast suppressed inside cooldown window."
+                if suppressed
+                else message
+            ),
+            requested_at=now,
+            finished_at=now if suppressed else None,
+        )
+        return log, not suppressed
+
+    return _run_broadcast_db_write(_enqueue)
+
+
+def expire_stale_queued_broadcasts(*, speaker_ids=None, now=None):
+    """將超過 TTL 的 queued 工作標記為 expired，且不呼叫播放後端。"""
+
+    now = now or timezone.now()
+    queryset = BroadcastLog.objects.filter(
+        status=BroadcastLog.STATUS_QUEUED,
+        expires_at__isnull=False,
+        expires_at__lte=now,
+    )
+    if speaker_ids is not None:
+        queryset = queryset.filter(speaker_id__in=list(speaker_ids))
+    return queryset.update(
+        status=BroadcastLog.STATUS_EXPIRED,
+        finished_at=now,
+        message="Queued broadcast expired before playback.",
+        response_payload={"success": False, "reason": "queue_ttl_expired"},
+        updated_at=now,
+    )
 
 DEFAULT_MICROSIP_PATHS = [
     r"C:\Users\user\Desktop\MicroSIP.lnk",
@@ -92,106 +245,158 @@ def process_pending_broadcast_logs(limit=10):
     BROADCAST_PLAYBACK_MODE = "microsip_winsound"
     """
 
-    pending_logs = list(
-        BroadcastLog.objects
-        .select_related("event", "event__camera", "rule", "speaker", "audio_file")
-        .filter(status=BroadcastLog.STATUS_PENDING)
-        .order_by("created_at")[: max(limit * 3, limit)]
-    )
-    pending_logs = sorted(
-        pending_logs,
-        key=lambda item: (-broadcast_log_priority(item), item.created_at),
-    )[:limit]
-
-    results = []
-    success_count = 0
-    failed_count = 0
-    skipped_count = 0
-
-    for log in pending_logs:
-        result = process_single_broadcast_log(log)
-        results.append(result)
-
-        if result["status"] == BroadcastLog.STATUS_SUCCESS:
-            success_count += 1
-        elif result["status"] == BroadcastLog.STATUS_FAILED:
-            failed_count += 1
-        elif result["status"] == BroadcastLog.STATUS_SKIPPED:
-            skipped_count += 1
-
-    return {
-        "processed_count": len(results),
-        "success_count": success_count,
-        "failed_count": failed_count,
-        "skipped_count": skipped_count,
-        "results": results,
-    }
+    return process_queued_broadcasts(limit=limit)
 
 
 def process_broadcast_logs_for_event(event_id, *, limit=10, max_workers=4):
-    """Immediately process pending automatic BroadcastLogs created for one event."""
+    """以 Speaker 為單位處理事件建立的 queued 廣播工作。"""
 
-    logs = list(
-        BroadcastLog.objects
-        .select_related("event", "event__camera", "rule", "speaker", "audio_file")
-        .filter(event_id=event_id, status=BroadcastLog.STATUS_PENDING)
-        .order_by("created_at")[:limit]
+    speaker_ids = list(
+        BroadcastLog.objects.filter(
+            event_id=event_id,
+            status__in=BroadcastLog.QUEUED_STATUSES,
+            speaker__isnull=False,
+        ).values_list("speaker_id", flat=True).distinct()
+    )
+    return process_queued_broadcasts(
+        speaker_ids=speaker_ids,
+        limit=limit,
+        max_workers=max_workers,
     )
 
-    if not logs:
-        return {
-            "processed_count": 0,
-            "success_count": 0,
-            "failed_count": 0,
-            "skipped_count": 0,
-            "results": [],
-        }
 
-    def _process(log_id):
-        close_old_connections()
+def process_speaker_queue(speaker_id, *, limit=100):
+    """循序清空單一 Speaker queue；同一時間只允許一筆 playing。"""
+
+    results = []
+    processed_count = 0
+    lock_retry_count = 0
+    max_lock_retries = SQLITE_WRITE_RETRY_ATTEMPTS * 4
+    while processed_count < max(1, int(limit)):
         try:
+            expire_stale_queued_broadcasts(speaker_ids=[speaker_id])
             log = (
                 BroadcastLog.objects
                 .select_related("event", "event__camera", "rule", "speaker", "audio_file")
-                .get(pk=log_id)
+                .filter(
+                    speaker_id=speaker_id,
+                    status__in=BroadcastLog.QUEUED_STATUSES,
+                )
+                .order_by("queue_priority", "created_at", "pk")
+                .first()
             )
-            return process_single_broadcast_log(log)
+            if log is None:
+                break
+
+            result = process_single_broadcast_log(log)
+            results.append(result)
+            processed_count += 1
+            lock_retry_count = 0
+            if result.get("status") in BroadcastLog.QUEUED_STATUSES:
+                break
+        except OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            lock_retry_count += 1
+            if lock_retry_count >= max_lock_retries:
+                raise
+            close_old_connections()
+            time.sleep(SQLITE_WRITE_RETRY_DELAY_SECONDS * lock_retry_count)
+
+    return results
+
+
+def process_queued_broadcasts(*, speaker_ids=None, limit=100, max_workers=None):
+    """平行處理不同 Speaker，並讓各 Speaker 內部依 priority/時間循序執行。"""
+
+    expire_stale_queued_broadcasts(speaker_ids=speaker_ids)
+    queryset = BroadcastLog.objects.filter(
+        status__in=BroadcastLog.QUEUED_STATUSES,
+        speaker__isnull=False,
+    )
+    if speaker_ids is not None:
+        queryset = queryset.filter(speaker_id__in=list(speaker_ids))
+    ordered_speaker_ids = list(
+        dict.fromkeys(
+            queryset.order_by("queue_priority", "created_at", "pk")
+            .values_list("speaker_id", flat=True)
+        )
+    )
+    if not ordered_speaker_ids:
+        return _broadcast_result_summary([])
+
+    worker_count = min(
+        len(ordered_speaker_ids),
+        max(
+            1,
+            int(
+                max_workers
+                or getattr(settings, "BROADCAST_QUEUE_MAX_WORKERS", 4)
+            ),
+        ),
+    )
+    per_speaker_limit = max(1, int(limit))
+
+    def _worker(target_speaker_id):
+        close_old_connections()
+        try:
+            return process_speaker_queue(
+                target_speaker_id,
+                limit=per_speaker_limit,
+            )
         finally:
             close_old_connections()
 
     results = []
-    if len(logs) == 1:
-        results.append(_process(logs[0].id))
+    if len(ordered_speaker_ids) == 1:
+        results.extend(_worker(ordered_speaker_ids[0]))
     else:
-        worker_count = min(len(logs), max(1, int(max_workers)))
         with ThreadPoolExecutor(
             max_workers=worker_count,
-            thread_name_prefix="krtc-auto-broadcast",
+            thread_name_prefix="krtc-speaker-queue",
         ) as executor:
-            futures = {executor.submit(_process, log.id): log.id for log in logs}
+            futures = {
+                executor.submit(_worker, speaker_id): speaker_id
+                for speaker_id in ordered_speaker_ids
+            }
             for future in as_completed(futures):
-                log_id = futures[future]
+                speaker_id = futures[future]
                 try:
-                    results.append(future.result())
+                    results.extend(future.result())
                 except Exception as exc:
-                    log = BroadcastLog.objects.get(pk=log_id)
                     results.append(
-                        mark_broadcast_failed(
-                            log=log,
-                            message=f"Automatic broadcast worker failed: {exc}",
-                            response_payload={
-                                "success": False,
-                                "reason": "auto_broadcast_worker_failed",
-                                "message": str(exc),
-                            },
-                        )
+                        {
+                            "speaker_id": speaker_id,
+                            "status": BroadcastLog.STATUS_FAILED,
+                            "message": f"Speaker queue worker failed: {exc}",
+                        }
                     )
+    return _broadcast_result_summary(results)
 
+
+def _broadcast_result_summary(results):
     return {
         "processed_count": len(results),
-        "success_count": sum(1 for item in results if item.get("status") == BroadcastLog.STATUS_SUCCESS),
-        "failed_count": sum(1 for item in results if item.get("status") == BroadcastLog.STATUS_FAILED),
-        "skipped_count": sum(1 for item in results if item.get("status") == BroadcastLog.STATUS_SKIPPED),
+        "success_count": sum(
+            1 for item in results
+            if item.get("status") == BroadcastLog.STATUS_SUCCESS
+        ),
+        "failed_count": sum(
+            1 for item in results
+            if item.get("status") == BroadcastLog.STATUS_FAILED
+        ),
+        "skipped_count": sum(
+            1 for item in results
+            if item.get("status") == BroadcastLog.STATUS_SKIPPED
+        ),
+        "expired_count": sum(
+            1 for item in results
+            if item.get("status") == BroadcastLog.STATUS_EXPIRED
+        ),
+        "queued_count": sum(
+            1 for item in results
+            if item.get("status") in BroadcastLog.QUEUED_STATUSES
+        ),
         "results": results,
     }
 
@@ -226,19 +431,14 @@ def broadcast_log_source(log):
 
 
 def broadcast_log_priority(log):
-    source = broadcast_log_source(log)
-    if source == SOURCE_LIVE_MICROPHONE:
-        return SOURCE_PRIORITY_LIVE
-    if source == SOURCE_BROADCAST_SCHEDULE:
-        return SOURCE_PRIORITY_SCHEDULE
-    return SOURCE_PRIORITY_WARNING
+    return int(getattr(log, "queue_priority", SOURCE_PRIORITY_WARNING))
 
 
 def active_broadcast_logs_for_speakers(speakers):
     return list(
         BroadcastLog.objects.filter(
             speaker__in=list(speakers),
-            status__in=[BroadcastLog.STATUS_PENDING, BroadcastLog.STATUS_PLAYING],
+            status__in=BroadcastLog.ACTIVE_STATUSES,
         ).select_related("speaker")
     )
 
@@ -247,7 +447,7 @@ def interrupt_lower_priority_broadcasts(speakers, minimum_priority, reason):
     now = timezone.now()
     interrupted = []
     for log in active_broadcast_logs_for_speakers(speakers):
-        if broadcast_log_priority(log) >= minimum_priority:
+        if broadcast_log_priority(log) <= minimum_priority:
             continue
         if log.status == BroadcastLog.STATUS_PLAYING:
             stop_pjsua_process_for_broadcast_log(log)
@@ -259,7 +459,7 @@ def interrupt_lower_priority_broadcasts(speakers, minimum_priority, reason):
                 "interrupted_at": now.isoformat(),
             }
         )
-        log.status = BroadcastLog.STATUS_SKIPPED
+        log.status = BroadcastLog.STATUS_CANCELLED
         log.finished_at = now
         log.message = f"Broadcast interrupted by higher priority request: {reason}"
         log.response_payload = payload
@@ -275,7 +475,7 @@ def reset_all_speaker_workflows(reason="manual_workflow_reset"):
     active_logs = (
         BroadcastLog.objects.filter(
             speaker__isnull=False,
-            status__in=[BroadcastLog.STATUS_PENDING, BroadcastLog.STATUS_PLAYING],
+            status__in=BroadcastLog.ACTIVE_STATUSES,
         )
         .select_related("speaker")
         .order_by("created_at")
@@ -295,7 +495,7 @@ def reset_all_speaker_workflows(reason="manual_workflow_reset"):
                 "pjsua_stopped": pjsua_stopped,
             }
         )
-        log.status = BroadcastLog.STATUS_FAILED
+        log.status = BroadcastLog.STATUS_CANCELLED
         log.finished_at = now
         log.message = "手動清除 Speaker 工作流，已解除忙碌狀態。"
         log.response_payload = payload
@@ -388,88 +588,6 @@ def clear_stale_schedule_broadcast_locks():
     return cleared
 
 
-def get_stale_auto_broadcast_lock_seconds():
-    value = getattr(
-        settings,
-        "AUTO_BROADCAST_STALE_LOCK_SECONDS",
-        STALE_AUTO_BROADCAST_LOCK_SECONDS,
-    )
-    try:
-        return max(0, int(value))
-    except (TypeError, ValueError):
-        return STALE_AUTO_BROADCAST_LOCK_SECONDS
-
-
-def clear_stale_auto_broadcast_locks(
-    *,
-    speakers=None,
-    reason="stale_auto_broadcast_lock",
-    cutoff=None,
-    exclude_log_ids=None,
-):
-    """Clear stale formal inference host broadcast locks without touching live/scheduled PA use."""
-
-    now = timezone.now()
-    exclude_log_ids = set(exclude_log_ids or [])
-    if cutoff is None:
-        cutoff = now - timedelta(seconds=get_stale_auto_broadcast_lock_seconds())
-
-    logs = (
-        BroadcastLog.objects.filter(
-            speaker__isnull=False,
-            status__in=[BroadcastLog.STATUS_PENDING, BroadcastLog.STATUS_PLAYING],
-            request_payload__source="formal_inference_host",
-            created_at__lte=cutoff,
-        )
-        .select_related("speaker")
-        .order_by("created_at")
-    )
-    if speakers is not None:
-        logs = logs.filter(speaker__in=list(speakers))
-    if exclude_log_ids:
-        logs = logs.exclude(pk__in=exclude_log_ids)
-
-    cleared = []
-    for log in logs:
-        pjsua_stopped = False
-        if log.status == BroadcastLog.STATUS_PLAYING:
-            pjsua_stopped = stop_pjsua_process_for_broadcast_log(log)
-
-        payload = dict(log.response_payload or {})
-        payload.update(
-            {
-                "source": broadcast_log_source(log) or "formal_inference_host",
-                "end_reason": reason,
-                "cleared_at": now.isoformat(),
-                "pjsua_stopped": pjsua_stopped,
-                "auto_recovery": True,
-            }
-        )
-        log.status = BroadcastLog.STATUS_FAILED
-        log.finished_at = now
-        log.message = "自動廣播工作流逾時未完成，已自動解除 Speaker 忙碌狀態。"
-        log.response_payload = payload
-        log.save(update_fields=["status", "finished_at", "message", "response_payload", "updated_at"])
-        cleared.append(log)
-    return cleared
-
-
-def recover_auto_broadcast_workflows_after_playback(completed_log):
-    """Run the safe recovery step after one automatic playback finishes."""
-
-    if not getattr(settings, "AUTO_BROADCAST_RECOVER_AFTER_PLAYBACK", True):
-        return []
-    if broadcast_log_source(completed_log) != "formal_inference_host":
-        return []
-
-    cutoff = completed_log.started_at or completed_log.created_at
-    return clear_stale_auto_broadcast_locks(
-        reason="auto_recovery_after_playback_completed",
-        cutoff=cutoff,
-        exclude_log_ids=[completed_log.pk],
-    )
-
-
 def reschedule_interrupted_schedule_log(log, now=None):
     payload = log.request_payload or {}
     schedule_id = payload.get("schedule_id")
@@ -508,10 +626,12 @@ def process_single_broadcast_log(log):
 
     log_id = prepare_result["broadcast_log_id"]
 
-    log = (
-        BroadcastLog.objects
-        .select_related("event", "event__camera", "rule", "speaker", "audio_file")
-        .get(id=log_id)
+    log = _run_broadcast_db_write(
+        lambda: (
+            BroadcastLog.objects
+            .select_related("event", "event__camera", "rule", "speaker", "audio_file")
+            .get(id=log_id)
+        )
     )
 
     speaker = log.speaker
@@ -523,7 +643,13 @@ def process_single_broadcast_log(log):
         broadcast_log=log,
     )
 
-    log.refresh_from_db()
+    log = _run_broadcast_db_write(
+        lambda: (
+            BroadcastLog.objects
+            .select_related("speaker", "audio_file")
+            .get(pk=log_id)
+        )
+    )
     if log.status != BroadcastLog.STATUS_PLAYING:
         return {
             "broadcast_log_id": log.id,
@@ -568,13 +694,13 @@ def prepare_broadcast_log_for_playback(log):
             .get(id=log_id)
         )
 
-        if current_log.status != BroadcastLog.STATUS_PENDING:
+        if current_log.status not in BroadcastLog.QUEUED_STATUSES:
             return {
                 "success": False,
                 "result": {
                     "broadcast_log_id": current_log.id,
                     "status": current_log.status,
-                    "message": "BroadcastLog is not pending. Skipped.",
+                    "message": "BroadcastLog is not queued.",
                 },
             }
 
@@ -601,6 +727,71 @@ def prepare_broadcast_log_for_playback(log):
                     "message": current_log.message,
                     "speaker_code": "",
                     "audio_code": "",
+                },
+            }
+
+        now = timezone.now()
+        if current_log.expires_at and current_log.expires_at <= now:
+            current_log.status = BroadcastLog.STATUS_EXPIRED
+            current_log.finished_at = now
+            current_log.message = "Queued broadcast expired before playback."
+            current_log.response_payload = {
+                "success": False,
+                "reason": "queue_ttl_expired",
+            }
+            current_log.save(
+                update_fields=[
+                    "status",
+                    "finished_at",
+                    "message",
+                    "response_payload",
+                    "updated_at",
+                ]
+            )
+            return {
+                "success": False,
+                "result": {
+                    "broadcast_log_id": current_log.id,
+                    "status": current_log.status,
+                    "message": current_log.message,
+                },
+            }
+
+        speaker_playing = BroadcastLog.objects.filter(
+            speaker_id=current_log.speaker_id,
+            status=BroadcastLog.STATUS_PLAYING,
+        ).exclude(pk=current_log.pk).exists()
+        if speaker_playing:
+            if current_log.status != BroadcastLog.STATUS_QUEUED:
+                current_log.status = BroadcastLog.STATUS_QUEUED
+                current_log.save(update_fields=["status", "updated_at"])
+            return {
+                "success": False,
+                "result": {
+                    "broadcast_log_id": current_log.id,
+                    "status": BroadcastLog.STATUS_QUEUED,
+                    "message": "Speaker is busy; broadcast remains queued.",
+                    "reason": "speaker_busy_queued",
+                },
+            }
+
+        next_log_id = (
+            BroadcastLog.objects.filter(
+                speaker_id=current_log.speaker_id,
+                status__in=BroadcastLog.QUEUED_STATUSES,
+            )
+            .order_by("queue_priority", "created_at", "pk")
+            .values_list("pk", flat=True)
+            .first()
+        )
+        if next_log_id != current_log.pk:
+            return {
+                "success": False,
+                "result": {
+                    "broadcast_log_id": current_log.id,
+                    "status": current_log.status,
+                    "message": "A higher-priority broadcast is ahead in the Speaker queue.",
+                    "reason": "waiting_for_queue_priority",
                 },
             }
 
@@ -682,18 +873,32 @@ def prepare_broadcast_log_for_playback(log):
         )
 
         current_log.status = BroadcastLog.STATUS_PLAYING
-        current_log.started_at = timezone.now()
+        current_log.started_at = now
         current_log.request_payload = request_payload
         current_log.message = f"Playback started. mode={playback_mode}"
-        current_log.save(
-            update_fields=[
-                "status",
-                "started_at",
-                "request_payload",
-                "message",
-                "updated_at",
-            ]
-        )
+        try:
+            with transaction.atomic():
+                current_log.save(
+                    update_fields=[
+                        "status",
+                        "started_at",
+                        "request_payload",
+                        "message",
+                        "updated_at",
+                    ]
+                )
+        except IntegrityError:
+            current_log.status = BroadcastLog.STATUS_QUEUED
+            current_log.started_at = None
+            return {
+                "success": False,
+                "result": {
+                    "broadcast_log_id": current_log.id,
+                    "status": BroadcastLog.STATUS_QUEUED,
+                    "message": "Speaker claim lost; broadcast remains queued.",
+                    "reason": "speaker_claim_conflict",
+                },
+            }
 
         return {
             "success": True,
@@ -1290,8 +1495,7 @@ def get_broadcast_playback_mode():
     """
     取得目前有效的廣播播放後端。
 
-    Development 可依現有設定使用 simulation / pjsip。
-    Production 由 runtime resolver 固定使用 pjsip。
+    由 runtime resolver 統一解析環境安全預設與 Superuser 工程模式。
     """
 
     return get_broadcast_runtime_config().operational_backend
@@ -1354,8 +1558,6 @@ def mark_broadcast_success(log, message, response_payload=None):
         return current_log
 
     log = _run_broadcast_db_write(_mark)
-    recovered_logs = recover_auto_broadcast_workflows_after_playback(log)
-
     result = {
         "broadcast_log_id": log.id,
         "status": log.status,
@@ -1363,15 +1565,6 @@ def mark_broadcast_success(log, message, response_payload=None):
         "speaker_code": log.speaker.speaker_code if log.speaker else "",
         "audio_code": log.audio_file.audio_code if log.audio_file else "",
     }
-    if recovered_logs:
-        result["auto_recovered_workflows"] = [
-            {
-                "broadcast_log_id": item.id,
-                "speaker_code": item.speaker.speaker_code if item.speaker else "",
-                "status": item.status,
-            }
-            for item in recovered_logs
-        ]
     return result
 
 
@@ -1398,8 +1591,6 @@ def mark_broadcast_failed(log, message, response_payload=None):
         return current_log
 
     log = _run_broadcast_db_write(_mark)
-    recovered_logs = recover_auto_broadcast_workflows_after_playback(log)
-
     result = {
         "broadcast_log_id": log.id,
         "status": log.status,
@@ -1407,49 +1598,11 @@ def mark_broadcast_failed(log, message, response_payload=None):
         "speaker_code": log.speaker.speaker_code if log.speaker else "",
         "audio_code": log.audio_file.audio_code if log.audio_file else "",
     }
-    if recovered_logs:
-        result["auto_recovered_workflows"] = [
-            {
-                "broadcast_log_id": item.id,
-                "speaker_code": item.speaker.speaker_code if item.speaker else "",
-                "status": item.status,
-            }
-            for item in recovered_logs
-        ]
     return result
 
 
 def play_audio_via_pjsip(speaker, audio_file, broadcast_log):
     """Play one local WAV file through the validated PJSIP/PJSUA backend."""
-
-    try:
-        audio_path = audio_file.file.path
-    except (ValueError, NotImplementedError) as exc:
-        return {
-            "success": False,
-            "mode": PLAYBACK_MODE_PJSIP,
-            "message": f"Audio file has no local path: {exc}",
-            "reason": "audio_path_unavailable",
-            "speaker_code": speaker.speaker_code,
-            "audio_code": audio_file.audio_code,
-        }
-
-    runtime_config = get_broadcast_runtime_config()
-
-    speaker_slot = SpeakerDevice.objects.filter(
-        is_active=True,
-        speaker_code__lt=speaker.speaker_code,
-    ).count()
-
-    port_step = runtime_config.pjsip_port_step
-    local_sip_port = (
-        runtime_config.pjsip_local_sip_port_base
-        + speaker_slot * port_step
-    )
-    local_rtp_port = (
-        runtime_config.pjsip_local_rtp_port_base
-        + speaker_slot * port_step
-    )
 
     log_path = (
         Path(settings.PJSIP_LOG_DIR)
@@ -1458,28 +1611,20 @@ def play_audio_via_pjsip(speaker, audio_file, broadcast_log):
 
     requested_volume = (broadcast_log.request_payload or {}).get(
         "volume_percent",
-        runtime_config.pjsip_audio_gain_percent,
+        None,
     )
-    audio_gain_percent = float(requested_volume)
 
     try:
-        plan = build_pjsip_playback_plan(
-            executable_path=runtime_config.pjsip_executable_path,
-            audio_path=audio_path,
+        readiness = prepare_pjsip_readiness(
+            speaker_code=speaker.speaker_code,
+            audio_code=audio_file.audio_code,
             log_path=log_path,
-            speaker_ip=speaker.ip_address,
-            sip_uri=speaker.resolved_sip_uri,
-            local_ip=runtime_config.pjsip_local_ip,
-            advertise_ip=runtime_config.pjsip_advertise_ip,
-            local_sip_port=local_sip_port,
-            local_rtp_port=local_rtp_port,
-            disabled_codecs=settings.PJSIP_DISABLED_CODECS,
-            preferred_codec=speaker.preferred_codec,
-            log_level=settings.PJSIP_LOG_LEVEL,
-            app_log_level=settings.PJSIP_APP_LOG_LEVEL,
-            audio_gain_percent=audio_gain_percent,
             check_ports=True,
+            audio_gain_percent=requested_volume,
         )
+        speaker = readiness.speaker
+        audio_file = readiness.audio_file
+        plan = readiness.plan
         result = execute_pjsip_playback_plan(
             plan,
             extra_wait_seconds=settings.PJSIP_EXTRA_WAIT_SECONDS,
@@ -1509,8 +1654,8 @@ def play_audio_via_pjsip(speaker, audio_file, broadcast_log):
         "disconnected": result.disconnected,
         "return_code": result.return_code,
         "log_file": result.log_path.name,
-        "local_sip_port": local_sip_port,
-        "local_rtp_port": local_rtp_port,
-        "audio_gain_percent": audio_gain_percent,
+        "local_sip_port": plan.local_sip_port,
+        "local_rtp_port": plan.local_rtp_port,
+        "audio_gain_percent": plan.audio_gain_percent,
         "preferred_codec": speaker.preferred_codec,
     }

@@ -19,11 +19,6 @@
             <h1>單站通報主機系統設定</h1>
             <p>管理本站基本資料與本機操作設定，並檢視、診斷推論主機、攝影機與廣播設備。</p>
         </div>
-        <div class="settings-actions">
-            <span class="mode-pill {% if broadcast_playback_mode == 'pjsip' %}is-live{% else %}is-test{% endif %}">
-                {% if broadcast_playback_mode == 'pjsip' %}廣播模式{% else %}測試模式{% endif %}
-            </span>
-        </div>
     </section>
 
     <section class="summary-grid" aria-label="本站設定摘要">

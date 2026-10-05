@@ -27,6 +27,25 @@ class SessionPolicyTests(SimpleTestCase):
         self.assertIn("SESSION_COOKIE_SECURE = False", production_source)
         self.assertIn("CSRF_COOKIE_SECURE = False", production_source)
 
+    def test_https_production_policy_is_explicit_and_lab_safe(self):
+        production_source = (
+            Path(settings.BASE_DIR) / "config" / "settings_production.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("SECURE_SSL_REDIRECT = True", production_source)
+        self.assertIn("SESSION_COOKIE_SECURE = True", production_source)
+        self.assertIn("CSRF_COOKIE_SECURE = True", production_source)
+        self.assertIn(
+            'os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0")',
+            production_source,
+        )
+        self.assertIn("SECURE_CONTENT_TYPE_NOSNIFF = True", production_source)
+        self.assertIn('X_FRAME_OPTIONS = "DENY"', production_source)
+        self.assertIn(
+            'SECURE_PROXY_SSL_HEADER = (\n    "HTTP_X_FORWARDED_PROTO",\n    "https",\n)',
+            production_source,
+        )
+
     def test_database_session_backend_remains_in_use(self):
         self.assertEqual(
             settings.SESSION_ENGINE,

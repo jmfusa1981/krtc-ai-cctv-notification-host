@@ -11,8 +11,8 @@ from apps.events.models import Event, EventRecordingEvidence
 from apps.events.services.media_retention import run_daily_media_retention
 from apps.events.services.nvr_recording import (
     NvrRecordingError,
-    create_recording_evidence,
     download_completed_export,
+    enqueue_recording_evidence,
     redact_nvr_error,
     refresh_export_status,
     request_export,
@@ -25,16 +25,35 @@ logger = logging.getLogger(__name__)
 def _deadline_exceeded(evidence, now):
     if evidence.requested_at is None:
         return False
-    timeout = max(1, int(getattr(settings, "KRTC_NVR_EXPORT_TIMEOUT_SECONDS", 900)))
+    timeout = max(1, int(getattr(settings, "KRTC_NVR_EXPORT_TIMEOUT_SECONDS", 7200)))
     return evidence.requested_at + timedelta(seconds=timeout) <= now
 
 
 def _poll_due(evidence, now):
-    interval = max(1, int(getattr(settings, "KRTC_NVR_POLL_INTERVAL_SECONDS", 5)))
+    if evidence.next_poll_at is not None:
+        return evidence.next_poll_at <= now
+    interval = max(1, int(getattr(settings, "KRTC_NVR_POLL_INTERVAL_SECONDS", 60)))
     return evidence.updated_at + timedelta(seconds=interval) <= now
 
 
+def _warning_due(evidence, now):
+    if evidence.requested_at is None or evidence.warning_issued_at is not None:
+        return False
+    threshold = max(
+        1,
+        int(getattr(settings, "KRTC_NVR_EXPORT_WARNING_SECONDS", 3600)),
+    )
+    return evidence.requested_at + timedelta(seconds=threshold) <= now
+
+
 def _ready_for_download(evidence):
+    """相容重啟前已記錄 Status=1、但尚未轉為 ready 的舊工作。"""
+
+    if evidence.export_status in {
+        EventRecordingEvidence.STATUS_READY,
+        EventRecordingEvidence.STATUS_DOWNLOADING,
+    }:
+        return True
     payload = evidence.response_payload if isinstance(evidence.response_payload, dict) else {}
     try:
         return int(payload.get("Status", 0)) == 1
@@ -55,26 +74,37 @@ def process_recording_cycle(*, now=None):
                 EventRecordingEvidence.STATUS_PENDING,
                 EventRecordingEvidence.STATUS_REQUESTED,
                 EventRecordingEvidence.STATUS_EXPORTING,
+                EventRecordingEvidence.STATUS_READY,
+                EventRecordingEvidence.STATUS_DOWNLOADING,
             ]
         )
         .order_by("updated_at", "id")[:batch_size]
     )
     for evidence in evidences:
         if _deadline_exceeded(evidence, now):
-            evidence.export_status = EventRecordingEvidence.STATUS_FAILED
+            evidence.export_status = EventRecordingEvidence.STATUS_EXPIRED
             evidence.last_error = "NVR 匯出已超過允許等待時間。"
             evidence.save(update_fields=["export_status", "last_error", "updated_at"])
             failed += 1
             continue
         if not _poll_due(evidence, now):
             continue
+        if _warning_due(evidence, now):
+            evidence.warning_issued_at = now
+            evidence.save(update_fields=["warning_issued_at", "updated_at"])
+            logger.warning(
+                "NVR export remains unfinished after warning threshold evidence=%s",
+                evidence.pk,
+            )
         try:
             if evidence.export_status == EventRecordingEvidence.STATUS_PENDING:
                 request_export(evidence)
             elif _ready_for_download(evidence):
                 download_completed_export(evidence)
             else:
-                refresh_export_status(evidence)
+                refreshed = refresh_export_status(evidence)
+                if refreshed.export_status == EventRecordingEvidence.STATUS_READY:
+                    download_completed_export(refreshed)
         except NvrRecordingError as exc:
             evidence.export_status = EventRecordingEvidence.STATUS_FAILED
             evidence.last_error = redact_nvr_error(exc)
@@ -110,7 +140,7 @@ def process_recording_cycle(*, now=None):
             if event.recording_evidences.exists():
                 continue
             try:
-                create_recording_evidence(event)
+                enqueue_recording_evidence(event)
                 created += 1
             except NvrRecordingError as exc:
                 logger.warning(
@@ -139,7 +169,7 @@ class RecordingWorker:
             close_old_connections()
 
     def run(self):
-        interval = max(1, int(getattr(settings, "KRTC_NVR_POLL_INTERVAL_SECONDS", 5)))
+        interval = max(1, int(getattr(settings, "KRTC_NVR_POLL_INTERVAL_SECONDS", 60)))
         while not self.stop_event.is_set():
             try:
                 self.run_cycle()

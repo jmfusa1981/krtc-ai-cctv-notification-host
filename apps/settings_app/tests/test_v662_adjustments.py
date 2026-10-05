@@ -51,7 +51,10 @@ class V662SettingsAdjustmentTests(TestCase):
         self.assertNotIn("<th>映射</th>", html)
         self.assertIn("static-diagnostic-integrity-items", html)
 
-    @patch("apps.settings_app.views._tcp_probe", return_value=(False, 12, "TCP test failed"))
+    @patch(
+        "apps.settings_app.views._speaker_reachability_probe",
+        return_value=(False, 12, "Speaker network unreachable"),
+    )
     def test_speaker_probe_persists_offline_status_and_returns_dynamic_status(self, _probe):
         response = self.client.post(
             reverse("settings_app:test_speaker"),
@@ -65,6 +68,21 @@ class V662SettingsAdjustmentTests(TestCase):
         self.assertEqual(payload["status"], "offline")
         self.assertEqual(payload["status_label"], "離線")
         self.assertEqual(self.speaker.status, "offline")
+
+    @patch(
+        "apps.settings_app.views._tcp_probe",
+        return_value=(True, 8, "TCP 192.0.2.90:554 連線成功。"),
+    )
+    def test_camera_probe_continues_to_use_tcp(self, tcp_probe):
+        response = self.client.post(
+            reverse("settings_app:test_camera"),
+            data=json.dumps({"id": self.camera.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["success"])
+        tcp_probe.assert_called_once_with("192.0.2.90", 554)
 
     def test_settings_summary_counts_enabled_speakers_even_when_health_monitor_is_disabled(self):
         SpeakerDevice.objects.create(

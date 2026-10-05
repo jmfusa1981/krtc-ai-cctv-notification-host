@@ -53,12 +53,30 @@ class LiveBroadcastManager:
             preferred_codec=next(iter(codecs)) if codecs else 'PCMU/8000'
             session_id=uuid.uuid4().hex; started_at=timezone.now(); max_duration=int(getattr(settings,'PJSIP_MIC_MAX_DURATION_SECONDS',300))
             runtime_config=get_broadcast_runtime_config()
+            if runtime_config.operational_backend != 'pjsip':
+                raise PjsipMicrophoneError(
+                    '真實人聲廣播要求 operational backend 為 pjsip。'
+                )
+            for speaker in speakers:
+                if not speaker.is_active:
+                    raise PjsipMicrophoneError(
+                        f'Speaker {speaker.speaker_code} 未啟用。'
+                    )
+                if speaker.deployment_state != speaker.DEPLOYMENT_DEPLOYED:
+                    raise PjsipMicrophoneError(
+                        f'Speaker {speaker.speaker_code} 尚未進入 deployed 狀態。'
+                    )
+                if speaker.status != speaker.STATUS_ONLINE:
+                    raise PjsipMicrophoneError(
+                        f'Speaker {speaker.speaker_code} 狀態不是 online。'
+                    )
             local_ip=runtime_config.pjsip_local_ip; advertise_ip=runtime_config.pjsip_advertise_ip
             if not local_ip:raise PjsipMicrophoneError('PJSIP local IP is required.')
             logs=[]
             with transaction.atomic():
                 for speaker in speakers:
                     logs.append(BroadcastLog.objects.create(speaker=speaker,audio_file=None,status=BroadcastLog.STATUS_PLAYING,
+                        queue_priority=SOURCE_PRIORITY_LIVE,
                         request_payload={'source':'live_microphone','session_id':session_id,'requested_by_id':getattr(user,'id',None),
                         'requested_by_username':user.get_username(),'speaker_code':speaker.speaker_code,
                         'capture_device':int(getattr(settings,'PJSIP_MIC_CAPTURE_DEVICE',-1)),'max_duration_seconds':max_duration,

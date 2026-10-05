@@ -134,9 +134,9 @@ class BroadcastEngineeringSettings(models.Model):
 
     僅允許一筆設定資料。
 
-    Production 正式廣播 backend 固定使用 PJSIP。
-    Simulation 僅供開發與工程診斷流程使用，
-    不屬於正式營運 backend。
+    Production 正式廣播預設使用 PJSIP。
+    Simulation 僅供 Superuser 於開發、驗證或維護期間明確啟用，
+    不屬於正式營運預設。
     """
 
     SINGLETON_PK = 1
@@ -145,6 +145,17 @@ class BroadcastEngineeringSettings(models.Model):
         primary_key=True,
         default=SINGLETON_PK,
         editable=False,
+    )
+
+    broadcast_test_mode = models.BooleanField(
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="廣播運行模式",
+        help_text=(
+            "未初始化時使用環境安全預設；儲存後由本設定決定正式 PJSIP "
+            "或 Simulation 測試模式。"
+        ),
     )
 
     pjsip_executable_path = models.CharField(

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -42,7 +43,7 @@ RULE_DEFINITIONS = (
     {
         "rule_code": "RULE-FALL-001",
         "name": "CAM-001 跌倒事件自動廣播",
-        "event_type": "escalator_fall",
+        "event_type": "fall_detected",
         "camera_code": "CAM-001",
         "speaker_code": "SPK-001",
         "audio_code": "AUD-TEST-001",
@@ -54,7 +55,7 @@ RULE_DEFINITIONS = (
     {
         "rule_code": "RULE-FALL-002",
         "name": "CAM-002 跌倒事件自動廣播",
-        "event_type": "escalator_fall",
+        "event_type": "fall_detected",
         "camera_code": "CAM-002",
         "speaker_code": "SPK-002",
         "audio_code": "AUD-TEST-001",
@@ -78,9 +79,22 @@ class Command(BaseCommand):
             action="store_true",
             help="Create or update records. Without this flag no data is changed.",
         )
+        parser.add_argument(
+            "--confirm-demo",
+            help="Apply mode requires the exact value INITIALIZE-DEMO-DATA.",
+        )
 
     def handle(self, *args, **options):
         apply_changes = options["apply"]
+        if apply_changes and getattr(settings, "KRTC_PRODUCTION", False):
+            raise CommandError(
+                "Demo initialization is forbidden in production."
+            )
+        if apply_changes and options["confirm_demo"] != "INITIALIZE-DEMO-DATA":
+            raise CommandError(
+                "Demo apply blocked: --confirm-demo INITIALIZE-DEMO-DATA "
+                "is required."
+            )
         self.stdout.write(
             self.style.WARNING(
                 "APPLY MODE - database records may be updated."

@@ -1,17 +1,11 @@
 from django.db import models
 from django.db.models import Q
 
+from apps.events.event_types import CANONICAL_EVENT_TYPE_CHOICES
+
 
 class AIModel(models.Model):
-    EVENT_TYPE_CHOICES = [
-        ("escalator_fall", "電扶梯跌倒"),
-        ("luggage_roll", "行李滾落"),
-        ("large_luggage_intrusion", "大型行李進入限制區域"),
-        ("wheelchair_detected", "輪椅偵測"),
-        ("passenger_loitering", "旅客逗留過久"),
-        ("crowd_count_abnormal", "人流數量異常"),
-        ("other", "其他"),
-    ]
+    EVENT_TYPE_CHOICES = (*CANONICAL_EVENT_TYPE_CHOICES, ("other", "其他"))
 
     name = models.CharField(
         max_length=100,

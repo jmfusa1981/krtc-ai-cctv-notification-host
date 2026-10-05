@@ -7,22 +7,22 @@ from apps.notifications.models import AudioFile, BroadcastRule, SpeakerDevice
 
 
 AI_MODEL_DEFINITIONS = (
-    ("LUGGAGE_ROLL_V001", "Luggage Roll Detection", "luggage_roll"),
+    ("LUGGAGE_ROLL_V001", "Luggage Roll Detection", "luggage_roll_detected"),
     (
         "LARGE_LUGGAGE_INTRUSION_V001",
         "Large Luggage Intrusion Detection",
-        "large_luggage_intrusion",
+        "large_luggage_detected",
     ),
     ("WHEELCHAIR_DETECTED_V001", "Wheelchair Detection", "wheelchair_detected"),
     (
         "PASSENGER_LOITERING_V001",
         "Passenger Loitering Detection",
-        "passenger_loitering",
+        "dwell_alert",
     ),
     (
         "CROWD_COUNT_ABNORMAL_V001",
         "Crowd Count Abnormal Detection",
-        "crowd_count_abnormal",
+        "crowd_alert",
     ),
 )
 
@@ -30,7 +30,7 @@ RULE_DEFINITIONS = (
     {
         "rule_code": "RULE-LARGE-LUGGAGE-CAM003-SPK003",
         "name": "CAM-003 大型行李進入區域自動廣播",
-        "event_type": "large_luggage_intrusion",
+        "event_type": "large_luggage_detected",
         "camera_code": "CAM-003",
         "speaker_code": "SPK-003",
         "audio_code": "AUD-LUGWHL",
@@ -175,7 +175,7 @@ class Command(BaseCommand):
                 f"(speaker_status={speaker.status})"
             )
         self.stdout.write(
-            "  luggage_roll: not configured (dedicated audio file is required)"
+            "  luggage_roll_detected: not configured (dedicated audio file is required)"
         )
 
     def _verify(self, resolved_rules):
@@ -211,10 +211,12 @@ class Command(BaseCommand):
                 errors.append(f"Missing AI model registry entry: {model_code}")
 
         if BroadcastRule.objects.filter(
-            event_type="luggage_roll",
+            event_type="luggage_roll_detected",
             rule_code__in=[item["rule_code"] for item in RULE_DEFINITIONS],
         ).exists():
-            errors.append("luggage_roll must not reuse a Phase 2 shared-audio rule")
+            errors.append(
+                "luggage_roll_detected must not reuse a Phase 2 shared-audio rule"
+            )
 
         if errors:
             raise CommandError("; ".join(errors))

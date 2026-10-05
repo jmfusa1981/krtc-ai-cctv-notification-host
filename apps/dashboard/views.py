@@ -894,7 +894,7 @@ def get_pending_broadcast_log_count():
     if BroadcastLog is None:
         return 0
 
-    return BroadcastLog.objects.filter(status="pending").count()
+    return BroadcastLog.objects.filter(status__in=["queued", "pending"]).count()
 
 
 def serialize_camera(camera):

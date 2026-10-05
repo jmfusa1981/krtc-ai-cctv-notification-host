@@ -146,7 +146,7 @@ class Command(BaseCommand):
             source_event_id = item.get("id")
 
             try:
-                result = importer.import_payload(item)
+                result = importer.import_payload(item, ingestion_mode="rest")
 
             except Exception as exc:
                 summary.errors += 1

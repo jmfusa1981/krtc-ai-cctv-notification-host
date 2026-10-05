@@ -2,17 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.events.event_types import CANONICAL_EVENT_CODE_TO_TYPE
 
-EVENT_CODE_TO_SOURCE_EVENT_TYPE = {
-    "EVT_FALL": "fall_detected",
-    "EVT_FIRE": "fire_detected",
-    "EVT_SMOKE": "smoke_detected",
-    "EVT_DWELL": "dwell_alert",
-    "EVT_CROWD": "crowd_alert",
-    "EVT_LUGGAGE_ROLL": "luggage_roll_detected",
-    "EVT_LUGGAGE_LARGE": "large_luggage_detected",
-    "EVT_WHEELCHAIR": "wheelchair_detected",
-}
+EVENT_CODE_TO_SOURCE_EVENT_TYPE = CANONICAL_EVENT_CODE_TO_TYPE
 
 
 def normalize_notify_event(

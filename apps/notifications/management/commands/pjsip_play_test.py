@@ -5,15 +5,13 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.notifications.backends.pjsip import (
     PjsipPreflightError,
-    build_pjsip_playback_plan,
     execute_pjsip_playback_plan,
 )
-from apps.notifications.models import AudioFile, SpeakerDevice
-from apps.notifications.runtime_config import get_broadcast_runtime_config
+from apps.notifications.pjsip_readiness import prepare_pjsip_readiness
 
 
 class Command(BaseCommand):
-    help = "Run one explicitly confirmed PJSIP Speaker playback test."
+    help = "執行一次具雙重確認的 PJSIP Speaker 真實播放測試。"
 
     def add_arguments(self, parser):
         parser.add_argument("--speaker", required=True, help="Speaker code")
@@ -30,54 +28,35 @@ class Command(BaseCommand):
             raise CommandError("Real playback blocked: --execute is required.")
         if options["confirm_speaker"] != speaker_code:
             raise CommandError(
-                "Real playback blocked: --confirm-speaker must exactly match --speaker."
+                "Real playback blocked: --confirm-speaker must exactly "
+                "match --speaker."
             )
 
-        speaker = self._get_speaker(speaker_code)
-        audio_file = self._get_audio(options["audio"])
-        runtime_config = get_broadcast_runtime_config()
-
-        slot = self._speaker_slot(speaker)
-        port_step = runtime_config.pjsip_port_step
-        local_sip_port = (
-            runtime_config.pjsip_local_sip_port_base
-            + slot * port_step
+        log_path = (
+            Path(settings.PJSIP_LOG_DIR)
+            / f"play_test_{speaker_code}.log"
         )
-        local_rtp_port = (
-            runtime_config.pjsip_local_rtp_port_base
-            + slot * port_step
-        )
-        log_path = Path(settings.PJSIP_LOG_DIR) / f"play_test_{speaker.speaker_code}.log"
-
         try:
-            audio_path = audio_file.file.path
-        except (ValueError, NotImplementedError) as exc:
-            raise CommandError(f"Audio file has no local path: {exc}") from exc
-
-        try:
-            plan = build_pjsip_playback_plan(
-                executable_path=runtime_config.pjsip_executable_path,
-                audio_path=audio_path,
+            readiness = prepare_pjsip_readiness(
+                speaker_code=speaker_code,
+                audio_code=options["audio"],
                 log_path=log_path,
-                speaker_ip=speaker.ip_address,
-                sip_uri=speaker.resolved_sip_uri,
-                local_ip=runtime_config.pjsip_local_ip,
-                advertise_ip=runtime_config.pjsip_advertise_ip,
-                local_sip_port=local_sip_port,
-                local_rtp_port=local_rtp_port,
-                disabled_codecs=settings.PJSIP_DISABLED_CODECS,
-                log_level=settings.PJSIP_LOG_LEVEL,
-                app_log_level=settings.PJSIP_APP_LOG_LEVEL,
-                audio_gain_percent=runtime_config.pjsip_audio_gain_percent,
                 check_ports=True,
             )
         except PjsipPreflightError as exc:
             raise CommandError(str(exc)) from exc
 
+        speaker = readiness.speaker
+        audio_file = readiness.audio_file
+        plan = readiness.plan
+
         self.stdout.write(self.style.WARNING("REAL PJSIP PLAYBACK TEST"))
         self.stdout.write(f"Speaker: {speaker.speaker_code} - {speaker.name}")
         self.stdout.write(f"Target: {plan.target_uri}")
-        self.stdout.write(f"Audio: {audio_file.audio_code} ({plan.audio_duration_seconds:.3f}s)")
+        self.stdout.write(
+            f"Audio: {audio_file.audio_code} "
+            f"({plan.audio_duration_seconds:.3f}s)"
+        )
         self.stdout.write(f"Log: {plan.log_path}")
 
         try:
@@ -94,28 +73,8 @@ class Command(BaseCommand):
         self.stdout.write(f"PJSUA return code: {result.return_code}")
 
         if not result.success:
-            raise CommandError(f"Playback failed: {result.message} Log: {result.log_path}")
+            raise CommandError(
+                f"Playback failed: {result.message} Log: {result.log_path}"
+            )
 
         self.stdout.write(self.style.SUCCESS(result.message))
-
-    @staticmethod
-    def _get_speaker(code):
-        try:
-            return SpeakerDevice.objects.get(speaker_code=code, is_active=True)
-        except SpeakerDevice.DoesNotExist as exc:
-            raise CommandError(f"Active SpeakerDevice not found: {code}") from exc
-
-    @staticmethod
-    def _get_audio(code):
-        try:
-            return AudioFile.objects.get(audio_code=code, is_active=True)
-        except AudioFile.DoesNotExist as exc:
-            raise CommandError(f"Active AudioFile not found: {code}") from exc
-
-    @staticmethod
-    def _speaker_slot(speaker):
-        return SpeakerDevice.objects.filter(
-            is_active=True,
-            speaker_code__lt=speaker.speaker_code,
-        ).count()
-
