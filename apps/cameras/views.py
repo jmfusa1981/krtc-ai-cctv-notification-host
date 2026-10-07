@@ -6,11 +6,17 @@ from django.contrib.auth.decorators import login_required
 from apps.cameras.rtsp_utils import camera_rtsp_url
 from django.http import Http404, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from apps.station_api.device_faults import recover_device_fault, report_device_fault
 from apps.station_api.models import DeviceFaultLog
 
+from .forms import MonitorProfileForm, MonitorTransitionAckForm
 from .models import Camera
+from .mediamtx import get_camera_playback
+from .monitor_diagnostics import collect_mediamtx_path_readiness
+from .monitor_profiles import request_monitor_profile
+from .monitor_transitions import acknowledge_monitor_transition
 from .mosaic import (
     MOSAIC_PROFILES,
     CameraMosaicSource,
@@ -40,6 +46,7 @@ def camera_list_api(request):
     data = []
 
     for camera in cameras:
+        playback = get_camera_playback(camera)
         data.append({
             "id": camera.id,
             "name": camera.name,
@@ -51,6 +58,12 @@ def camera_list_api(request):
             "status": camera.status,
             "is_active": camera.is_active,
             "is_online": camera.is_online,
+            "browser_playback": {
+                "available": playback.available,
+                "kind": "mediamtx_webrtc" if playback.available else None,
+                "url": playback.player_url if playback.available else None,
+                "reason": playback.reason,
+            },
             "description": camera.description,
             "last_checked_at": camera.last_checked_at.strftime("%Y-%m-%d %H:%M:%S") if camera.last_checked_at else None,
             "created_at": camera.created_at.strftime("%Y-%m-%d %H:%M:%S") if camera.created_at else None,
@@ -63,6 +76,91 @@ def camera_list_api(request):
             "cameras": data,
         },
         json_dumps_params={"ensure_ascii": False},
+    )
+
+
+@login_required
+def camera_playback_api(request, camera_id):
+    """回傳瀏覽器可用的安全播放端點，不揭露攝影機來源與登入資料。"""
+
+    try:
+        camera = Camera.objects.get(id=camera_id)
+    except Camera.DoesNotExist:
+        raise Http404("Camera not found.")
+
+    playback = get_camera_playback(camera)
+    payload = {
+        "success": playback.available,
+        "camera_id": camera.id,
+        "camera_code": camera.camera_code,
+        "available": playback.available,
+        "kind": "mediamtx_webrtc" if playback.available else None,
+        "url": playback.player_url if playback.available else None,
+        "whep_url": playback.whep_url if playback.available else None,
+        "reason": playback.reason,
+    }
+    return JsonResponse(
+        payload,
+        status=200 if playback.available else 503,
+        json_dumps_params={"ensure_ascii": False},
+    )
+
+
+@login_required
+def camera_media_status_api(request):
+    """回傳不含來源網址與憑證的MediaMTX path ready快照。"""
+
+    status = collect_mediamtx_path_readiness()
+    return JsonResponse(
+        {
+            "success": status["reachable"],
+            "reachable": status["reachable"],
+            "paths": status["paths"],
+            "path_details": status.get("path_details", {}),
+            "transition": status["transition"],
+            "error": status["error"],
+        },
+        status=200 if status["reachable"] else 503,
+        json_dumps_params={"ensure_ascii": False},
+    )
+
+
+@login_required
+@require_POST
+def camera_media_profile_api(request):
+    """驗證並寫入bridge supervisor使用的Monitor profile請求。"""
+
+    form = MonitorProfileForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"success": False, "errors": form.errors.get_json_data()},
+            status=400,
+        )
+    profile_name = form.cleaned_data["profile"]
+    changed = request_monitor_profile(profile_name)
+    return JsonResponse(
+        {"success": True, "profile": profile_name, "changed": changed}
+    )
+
+
+@login_required
+@require_POST
+def camera_media_transition_ack_api(request):
+    """接收瀏覽器全組WebRTC預載完成確認，不接受部分切換。"""
+
+    form = MonitorTransitionAckForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"success": False, "errors": form.errors.get_json_data()},
+            status=400,
+        )
+    acknowledged = acknowledge_monitor_transition(
+        form.cleaned_data["transition_id"],
+        form.cleaned_data["camera_codes"],
+    )
+    return JsonResponse(
+        {"success": acknowledged},
+        status=200 if acknowledged else 409,
     )
 
 

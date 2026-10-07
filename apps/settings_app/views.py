@@ -22,6 +22,16 @@ from django.views.decorators.http import require_POST
 
 from apps.notifications.services import get_broadcast_playback_mode
 from apps.accounts.permissions import hidden_forbidden_response
+from apps.ai_bridge.services.health_state import (
+    HEALTHY,
+    STALE,
+    effective_inference_health,
+    record_inference_health_observation,
+)
+from apps.ai_bridge.services.inference_client import (
+    InferenceClient,
+    InferenceClientError,
+)
 from apps.station_api.security_audit import record_security_audit
 from apps.notifications.speaker_health import clear_speaker_fault_if_monitoring_disabled, record_speaker_probe_result
 from .forms import (
@@ -237,9 +247,24 @@ def station_settings(request):
     OccSyncLog = get_model_or_none("station_api", "OccSyncLog")
     ConfigurationAuditLog = get_model_or_none("station_api", "ConfigurationAuditLog")
 
-    inference_hosts = list(InferenceHost.objects.all().order_by("host_code")) if InferenceHost else []
+    inference_hosts = list(
+        InferenceHost.objects.select_related("connection_state").order_by(
+            "host_code"
+        )
+    ) if InferenceHost else []
     for host in inference_hosts:
-        host.status_label_zh = STATUS_LABELS.get(host.status, "未知")
+        health = effective_inference_health(host)
+        host.effective_health = health.effective_health
+        host.health_diagnostic = health.as_dict()
+        host.display_health_status = (
+            "online" if health.effective_health == HEALTHY else "offline"
+        )
+        host.status_label_zh = {
+            HEALTHY: "連線正常",
+            STALE: "狀態逾時",
+            "unreachable": "無法連線",
+            "unconfigured": "未啟用",
+        }.get(health.effective_health, "未知")
         host.network_location = _inference_host_network_location(host)
 
     cameras = list(Camera.objects.all().order_by("camera_code")) if Camera else []
@@ -322,7 +347,9 @@ def station_settings(request):
     online_speaker_count = sum(1 for item in speakers if item.is_active and item.status == "online")
     monitored_speaker_count = sum(1 for item in speakers if item.health_monitor_active)
     online_inference_host_count = sum(
-        1 for item in inference_hosts if item.is_active and item.status == "online"
+        1
+        for item in inference_hosts
+        if item.is_active and item.effective_health == HEALTHY
     )
     mapped_active_camera_count = sum(1 for item in cameras if item.is_active and item.mapping_count > 0)
     unmapped_active_cameras = [item for item in cameras if item.is_active and item.mapping_count == 0]
@@ -335,7 +362,7 @@ def station_settings(request):
 
     initial_issues = []
     for host in inference_hosts:
-        if host.is_active and host.status != "online":
+        if host.is_active and host.effective_health != HEALTHY:
             initial_issues.append(f"推論主機 {host.host_code}：{host.status_label_zh}")
     for camera in cameras:
         if camera.is_active and camera.status != "online":
@@ -687,19 +714,39 @@ def test_inference_host(request):
     InferenceHost = get_model_or_none("ai_bridge", "InferenceHost")
     payload = _json_body(request)
     host = get_object_or_404(InferenceHost, pk=payload.get("id"))
-    test_url = f"{host.normalized_base_url}/health"
-    ok, elapsed_ms, message = _url_probe(test_url, timeout=min(max(host.timeout_seconds, 1), 20))
+    started = time.perf_counter()
     now = timezone.now()
-    host.last_health_at = now
-    if ok:
-        host.status = "online"
-        host.last_success_at = now
-        host.last_error = ""
-    else:
-        host.status = "error"
-        host.last_error_at = now
-        host.last_error = message
-    host.save(update_fields=["status", "last_health_at", "last_success_at", "last_error_at", "last_error", "updated_at"])
+    application_version = ""
+    try:
+        health_payload = InferenceClient(
+            base_url=host.normalized_base_url,
+            timeout=min(max(host.timeout_seconds, 1), 20),
+        ).health()
+        health_status = str(
+            health_payload.get("status") or "unknown"
+        ).strip().lower()
+        application_version = str(
+            health_payload.get("version") or ""
+        ).strip()
+        ok = health_status == "ok"
+        message = (
+            "HTTP 200，服務回應正常。"
+            if ok
+            else f"Health 狀態異常：{health_status}"
+        )
+    except (InferenceClientError, ValueError) as exc:
+        ok = False
+        health_status = "offline"
+        message = f"服務無法連線：{exc}"
+    elapsed_ms = round((time.perf_counter() - started) * 1000)
+    record_inference_health_observation(
+        host,
+        success=ok,
+        checked_at=now,
+        health_status=health_status,
+        failure_reason=message,
+        application_version=application_version,
+    )
     return JsonResponse({"success": ok, "message": message, "elapsed_ms": elapsed_ms, "status": host.status, "status_label": STATUS_LABELS.get(host.status, "未知"), "tested_at": timezone.localtime(now).strftime("%Y-%m-%d %H:%M:%S")})
 
 

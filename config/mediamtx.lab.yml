@@ -1,0 +1,33 @@
+# MediaMTX Lab設定：攝影機由獨立FFmpeg video-only bridge發佈。
+logLevel: info
+logDestinations: [stdout]
+
+api: true
+apiAddress: 127.0.0.1:9997
+
+rtsp: true
+rtspAddress: 127.0.0.1:8554
+rtspTransports: [tcp]
+
+rtmp: false
+hls: false
+srt: false
+
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts: [127.0.0.1, 192.168.6.25]
+
+paths:
+  cam001:
+    source: publisher
+  cam001_b:
+    source: publisher
+  cam002:
+    source: publisher
+  cam003:
+    source: publisher
+  cam003_b:
+    source: publisher
+  cam004:
+    source: publisher

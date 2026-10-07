@@ -973,6 +973,8 @@ body {
 
 .monitor-camera-screen {
     flex: 1;
+    width: 100%;
+    aspect-ratio: 16 / 9;
     min-height: 0;
     background: #000000;
     display: flex;
@@ -985,9 +987,54 @@ body {
 .camera-stream {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
     background: #000000;
+}
+
+.camera-webrtc-player {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    border: 0;
+    aspect-ratio: 16 / 9;
+    opacity: 1;
+    transition: opacity 120ms linear;
+}
+
+.camera-webrtc-player[data-player-role="current"] {
+    z-index: 1;
+    opacity: 1;
+}
+
+.camera-webrtc-player[data-player-role="next"] {
+    z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.camera-stream[hidden] {
+    display: none;
+}
+
+.camera-stream-unavailable {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: #94a3b8;
+    background: #000000;
+}
+
+.camera-stream-unavailable strong {
+    color: #e2e8f0;
+    font-size: 14px;
 }
 
 .stream-overlay {
@@ -1043,6 +1090,7 @@ body {
 }
 
 .monitor-camera-info {
+    flex: 0 0 46px;
     height: 46px;
     padding: 0 12px;
     background: rgba(15, 23, 42, 0.92);

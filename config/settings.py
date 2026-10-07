@@ -270,6 +270,38 @@ CORS_ALLOWED_ORIGINS = [
     if value.strip()
 ]
 
+# MediaMTX預設停用；啟用時僅向瀏覽器提供不含來源憑證的WebRTC網址。
+KRTC_MEDIAMTX_ENABLED = (
+    os.getenv("KRTC_MEDIAMTX_ENABLED", "False").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+KRTC_MEDIAMTX_WEBRTC_BASE_URL = os.getenv(
+    "KRTC_MEDIAMTX_WEBRTC_BASE_URL", "http://127.0.0.1:8889"
+).rstrip("/")
+KRTC_MEDIAMTX_API_BASE_URL = os.getenv(
+    "KRTC_MEDIAMTX_API_BASE_URL", "http://127.0.0.1:9997"
+).rstrip("/")
+KRTC_MEDIAMTX_API_TIMEOUT_SECONDS = float(
+    os.getenv("KRTC_MEDIAMTX_API_TIMEOUT_SECONDS", "3")
+)
+KRTC_MONITOR_MEDIA_MODE = os.getenv(
+    "KRTC_MONITOR_MEDIA_MODE", "mediamtx"
+).strip().lower()
+if KRTC_MONITOR_MEDIA_MODE not in {"legacy", "mediamtx"}:
+    KRTC_MONITOR_MEDIA_MODE = "legacy"
+KRTC_MONITOR_MOSAIC_FALLBACK = (
+    os.getenv("KRTC_MONITOR_MOSAIC_FALLBACK", "True").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
+KRTC_MEDIAMTX_PHASE1_CAMERA_CODES = tuple(
+    code.strip().upper()
+    for code in os.getenv(
+        "KRTC_MEDIAMTX_PHASE1_CAMERA_CODES",
+        "CAM-001,CAM-002,CAM-003,CAM-004",
+    ).split(",")
+    if code.strip()
+)
+
 
 # Login / Logout
 LOGIN_URL = "/login/"
@@ -509,7 +541,7 @@ BROADCAST_SCHEDULER_RUNTIME_DIR = Path(
     os.getenv("BROADCAST_SCHEDULER_RUNTIME_DIR", BASE_DIR / "runtime")
 )
 
-INFERENCE_HEALTH_STALE_SECONDS = int(os.getenv("INFERENCE_HEALTH_STALE_SECONDS", "20"))
+INFERENCE_HEALTH_STALE_SECONDS = int(os.getenv("INFERENCE_HEALTH_STALE_SECONDS", "60"))
 
 # V6.4.3 PAO internal service watchdog.
 # Complete Django process loss must be detected externally by OCC heartbeat timeout.

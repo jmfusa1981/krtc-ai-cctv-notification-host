@@ -62,6 +62,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const dashboardActionToastClose = document.getElementById("dashboardActionToastClose");
 
     const liveStateApiUrl = body.dataset.dashboardLiveStateUrl;
+    const mediaStatusApiUrl = body.dataset.dashboardMediaStatusUrl || "";
     const closeActiveAlertsUrl = body.dataset.closeActiveAlertsUrl;
     const confirmEventUrlPrefix = body.dataset.confirmEventUrlPrefix || "/api/events/";
     const manualBroadcastUrlPrefix =
@@ -96,6 +97,24 @@ document.addEventListener("DOMContentLoaded", function () {
     let carouselTimer = null;
     let manualSelectionUntil = 0;
     let manualSelectionResumeTimer = null;
+    let dashboardMediaStatus = {reachable: false, paths: {}, pathDetails: {}};
+    let dashboardMediaStatusPromise = null;
+    let dashboardMediaStatusUpdatedAt = 0;
+    let dashboardLiveGeneration = 0;
+    let dashboardLiveTimeout = null;
+    let dashboardWebRTCProbeTimer = null;
+    let activeDashboardLayer = null;
+    let pendingDashboardLayer = null;
+    let dashboardPageSuspended = false;
+    let dashboardPreviewObserver = null;
+    const dashboardVisiblePreviewCards = new Set();
+    const dashboardPreviewTimers = new Map();
+    const DASHBOARD_MEDIA_STATUS_REFRESH_MS = 5000;
+    const DASHBOARD_MEDIA_STATUS_MAX_AGE_MS = 2500;
+    const DASHBOARD_STREAM_READY_TIMEOUT_MS = 8000;
+    const DASHBOARD_WEBRTC_WARMUP_POLL_MS = 400;
+    const DASHBOARD_WEBRTC_STABLE_SAMPLES = 2;
+    const DASHBOARD_PREVIEW_READY_TIMEOUT_MS = 8000;
 
     function escapeHtml(value) {
         if (value === null || value === undefined) {
@@ -270,7 +289,10 @@ document.addEventListener("DOMContentLoaded", function () {
         let mediaKey = primaryMediaMode;
 
         if (primaryMediaMode === "live") {
-            mediaKey += `:${camera ? camera.id : "none"}`;
+            const playerUrl = camera && camera.browser_playback
+                ? camera.browser_playback.url || ""
+                : "";
+            mediaKey += `:${camera ? camera.id : "none"}:${playerUrl}`;
         } else if (primaryMediaMode === "snapshot") {
             mediaKey += `:${event ? event.snapshot_url : ""}`;
         } else if (primaryMediaMode === "annotated") {
@@ -289,6 +311,8 @@ document.addEventListener("DOMContentLoaded", function () {
             renderLiveCamera(camera);
             return;
         }
+
+        releaseDashboardLiveView();
 
         if (!event) {
             primaryCameraStage.innerHTML = `
@@ -321,8 +345,662 @@ document.addEventListener("DOMContentLoaded", function () {
         renderVideoMedia(event.video_url);
     }
 
+    function clearDashboardLiveTimeout() {
+        if (dashboardLiveTimeout !== null) {
+            window.clearTimeout(dashboardLiveTimeout);
+            dashboardLiveTimeout = null;
+        }
+    }
+
+    function clearDashboardWebRTCProbe() {
+        if (dashboardWebRTCProbeTimer !== null) {
+            window.clearTimeout(dashboardWebRTCProbeTimer);
+            dashboardWebRTCProbeTimer = null;
+        }
+    }
+
+    function releaseDashboardLayer(layer) {
+        if (!layer) {
+            return;
+        }
+        const player = layer.querySelector("[data-dashboard-webrtc-player]");
+        const fallback = layer.querySelector("[data-dashboard-mjpeg-fallback]");
+        if (player) {
+            player.onload = null;
+            player.onerror = null;
+            window.KRTCMediaPlayer.releaseWebRTC(player);
+            player.hidden = true;
+        }
+        if (fallback) {
+            fallback.onload = null;
+            fallback.onerror = null;
+            window.KRTCMediaPlayer.releaseMjpeg(fallback);
+            fallback.hidden = true;
+        }
+        layer.classList.remove("is-active", "is-preparing");
+        layer.dataset.cameraId = "";
+        layer.dataset.mediaKind = "";
+        layer.dataset.sourceUrl = "";
+    }
+
+    function releaseDashboardLiveView() {
+        dashboardLiveGeneration += 1;
+        clearDashboardLiveTimeout();
+        clearDashboardWebRTCProbe();
+        primaryCameraStage.querySelectorAll("[data-dashboard-live-layer]").forEach(
+            releaseDashboardLayer
+        );
+        activeDashboardLayer = null;
+        pendingDashboardLayer = null;
+    }
+
+    function ensureDashboardLiveStage() {
+        if (primaryCameraStage.querySelector("[data-dashboard-live-layer]")) {
+            return;
+        }
+        primaryCameraStage.innerHTML = `
+            <div class="dashboard-live-layer" data-dashboard-live-layer="a">
+                <iframe data-dashboard-webrtc-player title="MediaMTX WebRTC player" allow="autoplay; fullscreen" hidden></iframe>
+                <img data-dashboard-mjpeg-fallback alt="Dashboard MJPEG fallback" hidden>
+            </div>
+            <div class="dashboard-live-layer" data-dashboard-live-layer="b">
+                <iframe data-dashboard-webrtc-player title="MediaMTX WebRTC player" allow="autoplay; fullscreen" hidden></iframe>
+                <img data-dashboard-mjpeg-fallback alt="Dashboard MJPEG fallback" hidden>
+            </div>
+            <div class="dashboard-live-status" data-dashboard-live-status>正在連接即時影像</div>
+            <div class="primary-camera-overlay" data-dashboard-live-overlay></div>
+        `;
+        activeDashboardLayer = null;
+        pendingDashboardLayer = null;
+    }
+
+    function updateDashboardLiveOverlay(camera) {
+        const overlay = primaryCameraStage.querySelector(
+            "[data-dashboard-live-overlay]"
+        );
+        if (!overlay || !camera) {
+            return;
+        }
+        const code = normalizeText(camera.camera_code, `CAM-${camera.id}`);
+        const name = normalizeText(camera.name, code);
+        const area = normalizeText(camera.area, "未設定區域");
+        const statusDisplay = normalizeText(camera.status_display, "狀態未知");
+        overlay.innerHTML = `
+            <div>
+                <h3>${escapeHtml(code)}｜${escapeHtml(name)}</h3>
+                <p>${escapeHtml(area)}</p>
+            </div>
+            <span class="camera-status status-${escapeHtml(camera.status || "unknown")}">
+                ${escapeHtml(statusDisplay)}
+            </span>
+        `;
+    }
+
+    function setDashboardLiveStatus(message) {
+        const status = primaryCameraStage.querySelector(
+            "[data-dashboard-live-status]"
+        );
+        if (!status) {
+            return;
+        }
+        status.textContent = message || "";
+        status.hidden = Boolean(activeDashboardLayer) || !message;
+    }
+
+    function getDashboardPlayback(camera) {
+        const playback = camera ? camera.browser_playback || {} : {};
+        return {
+            available: playback.available === true && Boolean(playback.url),
+            path: normalizeText(playback.path, ""),
+            url: normalizeText(playback.url, ""),
+        };
+    }
+
+    function isDashboardPathReady(camera) {
+        const code = normalizeText(camera && camera.camera_code, "").toUpperCase();
+        return Boolean(
+            dashboardMediaStatus.reachable &&
+            code &&
+            dashboardMediaStatus.paths &&
+            dashboardMediaStatus.paths[code] === true
+        );
+    }
+
+    function getDashboardPathDetail(camera) {
+        const code = normalizeText(camera && camera.camera_code, "").toUpperCase();
+        return dashboardMediaStatus.pathDetails[code] || {
+            path: getDashboardPlayback(camera).path,
+            ready: false,
+            reader_count: 0,
+            webrtc_reader_count: 0,
+            transition_state: "unknown",
+        };
+    }
+
+    function updateDashboardMediaDiagnostics(camera, transitionState) {
+        if (!camera) {
+            return;
+        }
+        const detail = getDashboardPathDetail(camera);
+        primaryCameraStage.dataset.mediaCamera = normalizeText(
+            camera.camera_code,
+            ""
+        );
+        primaryCameraStage.dataset.mediaPath = normalizeText(detail.path, "");
+        primaryCameraStage.dataset.mediaPathReady = String(
+            detail.ready === true
+        );
+        primaryCameraStage.dataset.mediaReaderCount = String(
+            Number(detail.reader_count || 0)
+        );
+        primaryCameraStage.dataset.mediaMode = activeDashboardLayer
+            ? activeDashboardLayer.dataset.mediaKind || "none"
+            : "none";
+        primaryCameraStage.dataset.mediaTransitionState = transitionState || (
+            pendingDashboardLayer ? "preloading" : "idle"
+        );
+    }
+
+    async function refreshDashboardMediaStatus(force) {
+        if (!mediaStatusApiUrl) {
+            return dashboardMediaStatus;
+        }
+        if (
+            !force &&
+            Date.now() - dashboardMediaStatusUpdatedAt <
+                DASHBOARD_MEDIA_STATUS_MAX_AGE_MS
+        ) {
+            return dashboardMediaStatus;
+        }
+        if (dashboardMediaStatusPromise) {
+            return dashboardMediaStatusPromise;
+        }
+        const controller = new AbortController();
+        const timeout = window.setTimeout(function () {
+            controller.abort();
+        }, DASHBOARD_MEDIA_STATUS_MAX_AGE_MS);
+        dashboardMediaStatusPromise = fetch(mediaStatusApiUrl, {
+            headers: {"Accept": "application/json"},
+            cache: "no-store",
+            signal: controller.signal,
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (payload) {
+                dashboardMediaStatus = {
+                    reachable: payload.reachable === true,
+                    paths: payload.paths || {},
+                    pathDetails: payload.path_details || {},
+                };
+                if (primaryMediaMode === "live") {
+                    updateDashboardMediaDiagnostics(
+                        getCameraById(selectedCameraId)
+                    );
+                }
+                return dashboardMediaStatus;
+            })
+            .catch(function () {
+                dashboardMediaStatus = {
+                    reachable: false,
+                    paths: {},
+                    pathDetails: {},
+                };
+                return dashboardMediaStatus;
+            })
+            .finally(function () {
+                window.clearTimeout(timeout);
+                dashboardMediaStatusUpdatedAt = Date.now();
+                dashboardMediaStatusPromise = null;
+            });
+        return dashboardMediaStatusPromise;
+    }
+
+    function updateDashboardPreviewDiagnostics() {
+        if (!cameraGrid) {
+            return;
+        }
+        const activeCount = cameraGrid.querySelectorAll(
+            '[data-dashboard-preview-player][data-player-active="true"]'
+        ).length;
+        cameraGrid.dataset.previewVisibleCount = String(
+            dashboardVisiblePreviewCards.size
+        );
+        cameraGrid.dataset.previewActiveWebrtcCount = String(activeCount);
+    }
+
+    function clearDashboardPreviewTimer(card) {
+        const timers = dashboardPreviewTimers.get(card);
+        if (timers) {
+            timers.forEach(function (timer) {
+                window.clearTimeout(timer);
+            });
+            dashboardPreviewTimers.delete(card);
+        }
+    }
+
+    function registerDashboardPreviewTimer(card, timer) {
+        const timers = dashboardPreviewTimers.get(card) || new Set();
+        timers.add(timer);
+        dashboardPreviewTimers.set(card, timers);
+    }
+
+    function setDashboardPreviewState(card, state, message) {
+        const overlay = card.querySelector("[data-dashboard-preview-overlay]");
+        const messageNode = card.querySelector("[data-dashboard-preview-message]");
+        const player = card.querySelector("[data-dashboard-preview-player]");
+        card.dataset.previewState = state;
+        card.dataset.previewActive = String(
+            Boolean(player && player.dataset.playerActive === "true")
+        );
+        if (messageNode && message) {
+            messageNode.textContent = message;
+        }
+        if (overlay) {
+            overlay.classList.toggle("hidden", state === "loaded");
+        }
+        updateDashboardPreviewDiagnostics();
+    }
+
+    function releaseDashboardPreview(card, state, message) {
+        if (!card) {
+            return;
+        }
+        clearDashboardPreviewTimer(card);
+        card.dataset.previewGeneration = String(
+            Number(card.dataset.previewGeneration || 0) + 1
+        );
+        const player = card.querySelector("[data-dashboard-preview-player]");
+        if (player) {
+            player.onload = null;
+            player.onerror = null;
+            window.KRTCMediaPlayer.releaseWebRTC(player);
+            player.hidden = true;
+        }
+        setDashboardPreviewState(
+            card,
+            state || "idle",
+            message || "即時預覽待命"
+        );
+    }
+
+    function releaseAllDashboardPreviews() {
+        if (dashboardPreviewObserver) {
+            dashboardPreviewObserver.disconnect();
+            dashboardPreviewObserver = null;
+        }
+        dashboardVisiblePreviewCards.clear();
+        if (cameraGrid) {
+            cameraGrid.querySelectorAll("[data-dashboard-preview-card]").forEach(
+                function (card) {
+                    releaseDashboardPreview(card, "idle", "即時預覽待命");
+                }
+            );
+        }
+        updateDashboardPreviewDiagnostics();
+    }
+
+    async function verifyDashboardPreviewPlayable(
+        card,
+        camera,
+        generation,
+        baselineReaderCount
+    ) {
+        if (
+            dashboardPageSuspended ||
+            !dashboardVisiblePreviewCards.has(card) ||
+            String(card.dataset.previewGeneration) !== String(generation) ||
+            card.dataset.previewIframeLoaded !== "true"
+        ) {
+            return;
+        }
+        await refreshDashboardMediaStatus(true);
+        if (
+            dashboardPageSuspended ||
+            !dashboardVisiblePreviewCards.has(card) ||
+            String(card.dataset.previewGeneration) !== String(generation)
+        ) {
+            return;
+        }
+        const detail = getDashboardPathDetail(camera);
+        const hasNewReader = Number(detail.webrtc_reader_count || 0) >=
+            baselineReaderCount + 1;
+        const stableSamples = detail.ready === true && hasNewReader
+            ? Number(card.dataset.previewStableSamples || 0) + 1
+            : 0;
+        card.dataset.previewStableSamples = String(stableSamples);
+        setDashboardPreviewState(card, "warming_up", "正在載入即時預覽");
+        if (stableSamples >= DASHBOARD_WEBRTC_STABLE_SAMPLES) {
+            clearDashboardPreviewTimer(card);
+            setDashboardPreviewState(card, "loaded", "即時預覽已連線");
+            return;
+        }
+        const timer = window.setTimeout(function () {
+            verifyDashboardPreviewPlayable(
+                card,
+                camera,
+                generation,
+                baselineReaderCount
+            );
+        }, DASHBOARD_WEBRTC_WARMUP_POLL_MS);
+        registerDashboardPreviewTimer(card, timer);
+    }
+
+    async function activateDashboardPreview(card) {
+        if (
+            dashboardPageSuspended ||
+            !card ||
+            !dashboardVisiblePreviewCards.has(card) ||
+            ["connecting", "warming_up", "loaded"].includes(
+                card.dataset.previewState
+            )
+        ) {
+            return;
+        }
+        const camera = getCameraById(card.dataset.cameraId);
+        const playback = getDashboardPlayback(camera);
+        if (!camera || !playback.available) {
+            releaseDashboardPreview(
+                card,
+                "unavailable",
+                "即時預覽暫時無法使用"
+            );
+            return;
+        }
+        const generation = Number(card.dataset.previewGeneration || 0) + 1;
+        card.dataset.previewGeneration = String(generation);
+        card.dataset.previewPath = playback.path;
+        card.dataset.previewMediaMode = "webrtc";
+        setDashboardPreviewState(card, "connecting", "正在連接即時預覽");
+        await refreshDashboardMediaStatus(false);
+        if (
+            dashboardPageSuspended ||
+            !dashboardVisiblePreviewCards.has(card) ||
+            String(card.dataset.previewGeneration) !== String(generation)
+        ) {
+            return;
+        }
+        if (!isDashboardPathReady(camera)) {
+            releaseDashboardPreview(
+                card,
+                "unavailable",
+                "即時預覽暫時無法使用"
+            );
+            return;
+        }
+        const player = card.querySelector("[data-dashboard-preview-player]");
+        const baselineReaderCount = Number(
+            getDashboardPathDetail(camera).webrtc_reader_count || 0
+        );
+        card.dataset.previewIframeLoaded = "false";
+        card.dataset.previewStableSamples = "0";
+        card.dataset.previewBaselineReaderCount = String(baselineReaderCount);
+        player.hidden = false;
+        player.onload = function () {
+            card.dataset.previewIframeLoaded = "true";
+            verifyDashboardPreviewPlayable(
+                card,
+                camera,
+                generation,
+                baselineReaderCount
+            );
+        };
+        player.onerror = function () {
+            releaseDashboardPreview(
+                card,
+                "unavailable",
+                "即時預覽暫時無法使用"
+            );
+        };
+        window.KRTCMediaPlayer.activateWebRTC(player, playback.url);
+        const timer = window.setTimeout(function () {
+            if (
+                String(card.dataset.previewGeneration) === String(generation) &&
+                card.dataset.previewState !== "loaded"
+            ) {
+                releaseDashboardPreview(
+                    card,
+                    "unavailable",
+                    "即時預覽連線逾時"
+                );
+            }
+        }, DASHBOARD_PREVIEW_READY_TIMEOUT_MS);
+        registerDashboardPreviewTimer(card, timer);
+        updateDashboardPreviewDiagnostics();
+    }
+
+    function observeDashboardPreviews() {
+        if (!cameraGrid || dashboardPageSuspended) {
+            return;
+        }
+        if (dashboardPreviewObserver) {
+            dashboardPreviewObserver.disconnect();
+        }
+        dashboardVisiblePreviewCards.clear();
+        const cards = cameraGrid.querySelectorAll("[data-dashboard-preview-card]");
+        dashboardPreviewObserver = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                const card = entry.target;
+                if (entry.isIntersecting && entry.intersectionRatio > 0) {
+                    dashboardVisiblePreviewCards.add(card);
+                    activateDashboardPreview(card);
+                    return;
+                }
+                dashboardVisiblePreviewCards.delete(card);
+                releaseDashboardPreview(card, "idle", "即時預覽待命");
+            });
+            updateDashboardPreviewDiagnostics();
+        }, {root: cameraGrid, threshold: 0.1});
+        cards.forEach(function (card) {
+            dashboardPreviewObserver.observe(card);
+        });
+        updateDashboardPreviewDiagnostics();
+    }
+
+    async function reconcileDashboardPreviews() {
+        if (dashboardPageSuspended || !dashboardVisiblePreviewCards.size) {
+            return;
+        }
+        await refreshDashboardMediaStatus(false);
+        dashboardVisiblePreviewCards.forEach(function (card) {
+            const camera = getCameraById(card.dataset.cameraId);
+            if (
+                card.dataset.previewState === "loaded" &&
+                !isDashboardPathReady(camera)
+            ) {
+                releaseDashboardPreview(
+                    card,
+                    "unavailable",
+                    "即時預覽暫時無法使用"
+                );
+                return;
+            }
+            if (["idle", "unavailable"].includes(card.dataset.previewState)) {
+                activateDashboardPreview(card);
+            }
+        });
+    }
+
+    function getInactiveDashboardLayer() {
+        const layers = Array.from(
+            primaryCameraStage.querySelectorAll("[data-dashboard-live-layer]")
+        );
+        return layers.find(function (layer) {
+            return layer !== activeDashboardLayer;
+        }) || null;
+    }
+
+    function commitDashboardLayer(layer, camera, generation) {
+        if (
+            generation !== dashboardLiveGeneration ||
+            primaryMediaMode !== "live" ||
+            String(selectedCameraId) !== String(camera.id)
+        ) {
+            releaseDashboardLayer(layer);
+            return;
+        }
+        clearDashboardLiveTimeout();
+        clearDashboardWebRTCProbe();
+        const previousLayer = activeDashboardLayer;
+        layer.classList.remove("is-preparing");
+        layer.classList.add("is-active");
+        activeDashboardLayer = layer;
+        pendingDashboardLayer = null;
+        updateDashboardLiveOverlay(camera);
+        setDashboardLiveStatus("");
+        if (previousLayer && previousLayer !== layer) {
+            previousLayer.classList.remove("is-active");
+            releaseDashboardLayer(previousLayer);
+        }
+        updateDashboardMediaDiagnostics(camera, "idle");
+    }
+
+    function prepareDashboardMjpeg(layer, camera, generation) {
+        if (generation !== dashboardLiveGeneration) {
+            return;
+        }
+        clearDashboardLiveTimeout();
+        clearDashboardWebRTCProbe();
+        const fallback = layer.querySelector("[data-dashboard-mjpeg-fallback]");
+        const streamUrl = normalizeText(
+            camera.stream_url,
+            `/api/cameras/${camera.id}/stream/`
+        );
+        releaseDashboardLayer(layer);
+        pendingDashboardLayer = layer;
+        layer.classList.add("is-preparing");
+        layer.dataset.cameraId = String(camera.id);
+        layer.dataset.mediaKind = "mjpeg";
+        layer.dataset.sourceUrl = streamUrl;
+        updateDashboardMediaDiagnostics(camera, "fallback_loading");
+        fallback.hidden = false;
+        fallback.onload = function () {
+            commitDashboardLayer(layer, camera, generation);
+        };
+        fallback.onerror = function () {
+            if (generation !== dashboardLiveGeneration) {
+                return;
+            }
+            releaseDashboardLayer(layer);
+            pendingDashboardLayer = null;
+            if (!activeDashboardLayer) {
+                setDashboardLiveStatus("無法取得即時影像，系統將自動重試");
+            }
+        };
+        window.KRTCMediaPlayer.activateMjpeg(fallback, streamUrl);
+    }
+
+    async function verifyDashboardWebRTCPlayable(
+        layer,
+        camera,
+        generation,
+        baselineReaderCount
+    ) {
+        if (
+            generation !== dashboardLiveGeneration ||
+            pendingDashboardLayer !== layer ||
+            layer.dataset.mediaKind !== "webrtc" ||
+            layer.dataset.iframeLoaded !== "true"
+        ) {
+            return;
+        }
+        await refreshDashboardMediaStatus(true);
+        if (
+            generation !== dashboardLiveGeneration ||
+            pendingDashboardLayer !== layer ||
+            layer.dataset.mediaKind !== "webrtc"
+        ) {
+            return;
+        }
+        const detail = getDashboardPathDetail(camera);
+        const readerCount = Number(detail.webrtc_reader_count || 0);
+        const hasNewReader = readerCount >= baselineReaderCount + 1;
+        const isStable = detail.ready === true && hasNewReader;
+        const stableSamples = isStable
+            ? Number(layer.dataset.stableReaderSamples || 0) + 1
+            : 0;
+        layer.dataset.stableReaderSamples = String(stableSamples);
+        updateDashboardMediaDiagnostics(camera, "warming_up");
+        if (stableSamples >= DASHBOARD_WEBRTC_STABLE_SAMPLES) {
+            commitDashboardLayer(layer, camera, generation);
+            return;
+        }
+        dashboardWebRTCProbeTimer = window.setTimeout(function () {
+            verifyDashboardWebRTCPlayable(
+                layer,
+                camera,
+                generation,
+                baselineReaderCount
+            );
+        }, DASHBOARD_WEBRTC_WARMUP_POLL_MS);
+    }
+
+    function prepareDashboardWebRTC(layer, camera, generation) {
+        const playback = getDashboardPlayback(camera);
+        if (!playback.available || !isDashboardPathReady(camera)) {
+            prepareDashboardMjpeg(layer, camera, generation);
+            return;
+        }
+        releaseDashboardLayer(layer);
+        pendingDashboardLayer = layer;
+        layer.classList.add("is-preparing");
+        layer.dataset.cameraId = String(camera.id);
+        layer.dataset.mediaKind = "webrtc";
+        layer.dataset.sourceUrl = playback.url;
+        layer.dataset.iframeLoaded = "false";
+        layer.dataset.stableReaderSamples = "0";
+        const baselineReaderCount = Number(
+            getDashboardPathDetail(camera).webrtc_reader_count || 0
+        );
+        layer.dataset.baselineReaderCount = String(baselineReaderCount);
+        const player = layer.querySelector("[data-dashboard-webrtc-player]");
+        player.hidden = false;
+        player.onload = function () {
+            layer.dataset.iframeLoaded = "true";
+            verifyDashboardWebRTCPlayable(
+                layer,
+                camera,
+                generation,
+                baselineReaderCount
+            );
+        };
+        player.onerror = function () {
+            prepareDashboardMjpeg(layer, camera, generation);
+        };
+        updateDashboardMediaDiagnostics(camera, "preloading");
+        window.KRTCMediaPlayer.activateWebRTC(player, playback.url);
+        dashboardLiveTimeout = window.setTimeout(function () {
+            if (pendingDashboardLayer === layer) {
+                prepareDashboardMjpeg(layer, camera, generation);
+            }
+        }, DASHBOARD_STREAM_READY_TIMEOUT_MS);
+    }
+
+    async function startDashboardLiveTransition(camera, forceStatusRefresh) {
+        if (dashboardPageSuspended) {
+            return;
+        }
+        const generation = dashboardLiveGeneration + 1;
+        dashboardLiveGeneration = generation;
+        clearDashboardLiveTimeout();
+        const nextLayer = getInactiveDashboardLayer();
+        if (!nextLayer) {
+            return;
+        }
+        pendingDashboardLayer = nextLayer;
+        if (!activeDashboardLayer) {
+            setDashboardLiveStatus("正在連接即時影像");
+        }
+        await refreshDashboardMediaStatus(forceStatusRefresh);
+        if (generation !== dashboardLiveGeneration || dashboardPageSuspended) {
+            return;
+        }
+        prepareDashboardWebRTC(nextLayer, camera, generation);
+    }
+
     function renderLiveCamera(camera) {
         if (!camera) {
+            releaseDashboardLiveView();
             primaryCameraStage.innerHTML = `
                 <div class="empty-camera-stage">
                     <strong>尚未選取事件攝影機</strong>
@@ -332,39 +1010,56 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        const streamUrl = normalizeText(
-            camera.stream_url,
-            `/api/cameras/${camera.id}/stream/`
-        );
-        const code = normalizeText(camera.camera_code, `CAM-${camera.id}`);
-        const name = normalizeText(camera.name, code);
-        const area = normalizeText(camera.area, "未設定區域");
-        const statusDisplay = normalizeText(camera.status_display, "狀態未知");
+        ensureDashboardLiveStage();
+        const playback = getDashboardPlayback(camera);
+        const expectedKind = playback.available && isDashboardPathReady(camera)
+            ? "webrtc"
+            : "mjpeg";
+        const expectedSource = expectedKind === "webrtc"
+            ? playback.url
+            : normalizeText(camera.stream_url, `/api/cameras/${camera.id}/stream/`);
+        if (
+            activeDashboardLayer &&
+            activeDashboardLayer.dataset.cameraId === String(camera.id) &&
+            activeDashboardLayer.dataset.mediaKind === expectedKind &&
+            activeDashboardLayer.dataset.sourceUrl === expectedSource
+        ) {
+            updateDashboardLiveOverlay(camera);
+            return;
+        }
+        startDashboardLiveTransition(camera, true);
+    }
 
-        primaryCameraStage.innerHTML = `
-            <img src="${escapeHtml(streamUrl)}" alt="${escapeHtml(code)}" id="primaryCameraStream">
-            <div class="primary-camera-overlay">
-                <div>
-                    <h3>${escapeHtml(code)}｜${escapeHtml(name)}</h3>
-                    <p>${escapeHtml(area)}</p>
-                </div>
-                <span class="camera-status status-${escapeHtml(camera.status || "unknown")}">
-                    ${escapeHtml(statusDisplay)}
-                </span>
-            </div>
-        `;
-
-        const stream = document.getElementById("primaryCameraStream");
-
-        if (stream) {
-            stream.addEventListener("error", function () {
-                primaryCameraStage.innerHTML = `
-                    <div class="primary-camera-error">
-                        <strong>${escapeHtml(code)}</strong>
-                        <span>無法取得即時影像</span>
-                    </div>
-                `;
-            });
+    async function reconcileDashboardLiveMedia() {
+        if (
+            dashboardPageSuspended ||
+            primaryMediaMode !== "live" ||
+            pendingDashboardLayer
+        ) {
+            return;
+        }
+        const camera = getCameraById(selectedCameraId);
+        if (!camera) {
+            return;
+        }
+        if (!activeDashboardLayer) {
+            startDashboardLiveTransition(camera, true);
+            return;
+        }
+        await refreshDashboardMediaStatus(true);
+        if (primaryMediaMode !== "live" || pendingDashboardLayer) {
+            return;
+        }
+        const playback = getDashboardPlayback(camera);
+        const shouldUseWebRTC = playback.available && isDashboardPathReady(camera);
+        const currentKind = activeDashboardLayer.dataset.mediaKind;
+        const currentSource = activeDashboardLayer.dataset.sourceUrl;
+        if (
+            (shouldUseWebRTC &&
+                (currentKind !== "webrtc" || currentSource !== playback.url)) ||
+            (!shouldUseWebRTC && currentKind === "webrtc")
+        ) {
+            startDashboardLiveTransition(camera, false);
         }
     }
 
@@ -603,34 +1298,12 @@ document.addEventListener("DOMContentLoaded", function () {
                     camera.area,
                     camera.status,
                     camera.stream_url,
+                    camera.browser_playback
+                        ? camera.browser_playback.url || ""
+                        : "",
                 ];
             })
         );
-    }
-
-    function bindThumbnailStreamHandlers() {
-        document.querySelectorAll("[data-dashboard-camera-stream]").forEach(function (stream) {
-            const screen = stream.closest(".camera-thumbnail-screen");
-            const overlay = screen
-                ? screen.querySelector("[data-dashboard-stream-overlay]")
-                : null;
-
-            stream.addEventListener("load", function () {
-                if (overlay) {
-                    overlay.classList.add("hidden");
-                }
-            });
-
-            stream.addEventListener("error", function () {
-                if (overlay) {
-                    overlay.classList.remove("hidden");
-                    overlay.innerHTML = `
-                        <span>${escapeHtml(stream.alt || "攝影機")}</span>
-                        <small>無法取得即時影像</small>
-                    `;
-                }
-            });
-        });
     }
 
     function renderCameraGrid(cameras) {
@@ -642,6 +1315,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         cameraSignature = newSignature;
+        releaseAllDashboardPreviews();
         cameraGrid.innerHTML = "";
 
         if (!cameras.length) {
@@ -654,25 +1328,32 @@ document.addEventListener("DOMContentLoaded", function () {
             button.type = "button";
             button.className = "camera-thumbnail";
             button.dataset.cameraCard = "";
+            button.dataset.dashboardPreviewCard = "";
             button.dataset.cameraId = camera.id;
+            button.dataset.previewState = "idle";
+            button.dataset.previewActive = "false";
 
-            const streamUrl = normalizeText(
-                camera.stream_url,
-                `/api/cameras/${camera.id}/stream/`
-            );
             const code = normalizeText(camera.camera_code, `CAM-${camera.id}`);
             const name = normalizeText(camera.name, code);
+            const statusDisplay = normalizeText(camera.status_display, "狀態未知");
+            const playback = getDashboardPlayback(camera);
+            button.dataset.previewCamera = code;
 
             button.innerHTML = `
                 <div class="camera-thumbnail-screen">
-                    <img
-                        src="${escapeHtml(streamUrl)}"
-                        alt="${escapeHtml(code)}"
-                        data-dashboard-camera-stream
-                    >
-                    <div class="thumbnail-overlay" data-dashboard-stream-overlay>
+                    <iframe
+                        class="camera-thumbnail-player"
+                        data-dashboard-preview-player
+                        data-player-url="${escapeHtml(playback.url)}"
+                        data-player-active="false"
+                        title="${escapeHtml(code)} 即時預覽"
+                        tabindex="-1"
+                        allow="autoplay"
+                        hidden
+                    ></iframe>
+                    <div class="thumbnail-overlay" data-dashboard-preview-overlay>
                         <span>${escapeHtml(code)}</span>
-                        <small>載入即時影像中</small>
+                        <small data-dashboard-preview-message>${escapeHtml(statusDisplay)}</small>
                     </div>
                 </div>
                 <div class="camera-thumbnail-info">
@@ -689,8 +1370,8 @@ document.addEventListener("DOMContentLoaded", function () {
             cameraGrid.appendChild(button);
         });
 
-        bindThumbnailStreamHandlers();
         updateCameraSelectionClasses();
+        observeDashboardPreviews();
     }
 
     function stopInferenceHostDetailRotation() {
@@ -1680,4 +2361,26 @@ document.addEventListener("DOMContentLoaded", function () {
 
     fetchDashboardLiveState();
     window.setInterval(fetchDashboardLiveState, 1000);
+    window.setInterval(
+        reconcileDashboardLiveMedia,
+        DASHBOARD_MEDIA_STATUS_REFRESH_MS
+    );
+    window.setInterval(
+        reconcileDashboardPreviews,
+        DASHBOARD_MEDIA_STATUS_REFRESH_MS
+    );
+    window.addEventListener("pagehide", function () {
+        dashboardPageSuspended = true;
+        releaseAllDashboardPreviews();
+        releaseDashboardLiveView();
+    });
+    window.addEventListener("pageshow", function (event) {
+        if (!event.persisted) {
+            return;
+        }
+        dashboardPageSuspended = false;
+        renderedPrimaryKey = "";
+        observeDashboardPreviews();
+        renderPrimaryMedia(true);
+    });
 });

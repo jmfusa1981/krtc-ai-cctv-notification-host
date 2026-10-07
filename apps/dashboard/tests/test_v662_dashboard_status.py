@@ -55,5 +55,8 @@ class V662DashboardStatusTests(TestCase):
         )
         summary = get_inference_host_summary()
         self.assertEqual(summary["abnormal_host_codes"], ["INF-002"])
-        self.assertEqual(summary["abnormal_host_names"], ["Physical Inference Host 2"])
+        self.assertEqual(
+            summary["abnormal_host_names"],
+            ["Physical Inference Host 2（無法連線）"],
+        )
         self.assertEqual(summary["detail_label"], "1 台主機異常")

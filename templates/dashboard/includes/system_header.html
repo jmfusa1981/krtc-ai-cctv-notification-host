@@ -115,6 +115,15 @@
     </nav>
 
     <div class="system-header__controls">
+        {% if current_page != "dashboard" %}
+            <a
+                href="{% url 'dashboard:home' %}"
+                class="system-header__button system-header__button--home"
+            >
+                主頁面
+            </a>
+        {% endif %}
+
         <span
             class="system-header__user"
             title="目前登入角色與帳號"

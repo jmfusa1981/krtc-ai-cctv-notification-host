@@ -196,7 +196,16 @@
                 </div>
             </aside>
 
-            <section class="monitor-grid grid-4" id="monitorGrid">
+            {{ monitor_profile_layout_map|json_script:"monitorProfileLayoutMap" }}
+            <section
+                class="monitor-grid grid-4"
+                id="monitorGrid"
+                data-media-mode="{{ monitor_media_mode|default:'legacy' }}"
+                data-mosaic-fallback="{{ monitor_mosaic_fallback|yesno:'true,false' }}"
+                data-media-status-url="{% url 'cameras:camera_media_status_api' %}"
+                data-media-profile-url="{% url 'cameras:camera_media_profile_api' %}"
+                data-media-transition-ack-url="{% url 'cameras:camera_media_transition_ack_api' %}"
+            >
                 {% for camera in cameras %}
                     <div
                         class="monitor-slot is-occupied"
@@ -212,9 +221,43 @@
                         data-monitor-camera-card
                         data-camera-id="{{ camera.id }}"
                         data-camera-code="{{ camera.camera_code }}"
-                        data-check-url="{% url 'cameras:camera_stream_check' camera.id %}"
+                        data-check-url="{% if not camera.browser_playback.available %}{% url 'cameras:camera_stream_check' camera.id %}{% endif %}"
                     >
                         <div class="monitor-camera-screen">
+                            {% if camera.browser_playback.available %}
+                            <iframe
+                                title="{{ camera.camera_code }} WebRTC 即時影像"
+                                class="camera-stream camera-webrtc-player"
+                                data-mediamtx-player
+                                data-player-role="current"
+                                data-player-url="{{ camera.browser_playback.player_url }}"
+                                data-player-active="false"
+                                allow="autoplay; fullscreen"
+                            ></iframe>
+                            <iframe
+                                title="{{ camera.camera_code }} WebRTC 預載影像"
+                                class="camera-stream camera-webrtc-player"
+                                data-mediamtx-player
+                                data-player-role="next"
+                                data-player-url=""
+                                data-player-active="false"
+                                aria-hidden="true"
+                                allow="autoplay; fullscreen"
+                                hidden
+                            ></iframe>
+                            {% if monitor_mosaic_fallback %}
+                            <img
+                                alt="{{ camera.camera_code }} fallback"
+                                class="camera-stream"
+                                data-camera-stream
+                                data-media-fallback
+                                data-stream-url="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
+                                data-stream-active="false"
+                                hidden
+                            >
+                            {% endif %}
+                            {% else %}
+                            {% if monitor_mosaic_fallback or monitor_media_mode == "legacy" %}
                             <img
                                 alt="{{ camera.camera_code }}"
                                 class="camera-stream"
@@ -222,6 +265,13 @@
                                 data-stream-url="{% url 'cameras:camera_mjpeg_stream' camera.id %}"
                                 data-stream-active="false"
                             >
+                            {% else %}
+                            <div class="camera-stream-unavailable" data-stream-unavailable>
+                                <strong>{{ camera.camera_code }}</strong>
+                                <span>Media stream unavailable</span>
+                            </div>
+                            {% endif %}
+                            {% endif %}
 
                             <div class="stream-overlay" data-stream-overlay>
                                 <div>
@@ -285,7 +335,8 @@
         </main>
     </div>
 
-    <script src="{% static 'js/monitor.js' %}?v=20260829-navfix"></script>
+    <script src="{% static 'js/mediamtx_player.js' %}?v=20261007-dashboard-unification"></script>
+    <script src="{% static 'js/monitor.js' %}?v=20261007-dashboard-unification"></script>
 
     <script>
     document.addEventListener("DOMContentLoaded", function () {

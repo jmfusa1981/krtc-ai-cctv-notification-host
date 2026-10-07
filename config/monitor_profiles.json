@@ -1,0 +1,15 @@
+{
+  "default_profile": "grid4",
+  "layout_map": {
+    "1": "single",
+    "4": "grid4",
+    "9": "grid9",
+    "16": "grid16"
+  },
+  "profiles": {
+    "single": {"width": 1920, "height": 1080, "fps": 30},
+    "grid4": {"width": 1280, "height": 720, "fps": 15},
+    "grid9": {"width": 640, "height": 360, "fps": 12},
+    "grid16": {"width": 480, "height": 270, "fps": 10}
+  }
+}

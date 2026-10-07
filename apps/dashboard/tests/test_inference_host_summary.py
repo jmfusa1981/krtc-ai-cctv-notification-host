@@ -49,6 +49,7 @@ class InferenceHostSummaryTests(TestCase):
         summary = get_inference_host_summary()
         self.assertEqual(summary["status_label"], "異常")
         self.assertEqual(summary["abnormal_host_codes"], ["INF-001"])
+        self.assertEqual(summary["hosts"][0]["effective_health"], "unreachable")
 
     def test_health_ok_remains_normal_when_websocket_is_disconnected(self):
         host = self.create_host(code="INF-001")
@@ -61,6 +62,7 @@ class InferenceHostSummaryTests(TestCase):
         summary = get_inference_host_summary()
         self.assertEqual(summary["status_label"], "異常")
         self.assertEqual(summary["abnormal_host_codes"], ["INF-001"])
+        self.assertEqual(summary["hosts"][0]["effective_health"], "unreachable")
 
     def test_stale_health_result_is_abnormal(self):
         host = self.create_host(code="INF-001")
@@ -72,6 +74,7 @@ class InferenceHostSummaryTests(TestCase):
         summary = get_inference_host_summary()
         self.assertEqual(summary["status_label"], "異常")
         self.assertEqual(summary["abnormal_host_codes"], ["INF-001"])
+        self.assertEqual(summary["hosts"][0]["effective_health"], "stale")
 
     def test_only_failed_hosts_are_listed(self):
         first = self.create_host(code="INF-001")
@@ -83,4 +86,7 @@ class InferenceHostSummaryTests(TestCase):
         summary = get_inference_host_summary()
         self.assertEqual(summary["detail_label"], "2 台主機異常")
         self.assertEqual(summary["abnormal_host_codes"], ["INF-002", "INF-003"])
-        self.assertEqual(summary["abnormal_host_names"], ["INF-002", "INF-003"])
+        self.assertEqual(
+            summary["abnormal_host_names"],
+            ["INF-002（無法連線）", "INF-003（無法連線）"],
+        )

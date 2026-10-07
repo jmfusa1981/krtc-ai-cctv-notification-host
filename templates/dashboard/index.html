@@ -13,6 +13,7 @@
 
 <body
     data-dashboard-live-state-url="{% url 'dashboard:dashboard_live_state_api' %}"
+    data-dashboard-media-status-url="{% url 'cameras:camera_media_status_api' %}"
     data-close-active-alerts-url="{% url 'events:close_active_alarm_events_api' %}"
     data-confirm-event-url-prefix="/api/events/"
     data-manual-broadcast-url-prefix="/api/notifications/broadcast/event/"
@@ -288,6 +289,7 @@
         <button type="button" id="dashboardActionToastClose" aria-label="關閉通知">×</button>
     </aside>
 
-    <script src="{% static 'js/dashboard.js' %}?v=6.6.5.3-p2"></script>
+    <script src="{% static 'js/mediamtx_player.js' %}?v=20261007-dashboard-unification"></script>
+    <script src="{% static 'js/dashboard.js' %}?v=20261007-dashboard-unification"></script>
 </body>
 </html>

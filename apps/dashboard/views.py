@@ -13,6 +13,14 @@ from django.utils.dateparse import parse_date
 from apps.events.services.snapshot_localizer import local_snapshot_url
 
 from apps.accounts.permissions import can_manage_frontend_settings, can_process_events
+from apps.ai_bridge.services.health_state import (
+    HEALTHY,
+    STALE,
+    effective_inference_health,
+    inference_health_stale_seconds,
+)
+from apps.cameras.mediamtx import get_camera_playback
+from apps.cameras.monitor_profiles import load_monitor_profile_config
 from apps.notifications.services import (
     PLAYBACK_MODE_PJSIP,
     PLAYBACK_MODE_SIMULATION,
@@ -383,11 +391,40 @@ def event_snapshot_list(request):
 @login_required
 def monitor_wall(request):
     cameras = []
+    configured_media_mode = getattr(
+        settings,
+        "KRTC_MONITOR_MEDIA_MODE",
+        "legacy",
+    )
+    monitor_media_mode = (
+        "mediamtx"
+        if configured_media_mode == "mediamtx"
+        and getattr(settings, "KRTC_MEDIAMTX_ENABLED", False)
+        else "legacy"
+    )
+    monitor_mosaic_fallback = getattr(
+        settings,
+        "KRTC_MONITOR_MOSAIC_FALLBACK",
+        True,
+    )
+    monitor_profile_config = load_monitor_profile_config()
 
     if Camera is not None:
         cameras = Camera.objects.filter(is_active=True).order_by("id")
 
-    return render(request, "dashboard/monitor.html", {"cameras": cameras})
+        for camera in cameras:
+            camera.browser_playback = get_camera_playback(camera)
+
+    return render(
+        request,
+        "dashboard/monitor.html",
+        {
+            "cameras": cameras,
+            "monitor_media_mode": monitor_media_mode,
+            "monitor_mosaic_fallback": monitor_mosaic_fallback,
+            "monitor_profile_layout_map": monitor_profile_config["layout_map"],
+        },
+    )
 
 
 @login_required
@@ -781,12 +818,7 @@ def get_speaker_summary():
 
 
 def get_inference_host_summary():
-    """Return the station inference-host summary from the real GET /health result.
-
-    The Dashboard must not infer API health from the WebSocket connection or from
-    the generic InferenceHost.status field. Each active host is healthy only when
-    its InferenceConnectionState contains a fresh ``health_status == "ok"`` result.
-    """
+    """依共用GET /health有效狀態產生Dashboard推論主機摘要。"""
     default_summary = {
         "configured_count": 0,
         "healthy_count": 0,
@@ -797,6 +829,8 @@ def get_inference_host_summary():
         "detail_label": "尚未設定推論主機",
         "abnormal_host_codes": [],
         "abnormal_host_names": [],
+        "stale_threshold": inference_health_stale_seconds(),
+        "hosts": [],
     }
 
     if InferenceHost is None:
@@ -810,40 +844,30 @@ def get_inference_host_summary():
     if not hosts:
         return default_summary
 
-    stale_seconds = max(
-        1,
-        int(getattr(settings, "INFERENCE_HEALTH_STALE_SECONDS", 20)),
-    )
-    stale_before = timezone.now() - timedelta(seconds=stale_seconds)
-
     abnormal_host_codes = []
     abnormal_host_names = []
     healthy_count = 0
+    health_diagnostics = []
+    effective_labels = {
+        STALE: "狀態逾時",
+        "unreachable": "無法連線",
+    }
 
     for host in hosts:
         host_code = host.host_code or host.name or f"HOST-{host.pk}"
         host_name = (host.name or host_code).strip()
-        try:
-            state = host.connection_state
-        except Exception:
-            state = None
+        health = effective_inference_health(host)
+        health_diagnostics.append(health.as_dict())
 
-        health_status = str(
-            getattr(state, "health_status", "unknown") or "unknown"
-        ).strip().lower()
-        checked_at = getattr(state, "last_heartbeat_at", None)
-
-        is_fresh_ok = (
-            health_status == "ok"
-            and checked_at is not None
-            and checked_at >= stale_before
-        )
-
-        if is_fresh_ok:
+        if health.effective_health == HEALTHY:
             healthy_count += 1
         else:
             abnormal_host_codes.append(str(host_code))
-            abnormal_host_names.append(str(host_name))
+            state_label = effective_labels.get(
+                health.effective_health,
+                "狀態未知",
+            )
+            abnormal_host_names.append(f"{host_name}（{state_label}）")
 
     configured_count = len(hosts)
     abnormal_count = len(abnormal_host_codes)
@@ -861,6 +885,8 @@ def get_inference_host_summary():
         ),
         "abnormal_host_codes": abnormal_host_codes,
         "abnormal_host_names": abnormal_host_names,
+        "stale_threshold": inference_health_stale_seconds(),
+        "hosts": health_diagnostics,
     }
 
 def get_recent_broadcast_logs():
@@ -900,6 +926,7 @@ def get_pending_broadcast_log_count():
 def serialize_camera(camera):
     camera_id = getattr(camera, "id", None)
     status = getattr(camera, "status", "unknown")
+    playback = get_camera_playback(camera)
 
     return {
         "id": camera_id,
@@ -914,6 +941,13 @@ def serialize_camera(camera):
         ),
         "description": getattr(camera, "description", ""),
         "stream_url": f"/api/cameras/{camera_id}/stream/",
+        "browser_playback": {
+            "available": playback.available,
+            "kind": "mediamtx_webrtc" if playback.available else None,
+            "url": playback.player_url if playback.available else None,
+            "path": playback.path_name if playback.available else None,
+            "reason": playback.reason,
+        },
     }
 
 

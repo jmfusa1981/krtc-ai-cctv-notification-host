@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const buttons = document.querySelectorAll(".grid-mode-btn");
     const cameraCards = document.querySelectorAll("[data-monitor-camera-card]");
     const cameraStreams = document.querySelectorAll("[data-camera-stream]");
+    const webrtcPlayers = document.querySelectorAll("[data-mediamtx-player]");
     const monitorContent = document.getElementById("monitorContent");
     const cameraSidebar = document.getElementById("cameraSidebar");
     const cameraTreeToggle = document.getElementById("cameraTreeToggle");
@@ -28,6 +29,27 @@ document.addEventListener("DOMContentLoaded", function () {
     const dismissMonitorEventAlert = document.getElementById("dismissMonitorEventAlert");
     const monitorDateTime = document.getElementById("monitorDateTime");
     const backDashboardLink = document.querySelector(".back-dashboard-link");
+    const monitorMediaMode = monitorGrid
+        ? monitorGrid.dataset.mediaMode || "legacy"
+        : "legacy";
+    const mediaStatusUrl = monitorGrid
+        ? monitorGrid.dataset.mediaStatusUrl || ""
+        : "";
+    const mediaProfileUrl = monitorGrid
+        ? monitorGrid.dataset.mediaProfileUrl || ""
+        : "";
+    const mediaTransitionAckUrl = monitorGrid
+        ? monitorGrid.dataset.mediaTransitionAckUrl || ""
+        : "";
+    const profileLayoutMapElement = document.getElementById(
+        "monitorProfileLayoutMap"
+    );
+    const monitorProfileLayoutMap = profileLayoutMapElement
+        ? JSON.parse(profileLayoutMapElement.textContent)
+        : {};
+    const csrfTokenInput = document.querySelector(
+        'input[name="csrfmiddlewaretoken"]'
+    );
     const MAX_SLOT_COUNT = 16;
     let monitorSlots = [];
     let selectedSlot = null;
@@ -41,16 +63,37 @@ document.addEventListener("DOMContentLoaded", function () {
     let streamActivationGeneration = 0;
     let monitorClockTimer = null;
     let healthCheckTimer = null;
+    let monitorMediaRefreshTimer = null;
+    let monitorProfileSwitchTimer = null;
+    let monitorTransitionPollTimer = null;
+    let lastRequestedMonitorProfile = "";
+    let pendingRequestedMonitorProfile = "";
+    let monitorTransitionRequestDeadline = 0;
+    let activeTransitionId = "";
+    let acknowledgedTransitionId = "";
+    let transitionSwapInFlight = false;
+    let transitionWasObserved = false;
     let monitorPageExiting = false;
     let mosaicOrderKey = "";
     let mosaicCameraOrder = [];
+    let monitorMediaStatus = null;
+    let monitorMediaStatusPromise = null;
     const STREAM_ACTIVATION_STAGGER_MS = 200;
     const STREAM_IDLE_RELEASE_MS = 15000;
     const EVENT_HIGHLIGHT_DURATION_MS = 8000;
     const STREAM_RELEASE_PLACEHOLDER =
         "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
     const streamReleaseTimers = new Map();
+    const webrtcReconnectTimers = new Map();
+    const webrtcRetryCounts = new Map();
     const healthCheckControllers = new Map();
+    const WEBRTC_RECONNECT_BASE_MS = 2000;
+    const WEBRTC_RECONNECT_MAX_MS = 15000;
+    const WEBRTC_MAX_RETRIES = 3;
+    const MEDIA_STATUS_REFRESH_MS = 5000;
+    const MONITOR_PROFILE_SWITCH_DEBOUNCE_MS = 1500;
+    const MONITOR_PROFILE_TRANSITION_POLL_MS = 500;
+    const MONITOR_PROFILE_TRANSITION_WAIT_MS = 12000;
 
     if (!monitorGrid || buttons.length === 0) {
         return;
@@ -710,7 +753,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function isMosaicMode() {
-        return currentGridSize === 9 || currentGridSize === 16;
+        return monitorMediaMode !== "mediamtx"
+            && (currentGridSize === 9 || currentGridSize === 16);
     }
 
     function getMosaicOrderKey() {
@@ -1018,7 +1062,159 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function hasExistingStream(stream) {
-        return Boolean(stream && stream.getAttribute("src"));
+        return window.KRTCMediaPlayer.hasMjpegSource(stream);
+    }
+
+    function hasExistingWebRTCPlayer(player) {
+        return window.KRTCMediaPlayer.hasWebRTCSource(player);
+    }
+
+    function getCurrentWebRTCPlayer(card) {
+        return card
+            ? card.querySelector('[data-mediamtx-player][data-player-role="current"]')
+            : null;
+    }
+
+    function getNextWebRTCPlayer(card) {
+        return card
+            ? card.querySelector('[data-mediamtx-player][data-player-role="next"]')
+            : null;
+    }
+
+    function clearWebRTCReconnect(player) {
+        if (!player || !webrtcReconnectTimers.has(player)) {
+            return;
+        }
+        window.clearTimeout(webrtcReconnectTimers.get(player));
+        webrtcReconnectTimers.delete(player);
+    }
+
+    function activateWebRTCPlayer(card, player) {
+        if (!player) {
+            return;
+        }
+        const playerUrl = player.dataset.playerUrl;
+        if (!playerUrl) {
+            return;
+        }
+        clearWebRTCReconnect(player);
+        player.dataset.playerActive = "true";
+        player.hidden = player.dataset.fallbackActive === "true";
+
+        if (hasExistingWebRTCPlayer(player)) {
+            if (card.classList.contains("stream-loaded")) {
+                hideOverlay(card);
+            }
+            return;
+        }
+
+        setCardState(card, "loading");
+        setOverlay(
+            card,
+            "",
+            card.dataset.cameraCode || "CAMERA",
+            "Loading stream...",
+            "正在連接MediaMTX WebRTC串流"
+        );
+        window.KRTCMediaPlayer.activateWebRTC(player, playerUrl);
+    }
+
+    function releaseWebRTCPlayer(player) {
+        if (!player) {
+            return;
+        }
+        clearWebRTCReconnect(player);
+        player.dataset.playerActive = "false";
+        window.KRTCMediaPlayer.releaseWebRTC(player);
+    }
+
+    function releaseFallbackStream(card) {
+        const fallback = card
+            ? card.querySelector("[data-media-fallback]")
+            : null;
+        if (!fallback) {
+            return;
+        }
+        fallback.dataset.streamActive = "false";
+        fallback.dataset.streamProfile = "";
+        window.KRTCMediaPlayer.releaseMjpeg(fallback);
+        fallback.hidden = true;
+    }
+
+    function activateCameraFallback(card, player) {
+        const fallback = card.querySelector("[data-media-fallback]");
+        if (!fallback || !fallback.dataset.streamUrl) {
+            setCardState(card, "error");
+            setStatusBadge(card, "UNAVAILABLE", "error");
+            setOverlay(
+                card,
+                "error",
+                card.dataset.cameraCode || "CAMERA",
+                "Media stream unavailable",
+                "WebRTC端點無法連線且未啟用MJPEG fallback"
+            );
+            return;
+        }
+
+        if (
+            player.dataset.fallbackActive === "true" &&
+            hasExistingStream(fallback)
+        ) {
+            fallback.dataset.streamActive = "true";
+            fallback.hidden = false;
+            if (card.classList.contains("stream-loaded")) {
+                hideOverlay(card);
+            }
+            return;
+        }
+
+        releaseWebRTCPlayer(player);
+        player.hidden = true;
+        player.dataset.fallbackActive = "true";
+        fallback.hidden = false;
+        fallback.dataset.streamActive = "true";
+        fallback.dataset.streamProfile = getMonitorStreamProfile();
+        setCardState(card, "loading");
+        setOverlay(
+            card,
+            "warning",
+            card.dataset.cameraCode || "CAMERA",
+            "Loading fallback stream...",
+            "WebRTC暫時無法連線，改用MJPEG fallback"
+        );
+        window.KRTCMediaPlayer.activateMjpeg(
+            fallback,
+            buildMonitorStreamUrl(fallback, fallback.dataset.streamProfile)
+        );
+    }
+
+    function scheduleWebRTCReconnect(player) {
+        if (!player || webrtcReconnectTimers.has(player)) {
+            return;
+        }
+        const retryCount = (webrtcRetryCounts.get(player) || 0) + 1;
+        webrtcRetryCounts.set(player, retryCount);
+        const card = player.closest("[data-monitor-camera-card]");
+        if (retryCount > WEBRTC_MAX_RETRIES) {
+            if (card) {
+                activateCameraFallback(card, player);
+            }
+            return;
+        }
+        const reconnectDelay = Math.min(
+            WEBRTC_RECONNECT_BASE_MS * (2 ** (retryCount - 1)),
+            WEBRTC_RECONNECT_MAX_MS
+        );
+        const timer = window.setTimeout(function () {
+            webrtcReconnectTimers.delete(player);
+            const slot = card ? card.closest("[data-monitor-slot]") : null;
+            if (!card || !slot || slot.hidden || monitorPageExiting) {
+                return;
+            }
+            releaseWebRTCPlayer(player);
+            activateWebRTCPlayer(card, player);
+        }, reconnectDelay);
+        webrtcReconnectTimers.set(player, timer);
     }
 
     function activateCameraStream(card, profile) {
@@ -1027,6 +1223,20 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         cancelScheduledStreamRelease(card);
+
+        const player = getCurrentWebRTCPlayer(card);
+        if (player) {
+            if (player.dataset.fallbackActive === "true") {
+                const fallback = card.querySelector("[data-media-fallback]");
+                if (hasExistingStream(fallback)) {
+                    fallback.dataset.streamActive = "true";
+                    return;
+                }
+                player.dataset.fallbackActive = "false";
+            }
+            activateWebRTCPlayer(card, player);
+            return;
+        }
 
         const stream = card.querySelector("[data-camera-stream]");
         if (!stream) {
@@ -1066,6 +1276,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
         cancelScheduledStreamRelease(card);
 
+        const player = getCurrentWebRTCPlayer(card);
+        if (player) {
+            card.querySelectorAll("[data-mediamtx-player]").forEach(function (item) {
+                releaseWebRTCPlayer(item);
+                item.hidden = true;
+            });
+            releaseFallbackStream(card);
+            player.dataset.fallbackActive = "false";
+            return;
+        }
+
         const stream = card.querySelector("[data-camera-stream]");
         if (!stream || !hasExistingStream(stream)) {
             return;
@@ -1090,6 +1311,11 @@ document.addEventListener("DOMContentLoaded", function () {
             window.clearTimeout(timer);
         });
         streamReleaseTimers.clear();
+        webrtcReconnectTimers.forEach(function (timer) {
+            window.clearTimeout(timer);
+        });
+        webrtcReconnectTimers.clear();
+        webrtcRetryCounts.clear();
         cameraCards.forEach(releaseCameraStream);
     }
 
@@ -1122,6 +1348,18 @@ document.addEventListener("DOMContentLoaded", function () {
         if (healthCheckTimer !== null) {
             window.clearInterval(healthCheckTimer);
             healthCheckTimer = null;
+        }
+        if (monitorMediaRefreshTimer !== null) {
+            window.clearInterval(monitorMediaRefreshTimer);
+            monitorMediaRefreshTimer = null;
+        }
+        if (monitorProfileSwitchTimer !== null) {
+            window.clearTimeout(monitorProfileSwitchTimer);
+            monitorProfileSwitchTimer = null;
+        }
+        if (monitorTransitionPollTimer !== null) {
+            window.clearTimeout(monitorTransitionPollTimer);
+            monitorTransitionPollTimer = null;
         }
     }
 
@@ -1158,9 +1396,14 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         const stream = card.querySelector("[data-camera-stream]");
+        const player = getCurrentWebRTCPlayer(card);
         const key = getStreamReleaseKey(card);
 
-        if (!key || !hasExistingStream(stream) || streamReleaseTimers.has(key)) {
+        if (
+            !key ||
+            (!hasExistingStream(stream) && !hasExistingWebRTCPlayer(player)) ||
+            streamReleaseTimers.has(key)
+        ) {
             return;
         }
 
@@ -1174,6 +1417,378 @@ document.addEventListener("DOMContentLoaded", function () {
         }, STREAM_IDLE_RELEASE_MS);
 
         streamReleaseTimers.set(key, timer);
+    }
+
+    function loadMonitorMediaStatus(forceRefresh) {
+        if (forceRefresh === true && !monitorMediaStatusPromise) {
+            monitorMediaStatus = null;
+        }
+        if (monitorMediaStatus) {
+            return Promise.resolve(monitorMediaStatus);
+        }
+        if (monitorMediaStatusPromise) {
+            return monitorMediaStatusPromise;
+        }
+        if (!mediaStatusUrl) {
+            monitorMediaStatus = {reachable: false, paths: {}};
+            return Promise.resolve(monitorMediaStatus);
+        }
+
+        monitorMediaStatusPromise = fetch(mediaStatusUrl, {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+                "Accept": "application/json",
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (payload) {
+                monitorMediaStatus = {
+                    reachable: payload.reachable === true,
+                    paths: payload.paths && typeof payload.paths === "object"
+                        ? payload.paths
+                        : {},
+                    transition: payload.transition && typeof payload.transition === "object"
+                        ? payload.transition
+                        : null
+                };
+                return monitorMediaStatus;
+            })
+            .catch(function () {
+                monitorMediaStatus = {reachable: false, paths: {}, transition: null};
+                return monitorMediaStatus;
+            })
+            .finally(function () {
+                monitorMediaStatusPromise = null;
+            });
+
+        return monitorMediaStatusPromise;
+    }
+
+    function refreshMonitorMediaStatus() {
+        if (monitorPageExiting || monitorMediaMode !== "mediamtx") {
+            return;
+        }
+        loadMonitorMediaStatus(true).then(function () {
+            if (!monitorPageExiting) {
+                syncMonitorProfileTransition();
+                syncVisibleWebRTCPlayers();
+            }
+        });
+    }
+
+    function isCameraMediaReady(card) {
+        if (!monitorMediaStatus || monitorMediaStatus.reachable !== true) {
+            return false;
+        }
+        const cameraCode = String(card.dataset.cameraCode || "").toUpperCase();
+        return monitorMediaStatus.paths[cameraCode] === true;
+    }
+
+    function scheduleMonitorTransitionPoll() {
+        if (monitorPageExiting || monitorTransitionPollTimer !== null) {
+            return;
+        }
+        monitorTransitionPollTimer = window.setTimeout(function () {
+            monitorTransitionPollTimer = null;
+            refreshMonitorMediaStatus();
+        }, MONITOR_PROFILE_TRANSITION_POLL_MS);
+    }
+
+    function resetNextWebRTCPlayers() {
+        cameraCards.forEach(function (card) {
+            const player = getNextWebRTCPlayer(card);
+            if (!player) {
+                return;
+            }
+            releaseWebRTCPlayer(player);
+            player.dataset.playerUrl = "";
+            player.dataset.transitionId = "";
+            player.dataset.transitionLoaded = "false";
+            player.hidden = true;
+            player.setAttribute("aria-hidden", "true");
+        });
+        activeTransitionId = "";
+        transitionSwapInFlight = false;
+    }
+
+    function getTransitionPairs(transition) {
+        const pairs = [];
+        const cameras = transition && transition.cameras
+            ? transition.cameras
+            : {};
+        Object.keys(cameras).forEach(function (cameraCode) {
+            const camera = cameras[cameraCode];
+            if (!camera.next_path) {
+                return;
+            }
+            const card = Array.from(cameraCards).find(function (item) {
+                return String(item.dataset.cameraCode || "").toUpperCase() === cameraCode;
+            });
+            const currentPlayer = getCurrentWebRTCPlayer(card);
+            const nextPlayer = getNextWebRTCPlayer(card);
+            if (card && currentPlayer && nextPlayer) {
+                const fallback = card.querySelector("[data-media-fallback]");
+                pairs.push({
+                    card,
+                    cameraCode,
+                    camera,
+                    currentPlayer,
+                    nextPlayer,
+                    fallback,
+                    fallbackWasActive: (
+                        currentPlayer.dataset.fallbackActive === "true" &&
+                        hasExistingStream(fallback)
+                    )
+                });
+            }
+        });
+        return pairs;
+    }
+
+    function acknowledgePreparedTransition(transition, pairs) {
+        if (
+            transitionSwapInFlight ||
+            acknowledgedTransitionId === transition.transition_id ||
+            pairs.length !== Number(transition.profile_transition_camera_count || 0) ||
+            pairs.some(function (item) {
+                return (
+                    item.nextPlayer.dataset.transitionLoaded !== "true" ||
+                    item.camera.next_ready !== true ||
+                    Number(item.camera.next_reader_count || 0) < 1
+                );
+            })
+        ) {
+            return;
+        }
+
+        transitionSwapInFlight = true;
+        pairs.forEach(function (item) {
+            item.currentPlayer.dataset.playerRole = "next";
+            item.currentPlayer.hidden = true;
+            item.currentPlayer.setAttribute("aria-hidden", "true");
+            item.nextPlayer.dataset.playerRole = "current";
+            item.nextPlayer.dataset.fallbackActive = "false";
+            item.nextPlayer.hidden = false;
+            item.nextPlayer.setAttribute("aria-hidden", "false");
+            if (item.fallback) {
+                item.fallback.hidden = true;
+            }
+            setCardState(item.card, "loaded");
+            setStatusBadge(item.card, "ONLINE", "online");
+            hideOverlay(item.card);
+        });
+
+        const body = new URLSearchParams({
+            transition_id: transition.transition_id,
+            camera_codes: pairs.map(function (item) {
+                return item.cameraCode;
+            }).join(",")
+        });
+        fetch(mediaTransitionAckUrl, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-CSRFToken": csrfTokenInput.value,
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            body: body.toString()
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error(`Monitor transition ACK HTTP ${response.status}`);
+                }
+                acknowledgedTransitionId = transition.transition_id;
+                pairs.forEach(function (item) {
+                    releaseFallbackStream(item.card);
+                    releaseWebRTCPlayer(item.currentPlayer);
+                    item.currentPlayer.dataset.playerUrl = "";
+                    item.currentPlayer.dataset.transitionId = "";
+                    item.currentPlayer.dataset.transitionLoaded = "false";
+                });
+            })
+            .catch(function (error) {
+                pairs.forEach(function (item) {
+                    releaseWebRTCPlayer(item.nextPlayer);
+                    item.nextPlayer.dataset.playerRole = "next";
+                    item.nextPlayer.hidden = true;
+                    item.nextPlayer.setAttribute("aria-hidden", "true");
+                    item.currentPlayer.dataset.playerRole = "current";
+                    item.currentPlayer.dataset.playerActive = "true";
+                    item.currentPlayer.dataset.fallbackActive = item.fallbackWasActive
+                        ? "true"
+                        : "false";
+                    item.currentPlayer.hidden = item.fallbackWasActive;
+                    item.currentPlayer.setAttribute(
+                        "aria-hidden",
+                        item.fallbackWasActive ? "true" : "false"
+                    );
+                    if (item.fallbackWasActive && item.fallback) {
+                        item.fallback.hidden = false;
+                    }
+                });
+                console.error("Failed to acknowledge monitor transition:", error);
+            })
+            .finally(function () {
+                transitionSwapInFlight = false;
+                scheduleMonitorTransitionPoll();
+            });
+    }
+
+    function prepareMonitorProfileTransition(transition) {
+        if (!transition.transition_id || !mediaTransitionAckUrl || !csrfTokenInput) {
+            return;
+        }
+        if (acknowledgedTransitionId === transition.transition_id) {
+            return;
+        }
+        if (activeTransitionId && activeTransitionId !== transition.transition_id) {
+            resetNextWebRTCPlayers();
+        }
+        activeTransitionId = transition.transition_id;
+        const pairs = getTransitionPairs(transition);
+        pairs.forEach(function (item) {
+            if (
+                !item.camera.next_ready ||
+                !item.camera.next_player_url ||
+                item.nextPlayer.dataset.transitionId === transition.transition_id
+            ) {
+                return;
+            }
+            releaseWebRTCPlayer(item.nextPlayer);
+            item.nextPlayer.dataset.playerUrl = item.camera.next_player_url;
+            item.nextPlayer.dataset.transitionId = transition.transition_id;
+            item.nextPlayer.dataset.transitionLoaded = "false";
+            item.nextPlayer.dataset.playerActive = "true";
+            item.nextPlayer.hidden = false;
+            item.nextPlayer.setAttribute("aria-hidden", "true");
+            item.nextPlayer.src = item.camera.next_player_url;
+        });
+        acknowledgePreparedTransition(transition, pairs);
+    }
+
+    function syncMonitorProfileTransition() {
+        const transition = monitorMediaStatus
+            ? monitorMediaStatus.transition
+            : null;
+        if (!transition) {
+            if (
+                pendingRequestedMonitorProfile &&
+                Date.now() < monitorTransitionRequestDeadline
+            ) {
+                scheduleMonitorTransitionPoll();
+            }
+            return;
+        }
+
+        const state = transition.profile_transition_state || "idle";
+        if (["starting", "preloading", "committing"].includes(state)) {
+            transitionWasObserved = true;
+            scheduleMonitorTransitionPoll();
+        }
+        if (state === "preloading") {
+            prepareMonitorProfileTransition(transition);
+            return;
+        }
+        if (state === "failed" || state === "cancelled") {
+            resetNextWebRTCPlayers();
+            transitionWasObserved = false;
+            if (
+                !pendingRequestedMonitorProfile ||
+                transition.profile_transition_to === pendingRequestedMonitorProfile
+            ) {
+                pendingRequestedMonitorProfile = "";
+                lastRequestedMonitorProfile = "";
+                monitorTransitionRequestDeadline = 0;
+            } else {
+                scheduleMonitorTransitionPoll();
+            }
+            return;
+        }
+        if (state === "idle") {
+            const cameras = transition.cameras || {};
+            cameraCards.forEach(function (card) {
+                const cameraCode = String(card.dataset.cameraCode || "").toUpperCase();
+                const camera = cameras[cameraCode];
+                const player = getCurrentWebRTCPlayer(card);
+                if (
+                    camera &&
+                    player &&
+                    camera.active_player_url &&
+                    !hasExistingWebRTCPlayer(player)
+                ) {
+                    player.dataset.playerUrl = camera.active_player_url;
+                }
+            });
+            if (transitionWasObserved) {
+                pendingRequestedMonitorProfile = "";
+                monitorTransitionRequestDeadline = 0;
+                transitionWasObserved = false;
+                activeTransitionId = "";
+            } else if (
+                pendingRequestedMonitorProfile &&
+                Date.now() < monitorTransitionRequestDeadline
+            ) {
+                scheduleMonitorTransitionPoll();
+            } else {
+                pendingRequestedMonitorProfile = "";
+                monitorTransitionRequestDeadline = 0;
+            }
+        }
+    }
+
+    function syncVisibleWebRTCPlayers() {
+        if (monitorMediaMode !== "mediamtx") {
+            return;
+        }
+
+        if (!monitorMediaStatus) {
+            loadMonitorMediaStatus().then(function () {
+                if (!monitorPageExiting) {
+                    syncMonitorProfileTransition();
+                    syncVisibleWebRTCPlayers();
+                }
+            });
+        }
+
+        monitorSlots.forEach(function (slot) {
+            const card = slot.querySelector("[data-monitor-camera-card]");
+            const player = card
+                ? getCurrentWebRTCPlayer(card)
+                : null;
+
+            if (!card || !player) {
+                return;
+            }
+
+            if (slot.hidden) {
+                scheduleCameraStreamRelease(card);
+                return;
+            }
+
+            cancelScheduledStreamRelease(card);
+            if (!monitorMediaStatus) {
+                setCardState(card, "loading");
+                setOverlay(
+                    card,
+                    "",
+                    card.dataset.cameraCode || "CAMERA",
+                    "Checking MediaMTX stream...",
+                    "正在確認MediaMTX path狀態"
+                );
+                return;
+            }
+            if (isCameraMediaReady(card)) {
+                activateWebRTCPlayer(card, player);
+            } else {
+                activateCameraFallback(card, player);
+            }
+        });
     }
 
     function syncVisibleCameraStreams() {
@@ -1196,8 +1811,14 @@ document.addEventListener("DOMContentLoaded", function () {
             cancelScheduledStreamRelease(card);
 
             const stream = card.querySelector("[data-camera-stream]");
+            const player = getCurrentWebRTCPlayer(card);
+            if (player) {
+                return;
+            }
             if (hasExistingStream(stream)) {
-                stream.dataset.streamActive = "true";
+                if (stream) {
+                    stream.dataset.streamActive = "true";
+                }
                 if (card.classList.contains("stream-loaded")) {
                     hideOverlay(card);
                 }
@@ -1271,6 +1892,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 monitorMosaic.hidden = true;
             }
             monitorGrid.hidden = false;
+            syncVisibleWebRTCPlayers();
             syncVisibleCameraStreams();
         }
 
@@ -1316,6 +1938,52 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
+    function scheduleMonitorProfileSwitch(gridSize) {
+        if (
+            monitorMediaMode !== "mediamtx" ||
+            !mediaProfileUrl ||
+            !csrfTokenInput
+        ) {
+            return;
+        }
+        const profileName = monitorProfileLayoutMap[String(gridSize)] || "";
+        if (!profileName || profileName === lastRequestedMonitorProfile) {
+            return;
+        }
+        if (monitorProfileSwitchTimer !== null) {
+            window.clearTimeout(monitorProfileSwitchTimer);
+        }
+        monitorProfileSwitchTimer = window.setTimeout(function () {
+            monitorProfileSwitchTimer = null;
+            const body = new URLSearchParams({profile: profileName});
+            fetch(mediaProfileUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "X-CSRFToken": csrfTokenInput.value,
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: body.toString()
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error(`Monitor profile HTTP ${response.status}`);
+                    }
+                    lastRequestedMonitorProfile = profileName;
+                    pendingRequestedMonitorProfile = profileName;
+                    monitorTransitionRequestDeadline = (
+                        Date.now() + MONITOR_PROFILE_TRANSITION_WAIT_MS
+                    );
+                    transitionWasObserved = false;
+                    scheduleMonitorTransitionPoll();
+                })
+                .catch(function (error) {
+                    console.error("Failed to switch monitor profile:", error);
+                });
+        }, MONITOR_PROFILE_SWITCH_DEBOUNCE_MS);
+    }
+
     function setGridMode(gridSize) {
         if (isCarouselRunning) {
             stopCarousel();
@@ -1328,6 +1996,7 @@ document.addEventListener("DOMContentLoaded", function () {
         monitorGrid.classList.remove("grid-1", "grid-4", "grid-9", "grid-16");
         monitorGrid.classList.add("grid-" + gridSize);
         renderCurrentCameraGroup();
+        scheduleMonitorProfileSwitch(gridSize);
 
         buttons.forEach(function (btn) {
             if (btn.dataset.grid === gridSize) {
@@ -1396,6 +2065,40 @@ document.addEventListener("DOMContentLoaded", function () {
         if (overlay) {
             overlay.classList.add("hidden");
         }
+    }
+
+    function markWebRTCPlayerLoaded(player) {
+        if (player.dataset.playerActive !== "true") {
+            return;
+        }
+
+        if (player.dataset.playerRole === "next") {
+            player.dataset.transitionLoaded = "true";
+            const transition = monitorMediaStatus
+                ? monitorMediaStatus.transition
+                : null;
+            if (
+                transition &&
+                transition.transition_id === player.dataset.transitionId
+            ) {
+                scheduleMonitorTransitionPoll();
+            }
+            return;
+        }
+
+        const card = player.closest("[data-monitor-camera-card]");
+        if (!card) {
+            return;
+        }
+
+        clearWebRTCReconnect(player);
+        webrtcRetryCounts.delete(player);
+        releaseFallbackStream(card);
+        player.dataset.fallbackActive = "false";
+        player.hidden = false;
+        setCardState(card, "loaded");
+        setStatusBadge(card, "ONLINE", "online");
+        hideOverlay(card);
     }
 
     function markStreamLoaded(imageElement) {
@@ -1581,6 +2284,39 @@ document.addEventListener("DOMContentLoaded", function () {
         }, 15000);
     });
 
+    webrtcPlayers.forEach(function (player) {
+        player.addEventListener("load", function () {
+            markWebRTCPlayerLoaded(player);
+        });
+
+        player.addEventListener("error", function () {
+            if (player.dataset.playerActive !== "true") {
+                return;
+            }
+            if (player.dataset.playerRole === "next") {
+                releaseWebRTCPlayer(player);
+                player.dataset.transitionId = "";
+                player.dataset.transitionLoaded = "false";
+                player.hidden = true;
+                player.setAttribute("aria-hidden", "true");
+                scheduleMonitorTransitionPoll();
+                return;
+            }
+            const card = player.closest("[data-monitor-camera-card]");
+            if (card) {
+                setCardState(card, "warning");
+                setOverlay(
+                    card,
+                    "warning",
+                    card.dataset.cameraCode || "CAMERA",
+                    "WebRTC reconnecting...",
+                    "MediaMTX播放端點暫時無法連線，系統將自動重試"
+                );
+            }
+            scheduleWebRTCReconnect(player);
+        });
+    });
+
     if (monitorMosaicStream) {
         monitorMosaicStream.addEventListener("load", function () {
             if (!isMosaicMode() || !monitorMosaicStream.getAttribute("src")) {
@@ -1608,6 +2344,13 @@ document.addEventListener("DOMContentLoaded", function () {
     healthCheckTimer = window.setInterval(function () {
         checkVisibleCameraHealth();
     }, 30000);
+
+    if (monitorMediaMode === "mediamtx" && mediaStatusUrl) {
+        monitorMediaRefreshTimer = window.setInterval(
+            refreshMonitorMediaStatus,
+            MEDIA_STATUS_REFRESH_MS
+        );
+    }
 
     buttons.forEach(function (button) {
         button.addEventListener("click", function () {

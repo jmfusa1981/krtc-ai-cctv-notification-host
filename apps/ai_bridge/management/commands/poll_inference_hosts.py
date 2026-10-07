@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db import close_old_connections
 from django.utils import timezone
 
-from apps.ai_bridge.models import InferenceConnectionState, InferenceHost
+from apps.ai_bridge.models import InferenceHost
 from apps.notifications.runtime_config import get_broadcast_runtime_config
 from apps.station_api.device_faults import recover_device_fault, report_device_fault
 from apps.station_api.models import DeviceFaultLog
@@ -20,6 +20,9 @@ from apps.ai_bridge.services.event_importer import (
 from apps.ai_bridge.services.inference_client import (
     InferenceClient,
     InferenceClientError,
+)
+from apps.ai_bridge.services.health_state import (
+    record_inference_health_observation,
 )
 
 
@@ -297,31 +300,39 @@ class Command(BaseCommand):
         )
 
         now = timezone.now()
+        health_failed = False
 
         try:
             if not skip_health_check:
-                health = client.health()
-
-                host.last_health_at = now
-                health_status = str(health.get("status") or "unknown").strip().lower()
-                application_version = str(health.get("version") or "").strip()
-
-                InferenceConnectionState.objects.update_or_create(
-                    inference_host=host,
-                    defaults={
-                        "health_status": health_status,
-                        "last_heartbeat_at": now,
-                        "last_error": "" if health_status == "ok" else str(health)[:1000],
-                    },
-                )
-
-                if application_version:
-                    host.application_version = application_version
-
-                if health_status != "ok":
-                    raise InferenceClientError(
-                        f"Health 狀態異常：{health}"
+                try:
+                    health = client.health()
+                    health_status = str(
+                        health.get("status") or "unknown"
+                    ).strip().lower()
+                    application_version = str(
+                        health.get("version") or ""
+                    ).strip()
+                    if health_status != "ok":
+                        raise InferenceClientError(
+                            f"Health 狀態異常：{health_status}"
+                        )
+                    record_inference_health_observation(
+                        host,
+                        success=True,
+                        checked_at=now,
+                        health_status=health_status,
+                        application_version=application_version,
                     )
+                except InferenceClientError as exc:
+                    health_failed = True
+                    record_inference_health_observation(
+                        host,
+                        success=False,
+                        checked_at=now,
+                        health_status="offline",
+                        failure_reason=str(exc),
+                    )
+                    raise
 
             payload = client.get_events(
                 limit=limit,
@@ -329,15 +340,6 @@ class Command(BaseCommand):
             )
 
         except InferenceClientError as exc:
-            if not skip_health_check:
-                InferenceConnectionState.objects.update_or_create(
-                    inference_host=host,
-                    defaults={
-                        "health_status": "offline",
-                        "last_heartbeat_at": now,
-                        "last_error": str(exc)[:1000],
-                    },
-                )
             host.status = InferenceHost.STATUS_OFFLINE
             host.last_error_at = now
             host.last_error = str(exc)
@@ -356,7 +358,7 @@ class Command(BaseCommand):
 
             host.save(update_fields=update_fields)
 
-            if not skip_health_check:
+            if not skip_health_check and health_failed:
                 try:
                     fault_code = (
                         "INFERENCE_HEALTH_BAD_STATUS"
