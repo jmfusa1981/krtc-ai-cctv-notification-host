@@ -326,6 +326,11 @@ class LabStressSourceContractTests(SimpleTestCase):
         self.assertIn("[int]::TryParse", self.common)
         self.assertIn("ConvertTo-NormalizedStressRecord", self.common)
         self.assertIn(
+            "ConvertTo-Json -InputObject @($normalizedRecords) -Depth 4",
+            self.common,
+        )
+        self.assertNotIn("ConvertTo-Json -Depth4", self.common)
+        self.assertIn(
             "[System.IO.File]::Replace($temporaryPath, $statePath, "
             "$backupPath, $true)",
             self.common,
@@ -379,6 +384,7 @@ class LabStressSourceContractTests(SimpleTestCase):
                         "$two = [pscustomobject]@{ Path = 'stress02'; SourceCamera = 'CAM-002'; ProcessName = 'ffmpeg'; ProcessId = 202; ProcessStartedAt = $started; StartedAt = $started }",
                         "Write-StressState -Records @($one)",
                         "$first = @(Read-StressState)",
+                        "$firstJsonValid = $null -ne (Get-Content -LiteralPath (Get-StressStatePath) -Raw | ConvertFrom-Json)",
                         "Write-StressState -Records @($one, $two)",
                         "$second = @(Read-StressState)",
                         "Write-StressState -Records @($two)",
@@ -395,6 +401,8 @@ class LabStressSourceContractTests(SimpleTestCase):
                         "$leftovers = @(Get-ChildItem -LiteralPath (Get-StressRuntimeDirectory) -File | Where-Object { $_.Name -match '^\\.stress_processes\\.json\\.[0-9a-f]+\\.(tmp|bak)$' })",
                         "$result = [pscustomobject]@{",
                         "    FirstCount = $first.Count",
+                        "    FirstJsonValid = $firstJsonValid",
+                        "    FirstIsNormalizedObject = $first[0] -is [pscustomobject]",
                         "    SecondCount = $second.Count",
                         "    ThirdCount = $third.Count",
                         "    ThirdProcessId = $third[0].ProcessId",
@@ -434,6 +442,8 @@ class LabStressSourceContractTests(SimpleTestCase):
                 )
                 payload = json.loads(json_line)
                 self.assertEqual(payload["FirstCount"], 1)
+                self.assertTrue(payload["FirstJsonValid"])
+                self.assertTrue(payload["FirstIsNormalizedObject"])
                 self.assertEqual(payload["SecondCount"], 2)
                 self.assertEqual(payload["ThirdCount"], 1)
                 self.assertEqual(payload["ThirdProcessId"], 202)
@@ -443,6 +453,125 @@ class LabStressSourceContractTests(SimpleTestCase):
                 self.assertEqual(payload["LeftoverCount"], 0)
                 self.assertEqual(payload["StatePathType"], "System.String")
                 self.assertTrue(payload["StatePathRooted"])
+
+    def test_stop_flow_removes_only_two_state_managed_publishers(self):
+        powershell_hosts = [
+            host
+            for host in (
+                shutil.which("powershell.exe"),
+                shutil.which("pwsh.exe"),
+            )
+            if host
+        ]
+        self.assertTrue(powershell_hosts)
+        ffmpeg_path = shutil.which("ffmpeg.exe")
+        if ffmpeg_path is None:
+            installed_ffmpeg = Path("C:/Program Files/ffmpeg/bin/ffmpeg.exe")
+            if installed_ffmpeg.is_file():
+                ffmpeg_path = str(installed_ffmpeg)
+        self.assertIsNotNone(ffmpeg_path)
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            probe_path = temporary_path / "managed_stop_probe.ps1"
+            common_path = str(self.tools_root / "Stress_Common.ps1").replace(
+                "'", "''"
+            )
+            runtime_literal = str(temporary_path).replace("'", "''")
+            ffmpeg_literal = str(ffmpeg_path).replace("'", "''")
+            probe_path.write_text(
+                "\n".join(
+                    (
+                        f". '{common_path}'",
+                        "function Get-StressRuntimeDirectory {",
+                        f"    return '{runtime_literal}'",
+                        "}",
+                        "function Get-StressStatePath {",
+                        "    return Join-Path (Get-StressRuntimeDirectory) 'stress_processes.json'",
+                        "}",
+                        "$baselineIds = @(Get-Process -Name 'ffmpeg' -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })",
+                        "$publishers = @()",
+                        "try {",
+                        "    foreach ($index in 1..2) {",
+                        f"        $publisher = Start-Process -FilePath '{ffmpeg_literal}' -ArgumentList @('-hide_banner', '-loglevel', 'error', '-re', '-f', 'lavfi', '-i', 'color=c=black:s=16x16:r=1', '-f', 'null', 'NUL') -PassThru -WindowStyle Hidden",
+                        "        $publishers += $publisher",
+                        "    }",
+                        "    $startedAt = (Get-Date).ToUniversalTime().ToString('o')",
+                        "    $records = @(for ($index = 0; $index -lt $publishers.Count; $index++) {",
+                        "        [pscustomobject]@{",
+                        "            Path = ('stress{0:D2}' -f ($index + 1))",
+                        "            SourceCamera = ('CAM-{0:D3}' -f ($index + 1))",
+                        "            ProcessName = 'ffmpeg'",
+                        "            ProcessId = $publishers[$index].Id",
+                        "            ProcessStartedAt = $publishers[$index].StartTime.ToUniversalTime().ToString('o')",
+                        "            StartedAt = $startedAt",
+                        "        }",
+                        "    })",
+                        "    Write-StressState -Records $records",
+                        "    $stateExistsBeforeStop = Test-Path -LiteralPath (Get-StressStatePath) -PathType Leaf",
+                        "    $stateRecords = @(Read-StressState)",
+                        "    $stateCountBeforeStop = $stateRecords.Count",
+                        "    $recordDiagnostics = @($stateRecords | ForEach-Object {",
+                        "        $actualProcess = Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue",
+                        "        [pscustomobject]@{ ExpectedName = $_.ProcessName; ActualName = $actualProcess.ProcessName; StartDelta = [Math]::Abs(($actualProcess.StartTime.ToUniversalTime() - ([DateTime]$_.ProcessStartedAt).ToUniversalTime()).TotalSeconds) }",
+                        "    })",
+                        "    $validCountBeforeStop = @($stateRecords | Where-Object { Test-StressProcessRecord -Record $_ }).Count",
+                        "    Stop-AllStressPublishers",
+                        "    foreach ($publisher in $publishers) { $publisher.WaitForExit(5000) | Out-Null }",
+                        "    $managedRemaining = @($publishers | Where-Object { Get-Process -Id $_.Id -ErrorAction SilentlyContinue }).Count",
+                        "    $baselineRemaining = @($baselineIds | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }).Count",
+                        "    [pscustomobject]@{",
+                        "        StateExistsBeforeStop = $stateExistsBeforeStop",
+                        "        StateCountBeforeStop = $stateCountBeforeStop",
+                        "        ValidCountBeforeStop = $validCountBeforeStop",
+                        "        RecordDiagnostics = $recordDiagnostics",
+                        "        StateRemoved = -not (Test-Path -LiteralPath (Get-StressStatePath))",
+                        "        ManagedRemaining = $managedRemaining",
+                        "        BaselineCount = $baselineIds.Count",
+                        "        BaselineRemaining = $baselineRemaining",
+                        "        TempCount = @(Get-ChildItem -LiteralPath (Get-StressRuntimeDirectory) -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '\\.tmp$' }).Count",
+                        "    } | ConvertTo-Json -Compress",
+                        "} finally {",
+                        "    foreach ($publisher in $publishers) { Stop-Process -Id $publisher.Id -Force -ErrorAction SilentlyContinue }",
+                        "}",
+                    )
+                ),
+                encoding="ascii",
+            )
+
+            for powershell_host in powershell_hosts:
+                completed = subprocess.run(
+                    [
+                        powershell_host,
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(probe_path),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                json_line = next(
+                    line
+                    for line in reversed(completed.stdout.splitlines())
+                    if line.startswith("{")
+                )
+                payload = json.loads(json_line)
+                self.assertTrue(payload["StateExistsBeforeStop"])
+                self.assertEqual(payload["StateCountBeforeStop"], 2)
+                self.assertEqual(
+                    payload["ValidCountBeforeStop"], 2, completed.stdout
+                )
+                self.assertTrue(payload["StateRemoved"])
+                self.assertEqual(payload["ManagedRemaining"], 0)
+                self.assertEqual(
+                    payload["BaselineRemaining"], payload["BaselineCount"]
+                )
+                self.assertEqual(payload["TempCount"], 0)
 
     def test_lab_config_keeps_production_paths_and_adds_sixteen_stress_paths(self):
         config = (self.project_root / "config/mediamtx.lab.yml").read_text(

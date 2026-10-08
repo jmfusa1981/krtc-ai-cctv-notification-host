@@ -56,11 +56,15 @@ function ConvertTo-NormalizedStressRecord {
 
     $processStartedAt = [DateTime]::MinValue
     $startedAt = [DateTime]::MinValue
-    if (-not [DateTime]::TryParse([string]$Record.ProcessStartedAt, [ref]$processStartedAt)) {
+    if ($Record.ProcessStartedAt -is [DateTime]) {
+        $processStartedAt = [DateTime]$Record.ProcessStartedAt
+    } elseif (-not [DateTime]::TryParse([string]$Record.ProcessStartedAt, [ref]$processStartedAt)) {
         Write-StressWarning "Skipped invalid stress process record: ProcessStartedAt is invalid."
         return $null
     }
-    if (-not [DateTime]::TryParse([string]$Record.StartedAt, [ref]$startedAt)) {
+    if ($Record.StartedAt -is [DateTime]) {
+        $startedAt = [DateTime]$Record.StartedAt
+    } elseif (-not [DateTime]::TryParse([string]$Record.StartedAt, [ref]$startedAt)) {
         Write-StressWarning "Skipped invalid stress process record: StartedAt is invalid."
         return $null
     }
