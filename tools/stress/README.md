@@ -12,6 +12,14 @@
 
 ## 30 分鐘 SOP
 
+正式測試前先執行 Collector smoke：
+
+```powershell
+.\tools\stress\Start_1_Minute_Collector_Smoke.ps1
+```
+
+Smoke 只驗證 Collector 可持續執行一分鐘、至少寫入五筆 sample、產生完整輸出並正常結束；不會啟動或停止 Camera、正式 bridge、MediaMTX 或 stress publisher。
+
 在 PowerShell 執行：
 
 ```powershell
@@ -20,7 +28,7 @@
 
 腳本會啟動 9 條 copy publisher、開啟自動 layout 頁面、啟動每 30 秒 metrics 收集，5 分鐘後擴充至 16 條 publisher，最後進行 layout switching 與 16-grid soak。
 
-CSV與summary會寫入 `stress_results/`。自動summary涵蓋 paths、sessions、readers、process與記憶體成長；persistent black screen、Browser畫面凍結與AIO freeze必須由操作人員同步目視確認，工具不使用OCR或自動refresh掩蓋問題。
+每次執行會在 `stress_results/<run>/` 產生 `metrics.csv`、`summary.txt`、`collector.stdout.log`、`collector.stderr.log`、`collector.pid` 與 `run_metadata.json`。自動summary涵蓋 paths、sessions、readers、process與記憶體成長；persistent black screen、Browser畫面凍結與AIO freeze必須由操作人員同步目視確認，工具不使用OCR或自動refresh掩蓋問題。
 
 ## 手動模式
 

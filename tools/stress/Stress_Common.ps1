@@ -16,15 +16,119 @@ function Get-StressStopRequestPath {
     return Join-Path (Get-StressRuntimeDirectory) "stop.request"
 }
 
+function Write-StressWarning {
+    param([string]$Message)
+
+    Write-Warning $Message
+}
+
+function ConvertTo-NormalizedStressRecord {
+    param($Record)
+
+    if ($null -eq $Record -or $Record -is [System.Array]) {
+        Write-StressWarning "Skipped invalid stress process record: expected one object."
+        return $null
+    }
+    $propertyNames = @($Record.PSObject.Properties.Name)
+    foreach ($requiredProperty in @("ProcessId", "Path", "SourceCamera", "ProcessStartedAt", "StartedAt")) {
+        if ($propertyNames -notcontains $requiredProperty) {
+            Write-StressWarning ("Skipped invalid stress process record: missing {0}." -f $requiredProperty)
+            return $null
+        }
+    }
+
+    $processId = 0
+    if (
+        -not [int]::TryParse([string]$Record.ProcessId, [ref]$processId) -or
+        $processId -le 0
+    ) {
+        Write-StressWarning "Skipped invalid stress process record: ProcessId must be a positive integer."
+        return $null
+    }
+    if ([string]$Record.Path -notmatch '^stress(0[1-9]|1[0-6])$') {
+        Write-StressWarning "Skipped invalid stress process record: Path is outside the stress namespace."
+        return $null
+    }
+    if ([string]$Record.SourceCamera -notmatch '^CAM-[0-9]{3}$') {
+        Write-StressWarning "Skipped invalid stress process record: SourceCamera is invalid."
+        return $null
+    }
+
+    $processStartedAt = [DateTime]::MinValue
+    $startedAt = [DateTime]::MinValue
+    if (-not [DateTime]::TryParse([string]$Record.ProcessStartedAt, [ref]$processStartedAt)) {
+        Write-StressWarning "Skipped invalid stress process record: ProcessStartedAt is invalid."
+        return $null
+    }
+    if (-not [DateTime]::TryParse([string]$Record.StartedAt, [ref]$startedAt)) {
+        Write-StressWarning "Skipped invalid stress process record: StartedAt is invalid."
+        return $null
+    }
+
+    $processName = if (
+        $propertyNames -contains "ProcessName" -and
+        -not [string]::IsNullOrWhiteSpace([string]$Record.ProcessName)
+    ) {
+        [string]$Record.ProcessName
+    } else {
+        "ffmpeg"
+    }
+    if ($processName -ne "ffmpeg") {
+        Write-StressWarning "Skipped invalid stress process record: ProcessName must be ffmpeg."
+        return $null
+    }
+
+    $normalized = [ordered]@{}
+    foreach ($property in $Record.PSObject.Properties) {
+        $normalized[$property.Name] = $property.Value
+    }
+    $normalized["SchemaVersion"] = 1
+    $normalized["ProcessName"] = "ffmpeg"
+    $normalized["ProcessId"] = $processId
+    $normalized["ProcessStartedAt"] = $processStartedAt.ToUniversalTime().ToString("o")
+    $normalized["StartedAt"] = $startedAt.ToUniversalTime().ToString("o")
+    return [pscustomobject]$normalized
+}
+
 function Read-StressState {
     $statePath = Get-StressStatePath
     if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
         return @()
     }
     try {
-        return @(Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json)
+        $payload = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+        foreach ($record in @($payload)) {
+            $normalizedRecord = ConvertTo-NormalizedStressRecord -Record $record
+            if ($null -ne $normalizedRecord) {
+                Write-Output $normalizedRecord
+            }
+        }
     } catch {
+        Write-StressWarning ("Unable to read stress process state: {0}" -f $_.Exception.Message)
         return @()
+    }
+}
+
+function Remove-StaleStressTempFiles {
+    param([int]$MinimumAgeSeconds = 60)
+
+    $runtimeDirectory = Get-StressRuntimeDirectory
+    if (-not (Test-Path -LiteralPath $runtimeDirectory -PathType Container)) {
+        return
+    }
+    $cutoff = (Get-Date).AddSeconds(-1 * [Math]::Max(0, $MinimumAgeSeconds))
+    foreach ($item in (Get-ChildItem -LiteralPath $runtimeDirectory -File -ErrorAction SilentlyContinue)) {
+        if (
+            $item.Name -notmatch '^\.?stress_processes\.json\.[0-9a-f-]+\.tmp$' -and
+            $item.Name -notmatch '^\.browser_state\.json\.[0-9a-f-]+\.tmp$' -and
+            $item.Name -ne 'stress_processes.json.tmp'
+        ) {
+            continue
+        }
+        if ($item.LastWriteTime -gt $cutoff) {
+            continue
+        }
+        Remove-Item -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -34,22 +138,64 @@ function Write-StressState {
     $runtimeDirectory = Get-StressRuntimeDirectory
     New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
     $statePath = Get-StressStatePath
-    $temporaryPath = "$statePath.tmp"
-    @($Records) | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporaryPath -Encoding ascii
-    Move-Item -LiteralPath $temporaryPath -Destination $statePath -Force
+    $temporaryPath = Join-Path $runtimeDirectory (
+        ".stress_processes.json.{0}.tmp" -f [Guid]::NewGuid().ToString("N")
+    )
+    $normalizedRecords = @()
+    foreach ($record in @($Records)) {
+        $normalizedRecord = ConvertTo-NormalizedStressRecord -Record $record
+        if ($null -ne $normalizedRecord) {
+            $normalizedRecords += $normalizedRecord
+        }
+    }
+    try {
+        $json = ConvertTo-Json -InputObject @($normalizedRecords) -Depth 4
+        Set-Content -LiteralPath $temporaryPath -Value $json -Encoding ascii
+        if (Test-Path -LiteralPath $statePath -PathType Leaf) {
+            [System.IO.File]::Replace($temporaryPath, $statePath, $null)
+        } else {
+            [System.IO.File]::Move($temporaryPath, $statePath)
+        }
+    } finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Test-StressProcessRecord {
     param($Record)
 
-    if (-not $Record -or -not $Record.ProcessId -or -not $Record.ProcessStartedAt) {
+    if ($null -eq $Record -or $Record -is [System.Array]) {
+        Write-StressWarning "Skipped invalid stress process record: Test-StressProcessRecord requires one normalized object."
         return $false
     }
-    $process = Get-Process -Id ([int]$Record.ProcessId) -ErrorAction SilentlyContinue
-    if (-not $process -or $process.ProcessName -ne "ffmpeg") {
+    $propertyNames = @($Record.PSObject.Properties.Name)
+    foreach ($requiredProperty in @("ProcessId", "Path", "SourceCamera", "ProcessStartedAt", "StartedAt", "ProcessName")) {
+        if ($propertyNames -notcontains $requiredProperty) {
+            Write-StressWarning ("Skipped invalid stress process record: missing {0}." -f $requiredProperty)
+            return $false
+        }
+    }
+    $processId = 0
+    if (
+        -not [int]::TryParse([string]$Record.ProcessId, [ref]$processId) -or
+        $processId -le 0 -or
+        [string]$Record.ProcessName -ne "ffmpeg"
+    ) {
+        Write-StressWarning "Skipped invalid stress process record: PID or process name is invalid."
         return $false
     }
-    $expectedStart = [DateTime]::Parse([string]$Record.ProcessStartedAt).ToUniversalTime()
+    $expectedStart = [DateTime]::MinValue
+    if (-not [DateTime]::TryParse([string]$Record.ProcessStartedAt, [ref]$expectedStart)) {
+        Write-StressWarning "Skipped invalid stress process record: ProcessStartedAt is invalid."
+        return $false
+    }
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if (-not $process -or $process.ProcessName -ne [string]$Record.ProcessName) {
+        return $false
+    }
+    $expectedStart = $expectedStart.ToUniversalTime()
     $actualStart = $process.StartTime.ToUniversalTime()
     return [Math]::Abs(($actualStart - $expectedStart).TotalSeconds) -lt 2
 }
@@ -60,7 +206,7 @@ function Stop-StressProcessRecord {
     if (-not (Test-StressProcessRecord -Record $Record)) {
         return
     }
-    Stop-Process -Id ([int]$Record.ProcessId) -Force -ErrorAction SilentlyContinue
+    Stop-Process -Id $Record.ProcessId -Force -ErrorAction SilentlyContinue
     Write-Host ("Stopped stress publisher: Path={0} PID={1}" -f $Record.Path, $Record.ProcessId)
 }
 
@@ -71,6 +217,7 @@ function Start-StressPublishers {
         [string]$FfmpegPath = "C:\Program Files\ffmpeg\bin\ffmpeg.exe"
     )
 
+    Remove-StaleStressTempFiles
     if (-not (Test-Path -LiteralPath $FfmpegPath -PathType Leaf)) {
         throw "ffmpeg.exe not found: $FfmpegPath"
     }
@@ -127,6 +274,7 @@ function Start-StressPublishers {
             SourceCodec = "H264"
             BridgeMode = "copy"
             Destination = $destinationUrl
+            ProcessName = "ffmpeg"
             ProcessId = $process.Id
             ProcessStartedAt = $process.StartTime.ToUniversalTime().ToString("o")
             StartedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -151,4 +299,5 @@ function Stop-AllStressPublishers {
     if (Test-Path -LiteralPath $browserStatePath -PathType Leaf) {
         Remove-Item -LiteralPath $browserStatePath -Force
     }
+    Remove-StaleStressTempFiles -MinimumAgeSeconds 0
 }

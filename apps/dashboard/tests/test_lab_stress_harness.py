@@ -1,4 +1,6 @@
 import json
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -164,7 +166,10 @@ class LabStressSourceContractTests(SimpleTestCase):
 
     def test_stop_uses_pid_start_time_and_only_ffmpeg(self):
         self.assertIn("ProcessStartedAt", self.common)
-        self.assertIn('$process.ProcessName -ne "ffmpeg"', self.common)
+        self.assertIn(
+            '$process.ProcessName -ne [string]$Record.ProcessName',
+            self.common,
+        )
         self.assertIn("Stop-StressProcessRecord", self.common)
         stop_script = (self.tools_root / "Stop_Stress.ps1").read_text(
             encoding="utf-8"
@@ -190,6 +195,8 @@ class LabStressSourceContractTests(SimpleTestCase):
 
     def test_metrics_cover_required_resources_and_leak_thresholds(self):
         for metric in (
+            "phase",
+            "expected_streams",
             "system_cpu_percent",
             "system_available_memory_mb",
             "system_committed_memory_mb",
@@ -198,8 +205,16 @@ class LabStressSourceContractTests(SimpleTestCase):
             "ffmpeg_process_count",
             "ffmpeg_memory_mb",
             "ffmpeg_cpu_percent",
+            "ffmpeg_aggregate_process_count",
+            "ffmpeg_aggregate_memory_mb",
+            "ffmpeg_aggregate_cpu_percent",
+            "django_process_count",
+            "django_memory_mb",
+            "django_cpu_percent",
             "mediamtx_cpu_percent",
             "mediamtx_memory_mb",
+            "mediamtx_ready_path_count",
+            "mediamtx_active_reader_count",
             "ready_stress_path_count",
             "webrtc_session_count",
             "active_reader_count",
@@ -220,6 +235,107 @@ class LabStressSourceContractTests(SimpleTestCase):
         self.assertIn("persistent_loading_stream", self.metrics)
         self.assertIn("browser_memory_monotonic_growth", self.metrics)
         self.assertIn("hidden_session_or_reader_not_released_after_grace", self.metrics)
+
+    def test_state_reader_normalizes_arrays_and_rejects_invalid_records(self):
+        powershell_hosts = [
+            host
+            for host in (
+                shutil.which("powershell.exe"),
+                shutil.which("pwsh.exe"),
+            )
+            if host
+        ]
+        self.assertTrue(powershell_hosts)
+
+        valid_record = {
+            "Path": "stress01",
+            "SourceCamera": "CAM-001",
+            "ProcessName": "ffmpeg",
+            "ProcessId": 123,
+            "ProcessStartedAt": "2026-10-08T01:02:03Z",
+            "StartedAt": "2026-10-08T01:02:04Z",
+        }
+        second_record = {**valid_record, "Path": "stress02", "ProcessId": 456}
+        invalid_record = {**valid_record, "Path": "stress03", "ProcessId": [7, 8]}
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            state_path = temporary_path / "stress_processes.json"
+            state_path.write_text(
+                json.dumps([valid_record, second_record, invalid_record]),
+                encoding="ascii",
+            )
+            probe_path = temporary_path / "probe.ps1"
+            common_path = str(self.tools_root / "Stress_Common.ps1").replace(
+                "'", "''"
+            )
+            state_path_literal = str(state_path).replace("'", "''")
+            probe_path.write_text(
+                "\n".join(
+                    (
+                        f". '{common_path}'",
+                        "function Get-StressStatePath {",
+                        f"    return '{state_path_literal}'",
+                        "}",
+                        "$records = @(Read-StressState)",
+                        "$result = [pscustomobject]@{",
+                        "    Count = $records.Count",
+                        "    AllObjects = @($records | Where-Object { $_ -is [pscustomobject] }).Count -eq $records.Count",
+                        "    ProcessIds = @($records | ForEach-Object { $_.ProcessId })",
+                        "    ArrayAccepted = Test-StressProcessRecord -Record (, $records)",
+                        "}",
+                        "$result | ConvertTo-Json -Compress",
+                    )
+                ),
+                encoding="ascii",
+            )
+
+            for powershell_host in powershell_hosts:
+                completed = subprocess.run(
+                    [
+                        powershell_host,
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(probe_path),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                json_line = next(
+                    line
+                    for line in reversed(completed.stdout.splitlines())
+                    if line.startswith("{")
+                )
+                payload = json.loads(json_line)
+                self.assertEqual(payload["Count"], 2)
+                self.assertTrue(payload["AllObjects"])
+                self.assertEqual(payload["ProcessIds"], [123, 456])
+                self.assertFalse(payload["ArrayAccepted"])
+
+    def test_collector_supervision_outputs_and_temp_cleanup_contract(self):
+        smoke = (
+            self.tools_root / "Start_1_Minute_Collector_Smoke.ps1"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("[int]$Record.ProcessId", self.common)
+        self.assertIn("[int]::TryParse", self.common)
+        self.assertIn("ConvertTo-NormalizedStressRecord", self.common)
+        self.assertIn("[System.IO.File]::Replace", self.common)
+        self.assertIn("Remove-StaleStressTempFiles", self.common)
+        self.assertIn("RedirectStandardOutput", self.runner)
+        self.assertIn("RedirectStandardError", self.runner)
+        self.assertIn("Assert-StressCollectorRunning", self.runner)
+        self.assertIn("run_metadata.json", self.metrics)
+        self.assertIn("collector.stdout.log", self.metrics)
+        self.assertIn("collector.stderr.log", self.metrics)
+        self.assertIn('"-DurationMinutes", "1"', smoke)
+        self.assertIn('"-SampleSeconds", "10"', smoke)
+        self.assertIn("$samples.Count -lt 5", smoke)
 
     def test_lab_config_keeps_production_paths_and_adds_sixteen_stress_paths(self):
         config = (self.project_root / "config/mediamtx.lab.yml").read_text(

@@ -5,19 +5,42 @@ param(
     [int]$SampleSeconds = 30,
     [string]$MediaMtxApiBaseUrl = "http://127.0.0.1:9997",
     [string]$DashboardUrl = "http://127.0.0.1:8000/dashboard/lab/media-stress/",
-    [string]$ResultDirectory = ""
+    [string]$ResultDirectory = "",
+    [switch]$SmokeMode
 )
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "Stress_Common.ps1")
 
+$runStamp = Get-Date -Format "yyyyMMdd_HHmmss"
 if ([string]::IsNullOrWhiteSpace($ResultDirectory)) {
-    $ResultDirectory = Join-Path (Get-StressProjectRoot) "stress_results"
+    $ResultDirectory = Join-Path (Get-StressProjectRoot) "stress_results\stress_$runStamp"
 }
 New-Item -ItemType Directory -Path $ResultDirectory -Force | Out-Null
-$runStamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$csvPath = Join-Path $ResultDirectory "stress_metrics_$runStamp.csv"
-$summaryPath = Join-Path $ResultDirectory "stress_summary_$runStamp.txt"
+$csvPath = Join-Path $ResultDirectory "metrics.csv"
+$summaryPath = Join-Path $ResultDirectory "summary.txt"
+$stdoutLogPath = Join-Path $ResultDirectory "collector.stdout.log"
+$stderrLogPath = Join-Path $ResultDirectory "collector.stderr.log"
+$metadataPath = Join-Path $ResultDirectory "run_metadata.json"
+$exitCodePath = Join-Path $ResultDirectory "collector.exitcode"
+if (-not (Test-Path -LiteralPath $stdoutLogPath -PathType Leaf)) {
+    New-Item -ItemType File -Path $stdoutLogPath -Force | Out-Null
+}
+if (-not (Test-Path -LiteralPath $stderrLogPath -PathType Leaf)) {
+    New-Item -ItemType File -Path $stderrLogPath -Force | Out-Null
+}
+trap {
+    Set-Content -LiteralPath $exitCodePath -Value "1" -Encoding ascii
+    [Console]::Error.WriteLine(
+        "Stress collector failed: {0}",
+        $_.Exception.Message
+    )
+    exit 1
+}
+Remove-StaleStressTempFiles
+if (Test-Path -LiteralPath $exitCodePath -PathType Leaf) {
+    Remove-Item -LiteralPath $exitCodePath -Force
+}
 $logicalProcessorCount = [Math]::Max(1, [Environment]::ProcessorCount)
 $previousCpuSeconds = @{}
 $previousNetworkBytes = $null
@@ -25,6 +48,20 @@ $previousSampleAt = $null
 $rows = [System.Collections.Generic.List[object]]::new()
 $startedAt = Get-Date
 $deadline = $startedAt.AddMinutes($DurationMinutes)
+$runMetadata = [ordered]@{
+    schema_version = 1
+    run_id = Split-Path -Leaf $ResultDirectory
+    started_at = $startedAt.ToUniversalTime().ToString("o")
+    duration_minutes = $DurationMinutes
+    sample_seconds = $SampleSeconds
+    smoke_mode = [bool]$SmokeMode
+    collector_process_id = $PID
+    powershell_version = $PSVersionTable.PSVersion.ToString()
+    mediamtx_api_base_url = $MediaMtxApiBaseUrl
+    dashboard_url = $DashboardUrl
+}
+$runMetadata | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $metadataPath -Encoding ascii
+Write-Host ("Stress collector startup: PID={0} Run={1} DurationMinutes={2} SampleSeconds={3} SmokeMode={4}" -f $PID, $ResultDirectory, $DurationMinutes, $SampleSeconds, [bool]$SmokeMode)
 
 function Get-ProcessTotals {
     param(
@@ -97,13 +134,33 @@ function Get-GpuMetrics {
     }
 }
 
+function Get-DjangoProcesses {
+    try {
+        $processIds = @(
+            Get-CimInstance Win32_Process -ErrorAction Stop |
+                Where-Object {
+                    $_.Name -in @("python.exe", "pythonw.exe") -and
+                    [string]$_.CommandLine -match '(manage\.py\s+runserver|daphne|gunicorn)'
+                } |
+                ForEach-Object { [int]$_.ProcessId }
+        )
+        return @($processIds | ForEach-Object {
+            Get-Process -Id $_ -ErrorAction SilentlyContinue
+        })
+    } catch {
+        return @()
+    }
+}
+
 function Get-MediaMtxMetrics {
     $result = [ordered]@{
         Reachable = $false
         ReadyPathCount = 0
         WebRtcSessionCount = 0
         StressWebRtcSessionCount = 0
+        TotalReadyPathCount = 0
         ActiveReaderCount = 0
+        TotalActiveReaderCount = 0
         Cam001ReadyPathCount = 0
         Cam001ReaderCount = 0
     }
@@ -111,7 +168,10 @@ function Get-MediaMtxMetrics {
         $pathsPayload = Invoke-RestMethod -Uri "$($MediaMtxApiBaseUrl.TrimEnd('/'))/v3/paths/list" -TimeoutSec 5
         $sessionsPayload = Invoke-RestMethod -Uri "$($MediaMtxApiBaseUrl.TrimEnd('/'))/v3/webrtc/sessions/list" -TimeoutSec 5
         $result.Reachable = $true
+        $allPaths = @($pathsPayload.items)
         $stressPaths = @($pathsPayload.items | Where-Object { $_.name -match '^stress(0[1-9]|1[0-6])$' })
+        $result.TotalReadyPathCount = @($allPaths | Where-Object { $_.ready -eq $true -or $_.online -eq $true }).Count
+        $result.TotalActiveReaderCount = [int](($allPaths | ForEach-Object { @($_.readers).Count } | Measure-Object -Sum).Sum)
         $result.ReadyPathCount = @($stressPaths | Where-Object { $_.ready -eq $true -or $_.online -eq $true }).Count
         $result.ActiveReaderCount = [int](($stressPaths | ForEach-Object { @($_.readers).Count } | Measure-Object -Sum).Sum)
         $cam001Paths = @($stressPaths | Where-Object { $_.name -in @("stress01", "stress05", "stress09", "stress13") })
@@ -142,12 +202,16 @@ while ((Get-Date) -lt $deadline) {
     $stressProcesses = @()
     foreach ($record in $stressRecords) {
         if (Test-StressProcessRecord -Record $record) {
-            $stressProcesses += Get-Process -Id ([int]$record.ProcessId) -ErrorAction SilentlyContinue
+            $stressProcesses += Get-Process -Id $record.ProcessId -ErrorAction SilentlyContinue
         }
     }
     $mediaMtxProcesses = @(Get-Process -Name "mediamtx" -ErrorAction SilentlyContinue)
+    $allFfmpegProcesses = @(Get-Process -Name "ffmpeg" -ErrorAction SilentlyContinue)
+    $djangoProcesses = @(Get-DjangoProcesses)
     $browserMetrics = Get-ProcessTotals -Processes $browserProcesses -KeyPrefix "browser" -SampleAt $sampleAt
     $ffmpegMetrics = Get-ProcessTotals -Processes $stressProcesses -KeyPrefix "stressffmpeg" -SampleAt $sampleAt
+    $ffmpegAggregateMetrics = Get-ProcessTotals -Processes $allFfmpegProcesses -KeyPrefix "allffmpeg" -SampleAt $sampleAt
+    $djangoMetrics = Get-ProcessTotals -Processes $djangoProcesses -KeyPrefix "django" -SampleAt $sampleAt
     $mediaMtxProcessMetrics = Get-ProcessTotals -Processes $mediaMtxProcesses -KeyPrefix "mediamtx" -SampleAt $sampleAt
     $mediaMtxMetrics = Get-MediaMtxMetrics
     $gpuMetrics = Get-GpuMetrics
@@ -165,7 +229,15 @@ while ((Get-Date) -lt $deadline) {
     $browserState = $null
     $browserStatePath = Join-Path (Get-StressRuntimeDirectory) "browser_state.json"
     if (Test-Path -LiteralPath $browserStatePath -PathType Leaf) {
-        try { $browserState = Get-Content -LiteralPath $browserStatePath -Raw | ConvertFrom-Json } catch { $browserState = $null }
+        try {
+            $candidateBrowserState = Get-Content -LiteralPath $browserStatePath -Raw | ConvertFrom-Json
+            if ($candidateBrowserState -isnot [System.Array]) {
+                $browserState = $candidateBrowserState
+            }
+        } catch {
+            Write-Warning ("Skipped invalid browser stress state: {0}" -f $_.Exception.Message)
+            $browserState = $null
+        }
     }
     $visibleStreamCount = if ($browserState) { [int]$browserState.visible_stream_count } else { 0 }
     $loadingPaths = if ($browserState) { [string]$browserState.loading_paths } else { "" }
@@ -183,9 +255,24 @@ while ((Get-Date) -lt $deadline) {
         $djangoReachable = $false
     }
 
+    $elapsedSeconds = [int]($sampleAt - $startedAt).TotalSeconds
+    $phase = if ($SmokeMode) {
+        "collector_smoke"
+    } elseif ($elapsedSeconds -lt 300) {
+        "phase_1_9_streams"
+    } elseif ($elapsedSeconds -lt 600) {
+        "phase_2_16_streams"
+    } elseif ($elapsedSeconds -lt 900) {
+        "phase_3_layout_switching"
+    } else {
+        "phase_4_16_grid_soak"
+    }
+    $expectedStreams = if ($SmokeMode) { $stressProcesses.Count } elseif ($elapsedSeconds -lt 300) { 9 } else { 16 }
     $row = [pscustomobject][ordered]@{
         timestamp = $sampleAt.ToUniversalTime().ToString("o")
-        elapsed_seconds = [int]($sampleAt - $startedAt).TotalSeconds
+        elapsed_seconds = $elapsedSeconds
+        phase = $phase
+        expected_streams = $expectedStreams
         system_cpu_percent = $systemCpu
         system_available_memory_mb = $availableMemoryMb
         system_committed_memory_mb = $committedMemoryMb
@@ -195,15 +282,23 @@ while ((Get-Date) -lt $deadline) {
         ffmpeg_process_count = $ffmpegMetrics.Count
         ffmpeg_memory_mb = $ffmpegMetrics.MemoryMb
         ffmpeg_cpu_percent = $ffmpegMetrics.CpuPercent
+        ffmpeg_aggregate_process_count = $ffmpegAggregateMetrics.Count
+        ffmpeg_aggregate_memory_mb = $ffmpegAggregateMetrics.MemoryMb
+        ffmpeg_aggregate_cpu_percent = $ffmpegAggregateMetrics.CpuPercent
         transcoding_count = $transcodingCount
+        django_process_count = $djangoMetrics.Count
+        django_memory_mb = $djangoMetrics.MemoryMb
+        django_cpu_percent = $djangoMetrics.CpuPercent
         mediamtx_cpu_percent = $mediaMtxProcessMetrics.CpuPercent
         mediamtx_memory_mb = $mediaMtxProcessMetrics.MemoryMb
         mediamtx_reachable = $mediaMtxMetrics.Reachable
         django_reachable = $djangoReachable
         ready_stress_path_count = $mediaMtxMetrics.ReadyPathCount
+        mediamtx_ready_path_count = $mediaMtxMetrics.TotalReadyPathCount
         webrtc_session_count = $mediaMtxMetrics.WebRtcSessionCount
         stress_webrtc_session_count = $mediaMtxMetrics.StressWebRtcSessionCount
         active_reader_count = $mediaMtxMetrics.ActiveReaderCount
+        mediamtx_active_reader_count = $mediaMtxMetrics.TotalActiveReaderCount
         visible_stream_count = $visibleStreamCount
         loading_paths = $loadingPaths
         oldest_loading_started_at = $oldestLoadingStartedAt
@@ -233,20 +328,22 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $finalRow = $rows[$rows.Count - 1]
 $expectedSamples = [Math]::Floor(($DurationMinutes * 60) / $SampleSeconds)
 if ($rows.Count -lt [Math]::Floor($expectedSamples * 0.9)) { $failures.Add("missing_metric_samples") }
-if ($finalRow.ready_stress_path_count -ne 16) { $failures.Add("final_ready_path_count_not_16") }
-if ($finalRow.ffmpeg_process_count -ne 16) { $failures.Add("final_ffmpeg_count_not_16") }
-if ($finalRow.stress_webrtc_session_count -ne 16) { $failures.Add("final_stress_webrtc_session_count_not_16") }
-if ($finalRow.active_reader_count -ne 16) { $failures.Add("final_reader_count_not_16") }
-if ($finalRow.visible_stream_count -ne 16) { $failures.Add("final_visible_stream_count_not_16") }
-if (@($rows | Where-Object { $_.transcoding_count -ne 0 }).Count -gt 0) { $failures.Add("transcoding_detected") }
-if (@($rows | Where-Object { $_.ffmpeg_process_count -gt 16 }).Count -gt 0) { $failures.Add("ffmpeg_process_leak") }
-if (@($rows | Where-Object { $_.stress_webrtc_session_count -gt 16 }).Count -gt 0) { $failures.Add("webrtc_session_leak") }
-if (@($rows | Where-Object { $_.active_reader_count -gt 16 }).Count -gt 0) { $failures.Add("reader_leak") }
-if (@($rows | Where-Object { $_.browser_responding -ne $true }).Count -gt 0) { $failures.Add("browser_not_responding") }
-if (@($rows | Where-Object { $_.mediamtx_reachable -ne $true }).Count -gt 0) { $failures.Add("mediamtx_unreachable") }
-if (@($rows | Where-Object { $_.django_reachable -ne $true }).Count -gt 0) { $failures.Add("django_unreachable") }
-if (-not [string]::IsNullOrWhiteSpace([string]$finalRow.loading_paths)) { $failures.Add("persistent_loading_stream") }
-if (($rows | Measure-Object -Property recovery_duration_ms -Maximum).Maximum -gt 30000) { $failures.Add("recovery_exceeded_30_seconds") }
+if (-not $SmokeMode) {
+    if ($finalRow.ready_stress_path_count -ne 16) { $failures.Add("final_ready_path_count_not_16") }
+    if ($finalRow.ffmpeg_process_count -ne 16) { $failures.Add("final_ffmpeg_count_not_16") }
+    if ($finalRow.stress_webrtc_session_count -ne 16) { $failures.Add("final_stress_webrtc_session_count_not_16") }
+    if ($finalRow.active_reader_count -ne 16) { $failures.Add("final_reader_count_not_16") }
+    if ($finalRow.visible_stream_count -ne 16) { $failures.Add("final_visible_stream_count_not_16") }
+    if (@($rows | Where-Object { $_.transcoding_count -ne 0 }).Count -gt 0) { $failures.Add("transcoding_detected") }
+    if (@($rows | Where-Object { $_.ffmpeg_process_count -gt 16 }).Count -gt 0) { $failures.Add("ffmpeg_process_leak") }
+    if (@($rows | Where-Object { $_.stress_webrtc_session_count -gt 16 }).Count -gt 0) { $failures.Add("webrtc_session_leak") }
+    if (@($rows | Where-Object { $_.active_reader_count -gt 16 }).Count -gt 0) { $failures.Add("reader_leak") }
+    if (@($rows | Where-Object { $_.browser_responding -ne $true }).Count -gt 0) { $failures.Add("browser_not_responding") }
+    if (@($rows | Where-Object { $_.mediamtx_reachable -ne $true }).Count -gt 0) { $failures.Add("mediamtx_unreachable") }
+    if (@($rows | Where-Object { $_.django_reachable -ne $true }).Count -gt 0) { $failures.Add("django_unreachable") }
+    if (-not [string]::IsNullOrWhiteSpace([string]$finalRow.loading_paths)) { $failures.Add("persistent_loading_stream") }
+    if (($rows | Measure-Object -Property recovery_duration_ms -Maximum).Maximum -gt 30000) { $failures.Add("recovery_exceeded_30_seconds") }
+}
 $releaseCheckRows = @($rows | Where-Object {
     ($_.elapsed_seconds -ge 625 -and $_.elapsed_seconds -le 655) -or
     ($_.elapsed_seconds -ge 685 -and $_.elapsed_seconds -le 715) -or
@@ -296,4 +393,10 @@ $summary = @(
     "ManualCriteria=no_persistent_black_screen,no_browser_freeze,no_aio_freeze"
 )
 $summary | Set-Content -LiteralPath $summaryPath -Encoding ascii
+Remove-StaleStressTempFiles
 Write-Host ("Stress metrics completed: Result={0} CSV={1} Summary={2}" -f $result, $csvPath, $summaryPath)
+if ($result -ne "PASS") {
+    Set-Content -LiteralPath $exitCodePath -Value "1" -Encoding ascii
+    exit 1
+}
+Set-Content -LiteralPath $exitCodePath -Value "0" -Encoding ascii
