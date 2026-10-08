@@ -1,0 +1,52 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KRTC Lab Multi-Stream Stress</title>
+    <link rel="stylesheet" href="{% static 'css/lab_stress_monitor.css' %}">
+</head>
+<body
+    data-stress-status-url="{% url 'dashboard:lab_stress_status_api' %}"
+    data-stress-telemetry-url="{% url 'dashboard:lab_stress_telemetry_api' %}"
+>
+    <header class="stress-toolbar">
+        <div>
+            <strong>LAB ONLY — Multi-Stream Stress Monitor</strong>
+            <span id="stressSummary">等待 MediaMTX stress paths</span>
+        </div>
+        <nav aria-label="壓測分割選擇">
+            <button type="button" data-stress-grid="4">4-grid</button>
+            <button type="button" data-stress-grid="9" class="active">9-grid</button>
+            <button type="button" data-stress-grid="16">16-grid</button>
+        </nav>
+    </header>
+    <main class="stress-grid stress-grid--9" id="stressGrid" data-visible-count="9">
+        {% for stream in streams %}
+            <article
+                class="stress-tile"
+                data-stress-tile
+                data-stream-index="{{ stream.index }}"
+                data-path="{{ stream.path }}"
+                data-state="idle"
+            >
+                <iframe
+                    data-stress-player
+                    data-player-url="{{ stream.player_url }}"
+                    data-player-active="false"
+                    title="{{ stream.path }} WebRTC"
+                    allow="autoplay"
+                ></iframe>
+                <div class="stress-overlay" data-stress-overlay>
+                    <strong>{{ stream.path }}</strong>
+                    <span>等待 stream ready</span>
+                </div>
+            </article>
+        {% endfor %}
+    </main>
+    <form hidden>{% csrf_token %}</form>
+    <script src="{% static 'js/mediamtx_player.js' %}"></script>
+    <script src="{% static 'js/lab_stress_monitor.js' %}"></script>
+</body>
+</html>

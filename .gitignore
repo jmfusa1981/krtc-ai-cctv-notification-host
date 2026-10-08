@@ -59,6 +59,7 @@ caddy/logs/
 # Local V6.8 runtime validation
 _runtime_test/
 _runtime_bad_db/
+stress_results/
 
 # Local backup files
 *.bak

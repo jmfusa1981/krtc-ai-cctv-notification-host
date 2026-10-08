@@ -73,6 +73,58 @@ def player_url_for_path(path_name):
     return f"{base_url}/{normalized_path}?{player_query}"
 
 
+def _resolve_camera_path(camera):
+    """解析 Camera 目前應使用的 canonical 或切換中 MediaMTX path。"""
+
+    camera_code = str(camera.camera_code).upper()
+    path_name = camera_path_name(camera_code)
+    try:
+        from .monitor_transitions import load_monitor_transition_state
+
+        transition = load_monitor_transition_state()
+        transition_path = transition["cameras"].get(camera_code, {}).get(
+            "active_path",
+            path_name,
+        )
+        # canonical path 不需掃描 runtime；只有 H265 A/B alternate 才驗證 owner。
+        if transition_path != path_name:
+            from .bridge_runtime import (
+                effective_camera_path,
+                load_bridge_statuses,
+            )
+
+            path_name = effective_camera_path(
+                camera_code,
+                load_bridge_statuses([camera_code]),
+                transition,
+            )
+    except (OSError, ValueError, TypeError):
+        pass
+    return path_name
+
+
+def get_camera_browser_playback(camera):
+    """建立前端可尋址的播放描述，實際 path readiness 另由狀態 API 判定。"""
+
+    if getattr(settings, "KRTC_MONITOR_MEDIA_MODE", "legacy") != "mediamtx":
+        return MediaMTXPlayback(False, reason="legacy_mode")
+    if not camera.is_active:
+        return MediaMTXPlayback(False, reason="inactive")
+
+    path_name = _resolve_camera_path(camera)
+    player_url = player_url_for_path(path_name)
+    if not player_url or not path_name:
+        return MediaMTXPlayback(False, reason="invalid_configuration")
+
+    path_url = player_url.split("?", 1)[0]
+    return MediaMTXPlayback(
+        True,
+        path_name=path_name,
+        player_url=player_url,
+        whep_url=f"{path_url}/whep",
+    )
+
+
 def get_camera_playback(camera):
     """依伺服器設定建立安全的WebRTC播放資訊，不回傳來源RTSP網址。"""
 
@@ -87,24 +139,4 @@ def get_camera_playback(camera):
     if camera.status != "online" and not camera.is_online:
         return MediaMTXPlayback(False, reason="offline")
 
-    path_name = camera_path_name(camera.camera_code)
-    try:
-        from .monitor_transitions import load_monitor_transition_state
-
-        path_name = load_monitor_transition_state()["cameras"].get(
-            str(camera.camera_code).upper(),
-            {},
-        ).get("active_path", path_name)
-    except (OSError, ValueError, TypeError):
-        pass
-    player_url = player_url_for_path(path_name)
-    if not player_url or not path_name:
-        return MediaMTXPlayback(False, reason="invalid_configuration")
-
-    path_url = player_url.split("?", 1)[0]
-    return MediaMTXPlayback(
-        True,
-        path_name=path_name,
-        player_url=player_url,
-        whep_url=f"{path_url}/whep",
-    )
+    return get_camera_browser_playback(camera)

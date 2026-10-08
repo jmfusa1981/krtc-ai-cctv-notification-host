@@ -76,6 +76,76 @@ $bridges = @()
 $activeMonitorProfile = $initialMonitorProfile.Name
 $activeRequestId = "startup"
 
+function Invoke-BridgeRuntimeReconciliation {
+    $statusDirectory = Join-Path $PSScriptRoot "../../runtime/mediamtx/bridges"
+    if (-not (Test-Path -LiteralPath $statusDirectory -PathType Container)) {
+        return
+    }
+    foreach ($statusFile in Get-ChildItem -LiteralPath $statusDirectory -Filter "*.json" -File) {
+        try {
+            $record = Get-Content -Raw -LiteralPath $statusFile.FullName |
+                ConvertFrom-Json
+            $declaredState = [string]$record.State
+            if (-not [string]::IsNullOrWhiteSpace([string]$record.DeclaredState)) {
+                $declaredState = [string]$record.DeclaredState
+            }
+            if ($declaredState -ne "running" -and $declaredState -ne "starting") {
+                continue
+            }
+
+            $process = Get-Process -Id ([int]$record.ProcessId) -ErrorAction SilentlyContinue
+            $staleReason = ""
+            if ($null -eq $process) {
+                $staleReason = "stale_process_missing"
+            } elseif ($process.ProcessName -ne "ffmpeg") {
+                $staleReason = "stale_process_not_ffmpeg"
+            } else {
+                try {
+                    $expectedStart = [datetimeoffset]::Parse(
+                        [string]$record.ProcessStartedAt
+                    ).UtcDateTime
+                    $actualStart = $process.StartTime.ToUniversalTime()
+                    if ([math]::Abs(($actualStart - $expectedStart).TotalSeconds) -gt 2) {
+                        $staleReason = "stale_process_start_mismatch"
+                    }
+                } catch {
+                    $staleReason = "stale_process_start_mismatch"
+                }
+            }
+
+            $record | Add-Member -NotePropertyName DeclaredState `
+                -NotePropertyValue $declaredState -Force
+            $record | Add-Member -NotePropertyName ProcessAlive `
+                -NotePropertyValue ($null -ne $process) -Force
+            $record | Add-Member -NotePropertyName ProcessStartMatch `
+                -NotePropertyValue ([string]::IsNullOrWhiteSpace($staleReason)) -Force
+            $record | Add-Member -NotePropertyName ReconciledAt `
+                -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("o")) -Force
+            if (-not [string]::IsNullOrWhiteSpace($staleReason)) {
+                $record.State = "stale"
+                $record | Add-Member -NotePropertyName EffectiveState `
+                    -NotePropertyValue "stale" -Force
+                $record.LastError = $staleReason
+            } else {
+                $record.State = "running"
+                $record | Add-Member -NotePropertyName EffectiveState `
+                    -NotePropertyValue "running" -Force
+            }
+            $temporaryPath = "$($statusFile.FullName).$PID.tmp"
+            $record | ConvertTo-Json -Depth 5 | Set-Content `
+                -LiteralPath $temporaryPath `
+                -Encoding ascii
+            Move-Item -LiteralPath $temporaryPath `
+                -Destination $statusFile.FullName `
+                -Force
+        } catch {
+            Write-Warning "Bridge runtime reconciliation skipped invalid record: $($statusFile.Name)"
+        }
+    }
+}
+
+Invoke-BridgeRuntimeReconciliation
+
 function Get-RequestedMonitorProfile {
     if (-not (Test-Path -LiteralPath $MonitorProfileStatePath -PathType Leaf)) {
         return [pscustomobject]@{ Name = $activeMonitorProfile; RequestId = $activeRequestId }

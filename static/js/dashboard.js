@@ -77,6 +77,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let currentEvents = [];
     let currentCameras = [];
+    let currentCameraMap = new Map();
     let selectedEventId = null;
     let selectedCameraId = null;
     let localAlarmEnabled = true;
@@ -107,6 +108,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let pendingDashboardLayer = null;
     let dashboardPageSuspended = false;
     let dashboardPreviewObserver = null;
+    let dashboardPreviewVisibilityFrame = null;
     const dashboardVisiblePreviewCards = new Set();
     const dashboardPreviewTimers = new Map();
     const DASHBOARD_MEDIA_STATUS_REFRESH_MS = 5000;
@@ -237,11 +239,21 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function getCameraById(cameraId) {
-        return (
-            currentCameras.find(function (camera) {
-                return String(camera.id) === String(cameraId);
-            }) || null
+        return currentCameraMap.get(String(cameraId)) || null;
+    }
+
+    function indexCurrentCameras(cameras) {
+        currentCameraMap = new Map(
+            cameras.map(function (camera) {
+                return [String(camera.id), camera];
+            })
         );
+    }
+
+    function getCanonicalCameraForEvent(event) {
+        return event && event.camera_id
+            ? getCameraById(event.camera_id)
+            : null;
     }
 
     function getEventById(eventId) {
@@ -289,9 +301,7 @@ document.addEventListener("DOMContentLoaded", function () {
         let mediaKey = primaryMediaMode;
 
         if (primaryMediaMode === "live") {
-            const playerUrl = camera && camera.browser_playback
-                ? camera.browser_playback.url || ""
-                : "";
+            const playerUrl = getDashboardPlayback(camera).url;
             mediaKey += `:${camera ? camera.id : "none"}:${playerUrl}`;
         } else if (primaryMediaMode === "snapshot") {
             mediaKey += `:${event ? event.snapshot_url : ""}`;
@@ -458,6 +468,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function isDashboardPathReady(camera) {
         const code = normalizeText(camera && camera.camera_code, "").toUpperCase();
+        const detail = dashboardMediaStatus.pathDetails
+            ? dashboardMediaStatus.pathDetails[code] || {}
+            : {};
+        if (Object.prototype.hasOwnProperty.call(detail, "playback_allowed")) {
+            return detail.playback_allowed === true;
+        }
         return Boolean(
             dashboardMediaStatus.reachable &&
             code &&
@@ -630,9 +646,14 @@ document.addEventListener("DOMContentLoaded", function () {
             dashboardPreviewObserver = null;
         }
         dashboardVisiblePreviewCards.clear();
+        if (dashboardPreviewVisibilityFrame !== null) {
+            window.cancelAnimationFrame(dashboardPreviewVisibilityFrame);
+            dashboardPreviewVisibilityFrame = null;
+        }
         if (cameraGrid) {
             cameraGrid.querySelectorAll("[data-dashboard-preview-card]").forEach(
                 function (card) {
+                    card.dataset.previewVisible = "false";
                     releaseDashboardPreview(card, "idle", "即時預覽待命");
                 }
             );
@@ -729,6 +750,14 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
         const player = card.querySelector("[data-dashboard-preview-player]");
+        if (!player) {
+            releaseDashboardPreview(
+                card,
+                "unavailable",
+                "即時預覽暫時無法使用"
+            );
+            return;
+        }
         const baselineReaderCount = Number(
             getDashboardPathDetail(camera).webrtc_reader_count || 0
         );
@@ -769,6 +798,74 @@ document.addEventListener("DOMContentLoaded", function () {
         updateDashboardPreviewDiagnostics();
     }
 
+    function isDashboardPreviewVisible(card) {
+        if (!cameraGrid || !card || !card.isConnected) {
+            return false;
+        }
+        const railRect = cameraGrid.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
+        if (
+            railRect.width <= 0 ||
+            railRect.height <= 0 ||
+            cardRect.width <= 0 ||
+            cardRect.height <= 0
+        ) {
+            return false;
+        }
+        return (
+            cardRect.bottom > railRect.top &&
+            cardRect.top < railRect.bottom &&
+            cardRect.right > railRect.left &&
+            cardRect.left < railRect.right
+        );
+    }
+
+    function setDashboardPreviewVisibility(card, visible) {
+        const isVisible = Boolean(visible);
+        const wasVisible = card.dataset.previewVisible === "true";
+        card.dataset.previewVisible = String(isVisible);
+        if (isVisible === wasVisible) {
+            if (isVisible) {
+                activateDashboardPreview(card);
+            }
+            return;
+        }
+        if (isVisible) {
+            dashboardVisiblePreviewCards.add(card);
+            activateDashboardPreview(card);
+            return;
+        }
+        dashboardVisiblePreviewCards.delete(card);
+        releaseDashboardPreview(card, "idle", "即時預覽待命");
+    }
+
+    function syncDashboardPreviewVisibility() {
+        if (!cameraGrid || dashboardPageSuspended) {
+            return;
+        }
+        cameraGrid.querySelectorAll("[data-dashboard-preview-card]").forEach(
+            function (card) {
+                setDashboardPreviewVisibility(
+                    card,
+                    isDashboardPreviewVisible(card)
+                );
+            }
+        );
+        updateDashboardPreviewDiagnostics();
+    }
+
+    function scheduleDashboardPreviewVisibilitySync() {
+        if (dashboardPreviewVisibilityFrame !== null) {
+            return;
+        }
+        dashboardPreviewVisibilityFrame = window.requestAnimationFrame(
+            function () {
+                dashboardPreviewVisibilityFrame = null;
+                syncDashboardPreviewVisibility();
+            }
+        );
+    }
+
     function observeDashboardPreviews() {
         if (!cameraGrid || dashboardPageSuspended) {
             return;
@@ -778,23 +875,40 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         dashboardVisiblePreviewCards.clear();
         const cards = cameraGrid.querySelectorAll("[data-dashboard-preview-card]");
-        dashboardPreviewObserver = new IntersectionObserver(function (entries) {
-            entries.forEach(function (entry) {
-                const card = entry.target;
-                if (entry.isIntersecting && entry.intersectionRatio > 0) {
-                    dashboardVisiblePreviewCards.add(card);
-                    activateDashboardPreview(card);
-                    return;
-                }
-                dashboardVisiblePreviewCards.delete(card);
-                releaseDashboardPreview(card, "idle", "即時預覽待命");
+        if ("IntersectionObserver" in window) {
+            dashboardPreviewObserver = new IntersectionObserver(
+                function (entries) {
+                    entries.forEach(function (entry) {
+                        setDashboardPreviewVisibility(
+                            entry.target,
+                            (
+                                entry.isIntersecting &&
+                                entry.intersectionRatio > 0
+                            ) || isDashboardPreviewVisible(entry.target)
+                        );
+                    });
+                    updateDashboardPreviewDiagnostics();
+                },
+                {root: cameraGrid, threshold: 0.1}
+            );
+            cards.forEach(function (card) {
+                dashboardPreviewObserver.observe(card);
             });
-            updateDashboardPreviewDiagnostics();
-        }, {root: cameraGrid, threshold: 0.1});
-        cards.forEach(function (card) {
-            dashboardPreviewObserver.observe(card);
-        });
-        updateDashboardPreviewDiagnostics();
+        }
+        if (cameraGrid.dataset.previewScrollBound !== "true") {
+            cameraGrid.dataset.previewScrollBound = "true";
+            cameraGrid.addEventListener(
+                "scroll",
+                scheduleDashboardPreviewVisibilitySync,
+                {passive: true}
+            );
+            window.addEventListener(
+                "resize",
+                scheduleDashboardPreviewVisibilitySync
+            );
+        }
+        syncDashboardPreviewVisibility();
+        scheduleDashboardPreviewVisibilitySync();
     }
 
     async function reconcileDashboardPreviews() {
@@ -804,9 +918,20 @@ document.addEventListener("DOMContentLoaded", function () {
         await refreshDashboardMediaStatus(false);
         dashboardVisiblePreviewCards.forEach(function (card) {
             const camera = getCameraById(card.dataset.cameraId);
+            const detail = getDashboardPathDetail(camera);
+            const baselineReaderCount = Number(
+                card.dataset.previewBaselineReaderCount || 0
+            );
+            const player = card.querySelector("[data-dashboard-preview-player]");
+            const readerMissing = card.dataset.previewState === "loaded" && (
+                Number(detail.webrtc_reader_count || 0) < baselineReaderCount + 1
+            );
+            const playerMissing = card.dataset.previewState === "loaded" && (
+                !player || !window.KRTCMediaPlayer.hasWebRTCSource(player)
+            );
             if (
                 card.dataset.previewState === "loaded" &&
-                !isDashboardPathReady(camera)
+                (!isDashboardPathReady(camera) || readerMissing || playerMissing)
             ) {
                 releaseDashboardPreview(
                     card,
@@ -1212,8 +1337,9 @@ document.addEventListener("DOMContentLoaded", function () {
             );
         });
 
-        if (event.camera_id) {
-            selectCamera(event.camera_id);
+        const canonicalCamera = getCanonicalCameraForEvent(event);
+        if (canonicalCamera) {
+            selectCamera(canonicalCamera.id);
         } else {
             // Unmapped events must not retain the previous camera selection.
             // This applies to both manual selection and automatic carousel changes.
@@ -1299,7 +1425,16 @@ document.addEventListener("DOMContentLoaded", function () {
                     camera.status,
                     camera.stream_url,
                     camera.browser_playback
+                        ? camera.browser_playback.available === true
+                        : false,
+                    camera.browser_playback
+                        ? camera.browser_playback.path || ""
+                        : "",
+                    camera.browser_playback
                         ? camera.browser_playback.url || ""
+                        : "",
+                    camera.browser_playback
+                        ? camera.browser_playback.reason || ""
                         : "",
                 ];
             })
@@ -1324,19 +1459,24 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         cameras.forEach(function (camera) {
+            const code = normalizeText(camera.camera_code, `CAM-${camera.id}`);
+            const name = normalizeText(camera.name, code);
+            const statusDisplay = normalizeText(camera.status_display, "狀態未知");
+            const playback = getDashboardPlayback(camera);
             const button = document.createElement("button");
             button.type = "button";
             button.className = "camera-thumbnail";
             button.dataset.cameraCard = "";
             button.dataset.dashboardPreviewCard = "";
             button.dataset.cameraId = camera.id;
+            button.dataset.camera = code;
+            button.dataset.mediaPath = playback.path;
+            button.dataset.mediaMode = playback.available
+                ? "webrtc"
+                : "unavailable";
+            button.dataset.previewVisible = "false";
             button.dataset.previewState = "idle";
             button.dataset.previewActive = "false";
-
-            const code = normalizeText(camera.camera_code, `CAM-${camera.id}`);
-            const name = normalizeText(camera.name, code);
-            const statusDisplay = normalizeText(camera.status_display, "狀態未知");
-            const playback = getDashboardPlayback(camera);
             button.dataset.previewCamera = code;
 
             button.innerHTML = `
@@ -2247,6 +2387,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             const data = await response.json();
             currentCameras = data.cameras || [];
+            indexCurrentCameras(currentCameras);
             currentEvents = data.events || [];
 
             updateSummary(data);

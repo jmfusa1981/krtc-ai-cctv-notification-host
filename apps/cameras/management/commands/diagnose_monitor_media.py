@@ -3,6 +3,7 @@ import json
 from django.core.management.base import BaseCommand
 
 from apps.cameras.monitor_diagnostics import collect_monitor_media_diagnostics
+from apps.cameras.models import Camera
 
 
 class Command(BaseCommand):
@@ -17,7 +18,14 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        result = collect_monitor_media_diagnostics()
+        cameras = Camera.objects.filter(is_active=True).only(
+            "camera_code",
+            "status",
+            "is_online",
+            "is_active",
+            "last_checked_at",
+        )
+        result = collect_monitor_media_diagnostics(cameras=cameras)
         if options["as_json"]:
             self.stdout.write(
                 json.dumps(result, ensure_ascii=False, indent=2)
@@ -69,23 +77,58 @@ class Command(BaseCommand):
             f"{result['transcoding_count']}"
         )
         for bridge in result["bridges"]:
+            bridge = {
+                "canonical_path": "",
+                "declared_state": bridge.get("state", "unknown"),
+                "effective_state": bridge.get("state", "unknown"),
+                "process_alive": False,
+                "process_start_match": None,
+                "process_name_match": None,
+                "command_line_match": None,
+                **bridge,
+            }
             self.stdout.write(
-                "bridge camera={camera_code} source_codec={source_codec} "
+                "bridge camera={camera_code} canonical_path={canonical_path} "
+                "declared_state={declared_state} "
+                "effective_state={effective_state} pid={process_id} "
+                "process_alive={process_alive} "
+                "process_start_match={process_start_match} "
+                "process_name_match={process_name_match} "
+                "command_line_match={command_line_match} "
+                "source_codec={source_codec} "
                 "requested_profile={requested_profile} "
                 "requested={requested_width}x{requested_height}@{requested_fps} "
                 "actual_bridge_mode={actual_bridge_mode} "
-                "actual_output={actual_output} state={state} pid={process_id} "
+                "actual_output={actual_output} "
                 "exit={exit_code} "
                 "last_error={last_error}".format(
                     **bridge
                 )
             )
         for item in result["paths"]:
+            item = {
+                "network_reachable": None,
+                "media_ready": False,
+                "playback_allowed": False,
+                "playback_reason": "unknown",
+                **item,
+            }
             self.stdout.write(
-                "camera={camera_code} path={path} ready={ready} "
-                "readers={reader_count} inbound={inbound_bytes} "
+                "camera={camera_code} canonical_path={canonical_path} "
+                "path={path} path_ready={ready} "
+                "network_reachable={network_reachable} "
+                "media_ready={media_ready} "
+                "playback_allowed={playback_allowed} "
+                "playback_reason={playback_reason} "
+                "readers={reader_count} "
+                "webrtc_session_count={webrtc_session_count} "
+                "inbound={inbound_bytes} "
                 "outbound={outbound_bytes} source_codec={source_codec} "
-                "bridge_mode={actual_bridge_mode} bridge_state={bridge_state} "
+                "bridge_mode={actual_bridge_mode} "
+                "declared_state={declared_state} "
+                "effective_state={effective_state} pid={pid} "
+                "process_alive={process_alive} "
+                "process_start_match={process_start_match} "
                 "profile={profile} requested={requested_width}x{requested_height} "
                 "fps={requested_fps} actual_output={actual_output} "
                 "active={active_path} next={next_path} "

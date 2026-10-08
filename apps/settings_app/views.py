@@ -32,6 +32,7 @@ from apps.ai_bridge.services.inference_client import (
     InferenceClient,
     InferenceClientError,
 )
+from apps.cameras.monitor_diagnostics import collect_mediamtx_path_readiness
 from apps.station_api.security_audit import record_security_audit
 from apps.notifications.speaker_health import clear_speaker_fault_if_monitoring_disabled, record_speaker_probe_result
 from .forms import (
@@ -268,10 +269,31 @@ def station_settings(request):
         host.network_location = _inference_host_network_location(host)
 
     cameras = list(Camera.objects.all().order_by("camera_code")) if Camera else []
+    camera_media_status = (
+        collect_mediamtx_path_readiness(
+            cameras=[camera for camera in cameras if camera.is_active],
+        )
+        if getattr(settings, "KRTC_MONITOR_MEDIA_MODE", "legacy") == "mediamtx"
+        else {"path_details": {}}
+    )
     for camera in cameras:
-        camera.status_label_zh = STATUS_LABELS.get(camera.status, "未知")
+        camera.status_label_zh = (
+            "TCP 可達"
+            if camera.status == "online" or camera.is_online
+            else "TCP 無法連線"
+        )
         camera.diagnostic_endpoint = _safe_stream_endpoint(camera.rtsp_url)
         camera.mapping_count = 0
+        media_detail = camera_media_status["path_details"].get(
+            str(camera.camera_code).upper(),
+            {},
+        )
+        camera.media_ready = bool(media_detail.get("media_ready"))
+        camera.media_status_label = (
+            "媒體可播放"
+            if camera.media_ready
+            else "媒體暫時無法使用"
+        )
 
     mappings = list(
         InferenceCameraMapping.objects.select_related("inference_host", "camera").order_by(
@@ -342,7 +364,17 @@ def station_settings(request):
     ) if BroadcastLog else []
 
     active_camera_count = sum(1 for item in cameras if item.is_active)
-    online_camera_count = sum(1 for item in cameras if item.is_active and item.status == "online")
+    online_camera_count = sum(
+        1
+        for item in cameras
+        if item.is_active
+        and (
+            item.media_ready
+            if getattr(settings, "KRTC_MONITOR_MEDIA_MODE", "legacy")
+            == "mediamtx"
+            else item.status == "online"
+        )
+    )
     active_speaker_count = sum(1 for item in speakers if item.is_active)
     online_speaker_count = sum(1 for item in speakers if item.is_active and item.status == "online")
     monitored_speaker_count = sum(1 for item in speakers if item.health_monitor_active)
@@ -768,10 +800,12 @@ def test_camera(request):
         tested_at = _save_camera_probe_state(camera, False)
         return JsonResponse({
             "success": False,
+            "probe_type": "tcp",
+            "network_reachable": False,
             "message": "攝影機尚未設定串流 URL。",
             "elapsed_ms": 0,
             "status": "offline",
-            "status_label": "離線",
+            "status_label": "TCP 無法連線",
             "tested_at": tested_at,
         })
 
@@ -781,10 +815,12 @@ def test_camera(request):
         tested_at = _save_camera_probe_state(camera, False)
         return JsonResponse({
             "success": False,
+            "probe_type": "tcp",
+            "network_reachable": False,
             "message": "串流 URL 格式無效。",
             "elapsed_ms": 0,
             "status": "offline",
-            "status_label": "離線",
+            "status_label": "TCP 無法連線",
             "tested_at": tested_at,
         })
     default_ports = {"rtsp": 554, "http": 80, "https": 443}
@@ -793,10 +829,12 @@ def test_camera(request):
     tested_at = _save_camera_probe_state(camera, ok)
     return JsonResponse({
         "success": ok,
+        "probe_type": "tcp",
+        "network_reachable": ok,
         "message": message,
         "elapsed_ms": elapsed_ms,
         "status": "online" if ok else "offline",
-        "status_label": "連線正常" if ok else "離線",
+        "status_label": "TCP 可達" if ok else "TCP 無法連線",
         "tested_at": tested_at,
     })
 

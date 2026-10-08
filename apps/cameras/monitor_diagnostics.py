@@ -5,18 +5,26 @@ import json
 import os
 import subprocess
 import time
-from datetime import datetime, timezone
-from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 from django.conf import settings
 
+from .bridge_runtime import (
+    effective_camera_path,
+    load_bridge_statuses,
+    select_effective_bridge_statuses,
+)
 from .mediamtx import (
     camera_path_name,
     phase1_camera_codes,
     player_url_for_path,
+)
+from .media_availability import (
+    STALE,
+    camera_network_snapshot,
+    evaluate_media_availability,
 )
 from .monitor_profiles import (
     get_active_monitor_profile,
@@ -99,203 +107,24 @@ def _ffmpeg_process_count():
     )
 
 
-def _process_is_running(process_id):
-    """不讀取命令列，只確認狀態快照中的程序是否仍存在。"""
-
-    if process_id <= 0:
-        return False
-    if os.name == "nt":
-        kernel32 = ctypes.windll.kernel32
-        kernel32.OpenProcess.restype = ctypes.c_void_p
-        kernel32.OpenProcess.argtypes = [
-            ctypes.c_ulong,
-            ctypes.c_int,
-            ctypes.c_ulong,
-        ]
-        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-        process_handle = kernel32.OpenProcess(
-            0x1000,
-            False,
-            process_id,
-        )
-        if not process_handle:
-            return False
-        kernel32.CloseHandle(process_handle)
-        return True
-    try:
-        os.kill(process_id, 0)
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
-
-
-def _process_started_at(process_id):
-    """取得程序建立時間，以PID與時間共同避免PID重用誤判。"""
-
-    if process_id <= 0 or os.name != "nt":
-        return None
-
-    class FileTime(ctypes.Structure):
-        _fields_ = [
-            ("low", ctypes.c_ulong),
-            ("high", ctypes.c_ulong),
-        ]
-
-    kernel32 = ctypes.windll.kernel32
-    kernel32.OpenProcess.restype = ctypes.c_void_p
-    kernel32.OpenProcess.argtypes = [
-        ctypes.c_ulong,
-        ctypes.c_int,
-        ctypes.c_ulong,
-    ]
-    kernel32.GetProcessTimes.argtypes = [
-        ctypes.c_void_p,
-        ctypes.POINTER(FileTime),
-        ctypes.POINTER(FileTime),
-        ctypes.POINTER(FileTime),
-        ctypes.POINTER(FileTime),
-    ]
-    kernel32.GetProcessTimes.restype = ctypes.c_int
-    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-    process_handle = kernel32.OpenProcess(0x1000, False, process_id)
-    if not process_handle:
-        return None
-    creation = FileTime()
-    exit_time = FileTime()
-    kernel_time = FileTime()
-    user_time = FileTime()
-    try:
-        success = kernel32.GetProcessTimes(
-            process_handle,
-            ctypes.byref(creation),
-            ctypes.byref(exit_time),
-            ctypes.byref(kernel_time),
-            ctypes.byref(user_time),
-        )
-    finally:
-        kernel32.CloseHandle(process_handle)
-    if not success:
-        return None
-    windows_ticks = (creation.high << 32) | creation.low
-    unix_seconds = (windows_ticks / 10_000_000) - 11_644_473_600
-    return datetime.fromtimestamp(unix_seconds, timezone.utc)
-
-
-def _process_identity_matches(process_id, expected_started_at):
-    """確認PID存在且建立時間符合狀態快照。"""
-
-    if not expected_started_at or not _process_is_running(process_id):
-        return False
-    if os.name != "nt":
-        return True
-    actual_started_at = _process_started_at(process_id)
-    if actual_started_at is None:
-        return False
-    try:
-        expected = datetime.fromisoformat(
-            str(expected_started_at).replace("Z", "+00:00")
-        )
-    except ValueError:
-        return False
-    if expected.tzinfo is None:
-        expected = expected.replace(tzinfo=timezone.utc)
-    return abs((actual_started_at - expected).total_seconds()) <= 2
-
-
-def _load_bridge_statuses():
+def _load_bridge_statuses(camera_codes=None):
     """讀取bridge產生的安全狀態快照，忽略來源網址與憑證欄位。"""
 
-    status_directory = Path(
-        getattr(
-            settings,
-            "KRTC_MEDIAMTX_BRIDGE_STATUS_DIR",
-            Path(settings.BASE_DIR) / "runtime" / "mediamtx" / "bridges",
-        )
-    )
-    if not status_directory.is_dir():
-        return []
-
-    statuses = []
-    for status_path in sorted(status_directory.glob("CAM-*.json")):
-        try:
-            payload = json.loads(status_path.read_text(encoding="ascii"))
-            camera_code = str(payload.get("CameraCode", "")).upper()
-            source_codec = str(payload.get("SourceCodec", "")).upper()
-            bridge_mode = str(payload.get("BridgeMode", "")).lower()
-            state = str(payload.get("State", "")).lower()
-            process_id = int(payload.get("ProcessId") or 0)
-            process_started_at = str(payload.get("ProcessStartedAt", ""))
-            exit_code = payload.get("ExitCode")
-            last_error = str(payload.get("LastError", ""))[:200]
-            profile = str(payload.get("Profile", ""))
-            output_width = int(payload.get("OutputWidth") or 0)
-            output_height = int(payload.get("OutputHeight") or 0)
-            output_fps = int(
-                payload.get("OutputFps") or payload.get("TranscodeFps") or 0
-            )
-            publish_path = str(payload.get("PublishPath", "")).strip().lower()
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            continue
-        if (
-            camera_code not in phase1_camera_codes()
-            or source_codec not in {"H264", "H265"}
-            or bridge_mode not in {"copy", "transcode"}
-            or state not in {"running", "stopped"}
-        ):
-            continue
-        if state == "running" and not _process_identity_matches(
-            process_id,
-            process_started_at,
-        ):
-            state = "stopped"
-            last_error = "stale_process_identity"
-        statuses.append(
-            {
-                "camera_code": camera_code,
-                "source_codec": source_codec,
-                "bridge_mode": bridge_mode,
-                "state": state,
-                "process_id": process_id,
-                "process_started_at": process_started_at,
-                "exit_code": exit_code,
-                "last_error": last_error,
-                "profile": profile,
-                "output_width": output_width,
-                "output_height": output_height,
-                "output_fps": output_fps,
-                "publish_path": publish_path,
-            }
-        )
-    return statuses
+    return load_bridge_statuses(camera_codes or phase1_camera_codes())
 
 
-def _select_active_bridge_statuses(bridge_statuses, transition):
+def _select_active_bridge_statuses(
+    bridge_statuses,
+    transition,
+    camera_codes=None,
+):
     """依A/B狀態只選目前active bridge，避免轉場雙程序被誤算為crash。"""
 
-    selected = []
-    for camera_code in sorted(phase1_camera_codes()):
-        candidates = [
-            item
-            for item in bridge_statuses
-            if item["camera_code"] == camera_code
-        ]
-        if not candidates:
-            continue
-        active_path = transition["cameras"].get(camera_code, {}).get(
-            "active_path"
-        )
-        active_candidate = next(
-            (
-                item
-                for item in candidates
-                if item.get("publish_path") == active_path
-            ),
-            None,
-        )
-        selected.append(active_candidate or candidates[-1])
-    return selected
+    return select_effective_bridge_statuses(
+        bridge_statuses,
+        transition,
+        camera_codes or phase1_camera_codes(),
+    )
 
 
 def _with_diagnostic_output_semantics(
@@ -306,6 +135,13 @@ def _with_diagnostic_output_semantics(
     """分離要求profile與bridge實際輸出，避免copy路徑誤報縮放結果。"""
 
     item = dict(bridge_status)
+    item.setdefault("canonical_path", camera_path_name(item.get("camera_code")))
+    item.setdefault("declared_state", item.get("state", "unknown"))
+    item.setdefault("effective_state", item.get("state", "unknown"))
+    item.setdefault("process_alive", item.get("state") == "running")
+    item.setdefault("process_start_match", None)
+    item.setdefault("process_name_match", None)
+    item.setdefault("command_line_match", None)
     bridge_mode = item.get("bridge_mode", "unknown")
     if bridge_mode == "copy":
         actual_output = "source-copy"
@@ -334,14 +170,130 @@ def _with_diagnostic_output_semantics(
     return item
 
 
-def collect_monitor_media_diagnostics():
+def _unavailable_path_diagnostics(
+    camera_codes,
+    bridge_statuses,
+    active_profile,
+    profile_values,
+    transition,
+):
+    """MediaMTX 無法連線時仍逐 Camera 回報完整且明確的 false 狀態。"""
+
+    bridge_by_camera = {
+        item["camera_code"]: item
+        for item in bridge_statuses
+    }
+    paths = []
+    for camera_code in sorted(camera_codes):
+        canonical_path = camera_path_name(camera_code)
+        bridge = bridge_by_camera.get(camera_code, {})
+        transition_camera = transition["cameras"].get(camera_code, {})
+        paths.append(
+            {
+                "camera_code": camera_code,
+                "canonical_path": canonical_path,
+                "path": canonical_path,
+                "ready": False,
+                "reader_count": 0,
+                "webrtc_session_count": 0,
+                "inbound_bytes": 0,
+                "outbound_bytes": 0,
+                "source_codec": bridge.get("source_codec", "unknown"),
+                "bridge_mode": bridge.get("bridge_mode", "unknown"),
+                "actual_bridge_mode": bridge.get("bridge_mode", "unknown"),
+                "bridge_state": bridge.get("effective_state", "unknown"),
+                "declared_state": bridge.get("declared_state", "unknown"),
+                "effective_state": bridge.get("effective_state", "unknown"),
+                "pid": bridge.get("process_id", 0),
+                "process_alive": bridge.get("process_alive", False),
+                "process_start_match": bridge.get("process_start_match"),
+                "profile": active_profile,
+                "requested_width": int(profile_values["width"]),
+                "requested_height": int(profile_values["height"]),
+                "requested_fps": int(profile_values["fps"]),
+                "actual_output": bridge.get("actual_output", "unknown"),
+                "active_path": transition_camera.get(
+                    "active_path",
+                    canonical_path,
+                ),
+                "next_path": transition_camera.get("next_path"),
+                "transition_state": transition_camera.get(
+                    "transition_state",
+                    "idle",
+                ),
+            }
+        )
+    return paths
+
+
+def _annotate_media_availability(
+    paths,
+    bridge_statuses,
+    mediamtx_reachable,
+    cameras,
+):
+    """將統一 media evaluator 結果附加至診斷逐 Camera 資料。"""
+
+    camera_by_code = {
+        str(camera.camera_code).upper(): camera
+        for camera in (cameras or [])
+    }
+    bridge_by_camera = {
+        item["camera_code"]: item
+        for item in bridge_statuses
+    }
+    for item in paths:
+        camera_code = item["camera_code"]
+        camera = camera_by_code.get(camera_code)
+        network = (
+            camera_network_snapshot(camera)
+            if camera is not None
+            else {
+                "network_reachable": None,
+                "network_state": STALE,
+            }
+        )
+        bridge = bridge_by_camera.get(camera_code, {})
+        effective_state = bridge.get(
+            "effective_state",
+            bridge.get("state", item.get("effective_state", "unknown")),
+        )
+        effective_path = item.get("active_path") or item.get("path")
+        metadata_available = bool(
+            getattr(camera, "is_active", True)
+            and player_url_for_path(effective_path)
+        )
+        item.update(
+            evaluate_media_availability(
+                camera_code=camera_code,
+                canonical_path=item.get("canonical_path")
+                or camera_path_name(camera_code),
+                effective_path=effective_path,
+                effective_bridge_state=effective_state,
+                mediamtx_reachable=mediamtx_reachable,
+                path_ready=item.get("ready", False),
+                metadata_available=metadata_available,
+                network_reachable=network["network_reachable"],
+                network_state=network["network_state"],
+            )
+        )
+    return paths
+
+
+def collect_monitor_media_diagnostics(cameras=None):
     """彙整Monitor media mode、MediaMTX path/session與程序資源。"""
 
     media_mode = getattr(settings, "KRTC_MONITOR_MEDIA_MODE", "legacy")
     fallback_enabled = bool(
         getattr(settings, "KRTC_MONITOR_MOSAIC_FALLBACK", True)
     )
-    all_bridge_statuses = _load_bridge_statuses()
+    camera_list = list(cameras or [])
+    camera_codes = {
+        str(camera.camera_code).upper()
+        for camera in camera_list
+        if getattr(camera, "is_active", False)
+    } or phase1_camera_codes()
+    all_bridge_statuses = _load_bridge_statuses(camera_codes)
     monitor_profile_config = load_monitor_profile_config()
     requested_profile = get_active_monitor_profile()
     active_profile_values = monitor_profile_config["profiles"][requested_profile]
@@ -352,6 +304,7 @@ def collect_monitor_media_diagnostics():
     bridge_statuses = _select_active_bridge_statuses(
         all_bridge_statuses,
         transition,
+        camera_codes,
     )
     diagnostic_bridge_statuses = [
         _with_diagnostic_output_semantics(
@@ -413,6 +366,19 @@ def collect_monitor_media_diagnostics():
         or parsed_api_url.password
     ):
         result["error"] = "invalid_mediamtx_api_url"
+        result["paths"] = _unavailable_path_diagnostics(
+            camera_codes,
+            diagnostic_bridge_statuses,
+            active_profile,
+            active_profile_values,
+            transition,
+        )
+        _annotate_media_availability(
+            result["paths"],
+            diagnostic_bridge_statuses,
+            False,
+            camera_list,
+        )
         return result
 
     timeout = float(
@@ -426,6 +392,19 @@ def collect_monitor_media_diagnostics():
         )
     except (OSError, URLError, ValueError, json.JSONDecodeError) as exc:
         result["error"] = f"mediamtx_unreachable:{type(exc).__name__}"
+        result["paths"] = _unavailable_path_diagnostics(
+            camera_codes,
+            diagnostic_bridge_statuses,
+            active_profile,
+            active_profile_values,
+            transition,
+        )
+        _annotate_media_availability(
+            result["paths"],
+            diagnostic_bridge_statuses,
+            False,
+            camera_list,
+        )
         return result
 
     result["mediamtx_reachable"] = True
@@ -436,13 +415,25 @@ def collect_monitor_media_diagnostics():
         for item in path_items
         if item.get("name")
     }
+    session_count_by_path = {}
+    for session in session_items:
+        session_path = str(
+            session.get("path")
+            or session.get("pathName")
+            or session.get("path_name")
+            or ""
+        )
+        if session_path:
+            session_count_by_path[session_path] = (
+                session_count_by_path.get(session_path, 0) + 1
+            )
     visible_paths = set()
     bridge_by_camera = {
         item["camera_code"]: item
         for item in diagnostic_bridge_statuses
     }
 
-    for camera_code in sorted(phase1_camera_codes()):
+    for camera_code in sorted(camera_codes):
         path_name = camera_path_name(camera_code)
         item = items_by_name.get(path_name, {})
         readers = item.get("readers") or []
@@ -458,6 +449,14 @@ def collect_monitor_media_diagnostics():
                 "path": path_name,
                 "ready": ready,
                 "reader_count": reader_count,
+                "webrtc_session_count": session_count_by_path.get(
+                    path_name,
+                    sum(
+                        1
+                        for reader in readers
+                        if reader.get("type") == "webRTCSession"
+                    ),
+                ),
                 "inbound_bytes": int(item.get("inboundBytes") or 0),
                 "outbound_bytes": int(item.get("outboundBytes") or 0),
                 "source_codec": bridge_status.get("source_codec", "unknown"),
@@ -466,7 +465,24 @@ def collect_monitor_media_diagnostics():
                     "bridge_mode",
                     "unknown",
                 ),
-                "bridge_state": bridge_status.get("state", "unknown"),
+                "bridge_state": bridge_status.get(
+                    "effective_state",
+                    bridge_status.get("state", "unknown"),
+                ),
+                "declared_state": bridge_status.get(
+                    "declared_state",
+                    bridge_status.get("state", "unknown"),
+                ),
+                "effective_state": bridge_status.get(
+                    "effective_state",
+                    bridge_status.get("state", "unknown"),
+                ),
+                "pid": bridge_status.get("process_id", 0),
+                "process_alive": bridge_status.get("process_alive", False),
+                "process_start_match": bridge_status.get(
+                    "process_start_match"
+                ),
+                "canonical_path": path_name,
                 "profile": active_profile,
                 "requested_width": int(active_profile_values["width"]),
                 "requested_height": int(active_profile_values["height"]),
@@ -498,12 +514,30 @@ def collect_monitor_media_diagnostics():
         item["reader_count"] for item in result["paths"]
     )
     result["active_visible_camera_count"] = len(visible_paths)
+    _annotate_media_availability(
+        result["paths"],
+        diagnostic_bridge_statuses,
+        True,
+        camera_list,
+    )
     return result
 
 
-def collect_mediamtx_path_readiness():
+def collect_mediamtx_path_readiness(camera_codes=None, cameras=None):
     """取得前端啟動所需的安全path ready快照。"""
 
+    camera_list = list(cameras or [])
+    camera_by_code = {
+        str(camera.camera_code).upper(): camera
+        for camera in camera_list
+    }
+    requested_codes = {
+        str(code).upper()
+        for code in (camera_codes or camera_by_code or phase1_camera_codes())
+        if str(code).strip()
+    }
+    camera_codes = requested_codes
+    bridge_statuses = load_bridge_statuses(camera_codes)
     result = {
         "reachable": False,
         "paths": {},
@@ -511,6 +545,101 @@ def collect_mediamtx_path_readiness():
         "transition": load_monitor_transition_state(),
         "error": "",
     }
+    effective_bridges = select_effective_bridge_statuses(
+        bridge_statuses,
+        result["transition"],
+        camera_codes,
+    )
+    bridge_by_camera = {
+        item["camera_code"]: item
+        for item in effective_bridges
+    }
+
+    def add_path_detail(camera_code, items_by_name=None):
+        """以同一 evaluator 建立 API 與 UI 共用的逐 Camera 狀態。"""
+
+        canonical_path = camera_path_name(camera_code)
+        active_path = effective_camera_path(
+            camera_code,
+            bridge_statuses,
+            result["transition"],
+        )
+        bridge = bridge_by_camera.get(camera_code, {})
+        effective_state = bridge.get(
+            "effective_state",
+            bridge.get("state", "unknown"),
+        )
+        path_item = (items_by_name or {}).get(active_path, {})
+        path_ready = bool(
+            path_item.get("online", path_item.get("ready", False))
+        )
+        camera = camera_by_code.get(camera_code)
+        network = (
+            camera_network_snapshot(camera)
+            if camera is not None
+            else {
+                "network_reachable": None,
+                "network_state": STALE,
+            }
+        )
+        metadata_available = bool(
+            getattr(camera, "is_active", True)
+            and player_url_for_path(active_path)
+        )
+        availability = evaluate_media_availability(
+            camera_code=camera_code,
+            canonical_path=canonical_path,
+            effective_path=active_path,
+            effective_bridge_state=effective_state,
+            mediamtx_reachable=result["reachable"],
+            path_ready=path_ready,
+            metadata_available=metadata_available,
+            network_reachable=network["network_reachable"],
+            network_state=network["network_state"],
+        )
+        transition_camera = result["transition"]["cameras"].get(
+            camera_code,
+            {},
+        )
+        transition_camera["active_path"] = active_path
+        next_path = transition_camera.get("next_path")
+        transition_camera["active_player_url"] = player_url_for_path(
+            active_path
+        )
+        transition_camera["next_player_url"] = player_url_for_path(next_path)
+        transition_camera["active_ready"] = path_ready
+        transition_camera["next_ready"] = bool(
+            next_path
+            and (items_by_name or {}).get(next_path, {}).get(
+                "online",
+                (items_by_name or {}).get(next_path, {}).get("ready", False),
+            )
+        )
+        transition_camera["next_reader_count"] = (
+            len((items_by_name or {}).get(next_path, {}).get("readers") or [])
+            if next_path
+            else 0
+        )
+        result["paths"][camera_code] = path_ready
+        active_readers = path_item.get("readers") or []
+        result["path_details"][camera_code] = {
+            **availability,
+            "path": active_path,
+            "ready": path_ready,
+            "reader_count": len(active_readers),
+            "webrtc_reader_count": sum(
+                1
+                for reader in active_readers
+                if reader.get("type") == "webRTCSession"
+            ),
+            "inbound_bytes": int(path_item.get("inboundBytes") or 0),
+            "outbound_bytes": int(path_item.get("outboundBytes") or 0),
+            "transition_state": transition_camera.get(
+                "transition_state",
+                "idle",
+            ),
+        }
+
     api_base_url = str(
         getattr(settings, "KRTC_MEDIAMTX_API_BASE_URL", "")
     ).rstrip("/")
@@ -522,6 +651,8 @@ def collect_mediamtx_path_readiness():
         or parsed_api_url.password
     ):
         result["error"] = "invalid_mediamtx_api_url"
+        for camera_code in sorted(camera_codes):
+            add_path_detail(camera_code)
         return result
 
     timeout = float(
@@ -531,6 +662,8 @@ def collect_mediamtx_path_readiness():
         payload = _read_json(f"{api_base_url}/v3/paths/list", timeout)
     except (OSError, URLError, ValueError, json.JSONDecodeError) as exc:
         result["error"] = f"mediamtx_unreachable:{type(exc).__name__}"
+        for camera_code in sorted(camera_codes):
+            add_path_detail(camera_code)
         return result
 
     items_by_name = {
@@ -539,56 +672,6 @@ def collect_mediamtx_path_readiness():
         if item.get("name")
     }
     result["reachable"] = True
-    for camera_code in sorted(phase1_camera_codes()):
-        transition_camera = result["transition"]["cameras"].get(
-            camera_code,
-            {},
-        )
-        active_path = transition_camera.get(
-            "active_path",
-            camera_path_name(camera_code),
-        )
-        next_path = transition_camera.get("next_path")
-        transition_camera["active_player_url"] = player_url_for_path(
-            active_path
-        )
-        transition_camera["next_player_url"] = player_url_for_path(next_path)
-        transition_camera["active_ready"] = bool(
-            items_by_name.get(active_path, {}).get(
-                "online",
-                items_by_name.get(active_path, {}).get(
-                    "ready",
-                    False,
-                ),
-            )
-        )
-        transition_camera["next_ready"] = bool(
-            next_path
-            and items_by_name.get(next_path, {}).get(
-                "online",
-                items_by_name.get(next_path, {}).get("ready", False),
-            )
-        )
-        transition_camera["next_reader_count"] = len(
-            items_by_name.get(next_path, {}).get("readers") or []
-        ) if next_path else 0
-        result["paths"][camera_code] = transition_camera["active_ready"]
-        active_readers = (
-            items_by_name.get(active_path, {}).get("readers") or []
-        )
-        result["path_details"][camera_code] = {
-            "camera": camera_code,
-            "path": active_path,
-            "ready": transition_camera["active_ready"],
-            "reader_count": len(active_readers),
-            "webrtc_reader_count": sum(
-                1
-                for reader in active_readers
-                if reader.get("type") == "webRTCSession"
-            ),
-            "transition_state": transition_camera.get(
-                "transition_state",
-                "idle",
-            ),
-        }
+    for camera_code in sorted(camera_codes):
+        add_path_detail(camera_code, items_by_name)
     return result

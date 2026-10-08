@@ -23,7 +23,7 @@
 
     <section class="summary-grid" aria-label="本站設定摘要">
         <article class="summary-card"><span>推論主機</span><strong>{{ active_inference_host_count }}/{{ inference_host_count }}</strong><small>啟用／總數</small></article>
-        <article class="summary-card"><span>攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong><small>線上／監測中</small></article>
+        <article class="summary-card"><span>攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong><small>媒體可用／啟用</small></article>
         <article class="summary-card"><span>IP 廣播喇叭</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong><small>線上／啟用</small></article>
         {% if show_advanced_settings %}<article class="summary-card"><span>AI 模型</span><strong>{{ active_ai_model_count }}/{{ ai_model_count }}</strong><small>啟用／總數</small></article>{% endif %}
         <article class="summary-card"><span>廣播規則</span><strong>{{ active_broadcast_rule_count }}/{{ broadcast_rule_count }}</strong><small>啟用／總數</small></article>
@@ -131,14 +131,14 @@
         <section class="settings-panel" data-panel="devices" hidden>
             <div class="panel-heading"><div><h2>本站設備</h2><p>攝影機與 IP 廣播喇叭為本站執行所需的本地設定副本。</p></div></div>
             <div class="diagnostic-summary device-summary-grid">
-                <article><span>線上攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong></article>
+                <article><span>媒體可用攝影機</span><strong>{{ online_camera_count }}/{{ active_camera_count }}</strong></article>
                 <article><span>線上廣播喇叭</span><strong>{{ online_speaker_count }}/{{ active_speaker_count }}</strong></article>
             </div>
             <div class="local-device-grid">
                 <section class="local-device-panel camera-device-panel">
                     <div class="camera-section-title"><h3>IP 攝影機</h3>{% if can_edit_settings %}<a class="primary-button" href="{% url 'settings_app:manage_new' 'camera' %}">新增攝影機</a>{% endif %}</div>
                     <div class="table-wrap"><table class="diagnostic-table camera-diagnostic-table"><thead><tr><th>編號</th><th>名稱／區域</th><th>網路端點</th><th>狀態</th><th>執行操作</th></tr></thead><tbody>
-                    {% for camera in cameras %}<tr><td class="code">{{ camera.camera_code }}</td><td>{{ camera.name }}<small>{{ camera.area|default:"未設定" }}</small></td><td class="mono">{{ camera.diagnostic_endpoint }}</td><td><span id="camera-status-{{ camera.id }}" class="status status-{{ camera.status }}">{{ camera.status_label_zh }}</span><small id="camera-status-time-{{ camera.id }}">{{ camera.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><div class="row-actions">{% if can_edit_settings %}<a class="test-button" href="{% url 'settings_app:manage_edit' 'camera' camera.id %}">編輯</a>{% endif %}<button type="button" class="test-button diagnostic-item" data-check-category="攝影機" data-check-label="{{ camera.camera_code }}" data-test-url="{% url 'settings_app:test_camera' %}" data-object-id="{{ camera.id }}" data-result-target="camera-result-{{ camera.id }}" data-status-target="camera-status-{{ camera.id }}" data-status-time-target="camera-status-time-{{ camera.id }}">測試網路</button>{% if can_edit_settings %}<form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:manage_remove' 'camera' camera.id %}" onsubmit="return confirm('確定刪除攝影機 {{ camera.camera_code|escapejs }}？相關攝影機映射會一併移除，此操作無法復原。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button camera-delete-button">刪除</button></form>{% endif %}</div><small id="camera-result-{{ camera.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="5" class="empty">尚未設定攝影機。</td></tr>{% endfor %}
+                    {% for camera in cameras %}<tr><td class="code">{{ camera.camera_code }}</td><td>{{ camera.name }}<small>{{ camera.area|default:"未設定" }}</small></td><td class="mono">{{ camera.diagnostic_endpoint }}</td><td><span id="camera-status-{{ camera.id }}" class="status status-{{ camera.status }}">{{ camera.status_label_zh }}</span><small>{{ camera.media_status_label }}</small><small id="camera-status-time-{{ camera.id }}">TCP 最後測試：{{ camera.last_checked_at|date:"Y-m-d H:i:s"|default:"尚未測試" }}</small></td><td><div class="row-actions">{% if can_edit_settings %}<a class="test-button" href="{% url 'settings_app:manage_edit' 'camera' camera.id %}">編輯</a>{% endif %}<button type="button" class="test-button diagnostic-item" data-check-category="攝影機 TCP 網路" data-check-label="{{ camera.camera_code }}" data-test-url="{% url 'settings_app:test_camera' %}" data-object-id="{{ camera.id }}" data-result-target="camera-result-{{ camera.id }}" data-status-target="camera-status-{{ camera.id }}" data-status-time-target="camera-status-time-{{ camera.id }}">測試 TCP 網路</button>{% if can_edit_settings %}<form method="post" class="preserve-scroll-delete-form" action="{% url 'settings_app:manage_remove' 'camera' camera.id %}" onsubmit="return confirm('確定刪除攝影機 {{ camera.camera_code|escapejs }}？相關攝影機映射會一併移除，此操作無法復原。');">{% csrf_token %}<input type="hidden" name="return_scroll_y" value="0"><button type="submit" class="danger-button camera-delete-button">刪除</button></form>{% endif %}</div><small id="camera-result-{{ camera.id }}" class="inline-result"></small></td></tr>{% empty %}<tr><td colspan="5" class="empty">尚未設定攝影機。</td></tr>{% endfor %}
                     </tbody></table></div>
                 </section>
                 <section class="local-device-panel speaker-device-panel">
@@ -419,6 +419,6 @@
     <footer class="settings-footer">最後載入時間：{{ server_time|date:"Y-m-d H:i:s" }}　｜　中央維護主機同步功能：已整合</footer>
 </div>
 
-<script src="{% static 'js/station_settings.js' %}?v=8.1"></script>
+<script src="{% static 'js/station_settings.js' %}?v=8.2-media-truth"></script>
 </body>
 </html>

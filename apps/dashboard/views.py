@@ -19,8 +19,10 @@ from apps.ai_bridge.services.health_state import (
     effective_inference_health,
     inference_health_stale_seconds,
 )
-from apps.cameras.mediamtx import get_camera_playback
+from apps.cameras.mediamtx import get_camera_browser_playback
+from apps.cameras.monitor_diagnostics import collect_mediamtx_path_readiness
 from apps.cameras.monitor_profiles import load_monitor_profile_config
+from apps.cameras.serializers import serialize_browser_playback
 from apps.notifications.services import (
     PLAYBACK_MODE_PJSIP,
     PLAYBACK_MODE_SIMULATION,
@@ -219,6 +221,10 @@ def device_list(request):
 
     if Camera is not None:
         cameras = list(Camera.objects.all().order_by("camera_code"))
+        active_cameras = [camera for camera in cameras if camera.is_active]
+        media_status = collect_mediamtx_path_readiness(
+            cameras=active_cameras,
+        )
         for camera in cameras:
             camera.connection_status_label = CAMERA_STATUS_LABELS.get(
                 getattr(camera, "status", "unknown"),
@@ -227,7 +233,18 @@ def device_list(request):
             camera.active_status_label = (
                 "已啟用" if getattr(camera, "is_active", False) else "已停用"
             )
-            camera.stream_status_label = get_camera_stream_status_label(camera)
+            media_detail = media_status["path_details"].get(
+                str(camera.camera_code).upper(),
+                {},
+            )
+            camera.media_ready = bool(media_detail.get("media_ready"))
+            camera.playback_reason = media_detail.get(
+                "playback_reason",
+                "inactive" if not camera.is_active else "unknown",
+            )
+            camera.stream_status_label = (
+                "可播放" if camera.media_ready else "影像暫時無法使用"
+            )
 
     if SpeakerDevice is not None:
         speakers = list(SpeakerDevice.objects.all().order_by("speaker_code"))
@@ -251,7 +268,8 @@ def device_list(request):
         "camera_abnormal_count": sum(
             1
             for camera in cameras
-            if getattr(camera, "status", "unknown") != "online"
+            if getattr(camera, "is_active", False)
+            and not getattr(camera, "media_ready", False)
         ),
         "speaker_abnormal_count": sum(
             1
@@ -397,10 +415,7 @@ def monitor_wall(request):
         "legacy",
     )
     monitor_media_mode = (
-        "mediamtx"
-        if configured_media_mode == "mediamtx"
-        and getattr(settings, "KRTC_MEDIAMTX_ENABLED", False)
-        else "legacy"
+        "mediamtx" if configured_media_mode == "mediamtx" else "legacy"
     )
     monitor_mosaic_fallback = getattr(
         settings,
@@ -413,7 +428,7 @@ def monitor_wall(request):
         cameras = Camera.objects.filter(is_active=True).order_by("id")
 
         for camera in cameras:
-            camera.browser_playback = get_camera_playback(camera)
+            camera.browser_playback = get_camera_browser_playback(camera)
 
     return render(
         request,
@@ -926,7 +941,6 @@ def get_pending_broadcast_log_count():
 def serialize_camera(camera):
     camera_id = getattr(camera, "id", None)
     status = getattr(camera, "status", "unknown")
-    playback = get_camera_playback(camera)
 
     return {
         "id": camera_id,
@@ -941,13 +955,7 @@ def serialize_camera(camera):
         ),
         "description": getattr(camera, "description", ""),
         "stream_url": f"/api/cameras/{camera_id}/stream/",
-        "browser_playback": {
-            "available": playback.available,
-            "kind": "mediamtx_webrtc" if playback.available else None,
-            "url": playback.player_url if playback.available else None,
-            "path": playback.path_name if playback.available else None,
-            "reason": playback.reason,
-        },
+        "browser_playback": serialize_browser_playback(camera),
     }
 
 

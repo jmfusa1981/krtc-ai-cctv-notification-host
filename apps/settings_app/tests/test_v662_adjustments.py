@@ -82,7 +82,37 @@ class V662SettingsAdjustmentTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["success"])
+        self.assertEqual(response.json()["probe_type"], "tcp")
+        self.assertTrue(response.json()["network_reachable"])
         tcp_probe.assert_called_once_with("192.0.2.90", 554)
+
+    @patch("apps.settings_app.views.collect_mediamtx_path_readiness")
+    def test_camera_kpi_uses_effective_media_availability(self, collect):
+        for index in range(2, 5):
+            Camera.objects.create(
+                camera_code=f"CAM-{index:03d}",
+                name=f"Camera {index}",
+                area="A1",
+                rtsp_url=f"rtsp://192.0.2.{90 + index}:554/live",
+                status="offline",
+                is_online=False,
+                is_active=True,
+            )
+        collect.return_value = {
+            "path_details": {
+                f"CAM-{index:03d}": {
+                    "media_ready": True,
+                    "playback_allowed": True,
+                }
+                for index in range(1, 5)
+            }
+        }
+
+        response = self.client.get(reverse("settings_app:station_settings"))
+
+        self.assertEqual(response.context["online_camera_count"], 4)
+        self.assertContains(response, "媒體可用攝影機")
+        self.assertContains(response, "4/4")
 
     def test_settings_summary_counts_enabled_speakers_even_when_health_monitor_is_disabled(self):
         SpeakerDevice.objects.create(

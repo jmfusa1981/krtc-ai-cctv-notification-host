@@ -90,6 +90,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const WEBRTC_RECONNECT_BASE_MS = 2000;
     const WEBRTC_RECONNECT_MAX_MS = 15000;
     const WEBRTC_MAX_RETRIES = 3;
+    const WEBRTC_STABLE_READER_SAMPLES = 2;
+    const WEBRTC_STALE_READER_SAMPLES = 3;
+    const WEBRTC_STARTUP_GRACE_MS = 20000;
+    const WEBRTC_REBUILD_COOLDOWN_MS = 30000;
     const MEDIA_STATUS_REFRESH_MS = 5000;
     const MONITOR_PROFILE_SWITCH_DEBOUNCE_MS = 1500;
     const MONITOR_PROFILE_TRANSITION_POLL_MS = 500;
@@ -1089,6 +1093,33 @@ document.addEventListener("DOMContentLoaded", function () {
         webrtcReconnectTimers.delete(player);
     }
 
+    function beginWebRTCStartup(player, detail) {
+        const now = Date.now();
+        const generation = Number(player.dataset.playerGeneration || 0) + 1;
+
+        player.dataset.playerGeneration = String(generation);
+        player.dataset.startupAt = String(now);
+        player.dataset.playerLifecycleState = "warming";
+        player.dataset.iframeLoaded = "false";
+        player.dataset.readerEverEstablished = "false";
+        player.dataset.readerStableSamples = "0";
+        player.dataset.readerStaleSamples = "0";
+        player.dataset.lastOutboundBytes = String(
+            Number((detail || {}).outbound_bytes || 0)
+        );
+        return generation;
+    }
+
+    function isWithinWebRTCStartupGrace(player, now) {
+        const startupAt = Number(player.dataset.startupAt || 0);
+        return startupAt <= 0 || now - startupAt < WEBRTC_STARTUP_GRACE_MS;
+    }
+
+    function isWithinWebRTCRebuildCooldown(player, now) {
+        const lastRebuildAt = Number(player.dataset.lastRebuildAt || 0);
+        return lastRebuildAt > 0 && now - lastRebuildAt < WEBRTC_REBUILD_COOLDOWN_MS;
+    }
+
     function activateWebRTCPlayer(card, player) {
         if (!player) {
             return;
@@ -1100,6 +1131,10 @@ document.addEventListener("DOMContentLoaded", function () {
         clearWebRTCReconnect(player);
         player.dataset.playerActive = "true";
         player.hidden = player.dataset.fallbackActive === "true";
+        player.setAttribute(
+            "aria-hidden",
+            player.dataset.fallbackActive === "true" ? "true" : "false"
+        );
 
         if (hasExistingWebRTCPlayer(player)) {
             if (card.classList.contains("stream-loaded")) {
@@ -1116,6 +1151,8 @@ document.addEventListener("DOMContentLoaded", function () {
             "Loading stream...",
             "正在連接MediaMTX WebRTC串流"
         );
+        const detail = getCameraMediaDetail(card);
+        beginWebRTCStartup(player, detail);
         window.KRTCMediaPlayer.activateWebRTC(player, playerUrl);
     }
 
@@ -1125,6 +1162,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         clearWebRTCReconnect(player);
         player.dataset.playerActive = "false";
+        player.dataset.playerLifecycleState = "released";
         window.KRTCMediaPlayer.releaseWebRTC(player);
     }
 
@@ -1188,10 +1226,13 @@ document.addEventListener("DOMContentLoaded", function () {
         );
     }
 
-    function scheduleWebRTCReconnect(player) {
+    function scheduleWebRTCReconnect(player, expectedGeneration) {
         if (!player || webrtcReconnectTimers.has(player)) {
             return;
         }
+        const reconnectGeneration = expectedGeneration === undefined
+            ? Number(player.dataset.playerGeneration || 0)
+            : expectedGeneration;
         const retryCount = (webrtcRetryCounts.get(player) || 0) + 1;
         webrtcRetryCounts.set(player, retryCount);
         const card = player.closest("[data-monitor-camera-card]");
@@ -1208,7 +1249,13 @@ document.addEventListener("DOMContentLoaded", function () {
         const timer = window.setTimeout(function () {
             webrtcReconnectTimers.delete(player);
             const slot = card ? card.closest("[data-monitor-slot]") : null;
-            if (!card || !slot || slot.hidden || monitorPageExiting) {
+            if (
+                !card ||
+                !slot ||
+                slot.hidden ||
+                monitorPageExiting ||
+                Number(player.dataset.playerGeneration || 0) !== reconnectGeneration
+            ) {
                 return;
             }
             releaseWebRTCPlayer(player);
@@ -1452,6 +1499,10 @@ document.addEventListener("DOMContentLoaded", function () {
                     paths: payload.paths && typeof payload.paths === "object"
                         ? payload.paths
                         : {},
+                    pathDetails: payload.path_details &&
+                        typeof payload.path_details === "object"
+                        ? payload.path_details
+                        : {},
                     transition: payload.transition && typeof payload.transition === "object"
                         ? payload.transition
                         : null
@@ -1459,7 +1510,12 @@ document.addEventListener("DOMContentLoaded", function () {
                 return monitorMediaStatus;
             })
             .catch(function () {
-                monitorMediaStatus = {reachable: false, paths: {}, transition: null};
+                monitorMediaStatus = {
+                    reachable: false,
+                    paths: {},
+                    pathDetails: {},
+                    transition: null
+                };
                 return monitorMediaStatus;
             })
             .finally(function () {
@@ -1486,7 +1542,95 @@ document.addEventListener("DOMContentLoaded", function () {
             return false;
         }
         const cameraCode = String(card.dataset.cameraCode || "").toUpperCase();
+        const detail = monitorMediaStatus.pathDetails
+            ? monitorMediaStatus.pathDetails[cameraCode] || {}
+            : {};
+        if (Object.prototype.hasOwnProperty.call(detail, "playback_allowed")) {
+            return detail.playback_allowed === true;
+        }
         return monitorMediaStatus.paths[cameraCode] === true;
+    }
+
+    function getCameraMediaDetail(card) {
+        const cameraCode = String(
+            card ? card.dataset.cameraCode || "" : ""
+        ).toUpperCase();
+        return monitorMediaStatus && monitorMediaStatus.pathDetails
+            ? monitorMediaStatus.pathDetails[cameraCode] || {}
+            : {};
+    }
+
+    function verifyVisibleWebRTCPlayer(card, player) {
+        const detail = getCameraMediaDetail(card);
+        const now = Date.now();
+        const iframeLoaded = player.dataset.iframeLoaded === "true";
+        const readerEstablished = Number(detail.webrtc_reader_count || 0) > 0;
+        if (readerEstablished) {
+            player.dataset.readerEverEstablished = "true";
+        }
+        const stableSamples = iframeLoaded && readerEstablished
+            ? Number(player.dataset.readerStableSamples || 0) + 1
+            : 0;
+        player.dataset.readerStableSamples = String(stableSamples);
+
+        const outboundBytes = Number(detail.outbound_bytes || 0);
+        const previousOutboundBytes = Number(
+            player.dataset.lastOutboundBytes || 0
+        );
+        const stalled = (
+            card.classList.contains("stream-loaded") &&
+            readerEstablished &&
+            outboundBytes > 0 &&
+            outboundBytes <= previousOutboundBytes
+        );
+        player.dataset.lastOutboundBytes = String(outboundBytes);
+
+        if (stableSamples >= WEBRTC_STABLE_READER_SAMPLES && !stalled) {
+            player.dataset.readerStaleSamples = "0";
+            player.dataset.playerLifecycleState = "online";
+            clearWebRTCReconnect(player);
+            webrtcRetryCounts.delete(player);
+            releaseFallbackStream(card);
+            player.dataset.fallbackActive = "false";
+            player.hidden = false;
+            player.setAttribute("aria-hidden", "false");
+            setCardState(card, "loaded");
+            setStatusBadge(card, "ONLINE", "online");
+            hideOverlay(card);
+            return;
+        }
+
+        // iframe 導航後先保留完整啟動寬限；此期間 reader、session 或流量為零都不是 stale。
+        if (isWithinWebRTCStartupGrace(player, now)) {
+            player.dataset.readerStaleSamples = "0";
+            player.dataset.playerLifecycleState = "warming";
+            return;
+        }
+
+        const staleSamples = (!readerEstablished || stalled)
+            ? Number(player.dataset.readerStaleSamples || 0) + 1
+            : 0;
+        player.dataset.readerStaleSamples = String(staleSamples);
+        if (staleSamples >= WEBRTC_STALE_READER_SAMPLES) {
+            if (isWithinWebRTCRebuildCooldown(player, now)) {
+                player.dataset.playerLifecycleState = "cooldown";
+                return;
+            }
+            const generation = Number(player.dataset.playerGeneration || 0);
+            player.dataset.lastRebuildAt = String(now);
+            setCardState(card, "warning");
+            setStatusBadge(card, "CONNECTING", "warning");
+            setOverlay(
+                card,
+                "warning",
+                card.dataset.cameraCode || "CAMERA",
+                "WebRTC reconnecting...",
+                "偵測到 stale reader/player，正在重建單一 Camera 播放工作階段"
+            );
+            releaseWebRTCPlayer(player);
+            player.dataset.playerLifecycleState = "recovering";
+            scheduleWebRTCReconnect(player, generation);
+        }
     }
 
     function scheduleMonitorTransitionPoll() {
@@ -1665,6 +1809,7 @@ document.addEventListener("DOMContentLoaded", function () {
             item.nextPlayer.dataset.transitionId = transition.transition_id;
             item.nextPlayer.dataset.transitionLoaded = "false";
             item.nextPlayer.dataset.playerActive = "true";
+            beginWebRTCStartup(item.nextPlayer, {});
             item.nextPlayer.hidden = false;
             item.nextPlayer.setAttribute("aria-hidden", "true");
             item.nextPlayer.src = item.camera.next_player_url;
@@ -1785,6 +1930,9 @@ document.addEventListener("DOMContentLoaded", function () {
             }
             if (isCameraMediaReady(card)) {
                 activateWebRTCPlayer(card, player);
+                if (hasExistingWebRTCPlayer(player)) {
+                    verifyVisibleWebRTCPlayer(card, player);
+                }
             } else {
                 activateCameraFallback(card, player);
             }
@@ -1845,7 +1993,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function checkVisibleCameraHealth() {
-        if (isMosaicMode()) {
+        if (isMosaicMode() || monitorMediaMode === "mediamtx") {
             return;
         }
 
@@ -2090,15 +2238,18 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!card) {
             return;
         }
-
-        clearWebRTCReconnect(player);
-        webrtcRetryCounts.delete(player);
-        releaseFallbackStream(card);
-        player.dataset.fallbackActive = "false";
-        player.hidden = false;
-        setCardState(card, "loaded");
-        setStatusBadge(card, "ONLINE", "online");
-        hideOverlay(card);
+        player.dataset.iframeLoaded = "true";
+        player.dataset.readerStableSamples = "0";
+        setCardState(card, "loading");
+        setStatusBadge(card, "CONNECTING", "warning");
+        setOverlay(
+            card,
+            "",
+            card.dataset.cameraCode || "CAMERA",
+            "Loading stream...",
+            "播放器已載入，正在確認 MediaMTX reader 與媒體流量"
+        );
+        refreshMonitorMediaStatus();
     }
 
     function markStreamLoaded(imageElement) {

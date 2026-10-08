@@ -221,7 +221,7 @@
                         data-monitor-camera-card
                         data-camera-id="{{ camera.id }}"
                         data-camera-code="{{ camera.camera_code }}"
-                        data-check-url="{% if not camera.browser_playback.available %}{% url 'cameras:camera_stream_check' camera.id %}{% endif %}"
+                        data-check-url="{% if monitor_media_mode == 'legacy' %}{% url 'cameras:camera_stream_check' camera.id %}{% endif %}"
                     >
                         <div class="monitor-camera-screen">
                             {% if camera.browser_playback.available %}
@@ -294,10 +294,12 @@
                             </div>
 
                             <span
-                                class="camera-status status-{{ camera.status|default:'unknown' }}"
+                                class="camera-status {% if monitor_media_mode == 'mediamtx' %}status-checking{% else %}status-{{ camera.status|default:'unknown' }}{% endif %}"
                                 data-status-badge
                             >
-                                {% if camera.get_status_display %}
+                                {% if monitor_media_mode == "mediamtx" %}
+                                    CHECKING
+                                {% elif camera.get_status_display %}
                                     {{ camera.get_status_display }}
                                 {% else %}
                                     Unknown
@@ -336,7 +338,7 @@
     </div>
 
     <script src="{% static 'js/mediamtx_player.js' %}?v=20261007-dashboard-unification"></script>
-    <script src="{% static 'js/monitor.js' %}?v=20261007-dashboard-unification"></script>
+    <script src="{% static 'js/monitor.js' %}?v=20261008-webrtc-grace"></script>
 
     <script>
     document.addEventListener("DOMContentLoaded", function () {

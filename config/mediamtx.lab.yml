@@ -31,3 +31,35 @@ paths:
     source: publisher
   cam004:
     source: publisher
+  stress01:
+    source: publisher
+  stress02:
+    source: publisher
+  stress03:
+    source: publisher
+  stress04:
+    source: publisher
+  stress05:
+    source: publisher
+  stress06:
+    source: publisher
+  stress07:
+    source: publisher
+  stress08:
+    source: publisher
+  stress09:
+    source: publisher
+  stress10:
+    source: publisher
+  stress11:
+    source: publisher
+  stress12:
+    source: publisher
+  stress13:
+    source: publisher
+  stress14:
+    source: publisher
+  stress15:
+    source: publisher
+  stress16:
+    source: publisher

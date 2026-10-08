@@ -58,7 +58,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (timeTargetId && data.tested_at) {
             const timeTarget = document.getElementById(timeTargetId);
-            if (timeTarget) timeTarget.textContent = data.tested_at;
+            if (timeTarget) {
+                timeTarget.textContent = data.probe_type === "tcp"
+                    ? `TCP 最後測試：${data.tested_at}`
+                    : data.tested_at;
+            }
         }
     }
 

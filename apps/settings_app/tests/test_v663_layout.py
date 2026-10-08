@@ -26,7 +26,7 @@ class V663SettingsLayoutTests(TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
 
-        self.assertIn("線上攝影機", html)
+        self.assertIn("媒體可用攝影機", html)
         self.assertIn("線上廣播喇叭", html)
         self.assertNotIn("已建立映射", html)
         self.assertIn('class="local-device-grid"', html)

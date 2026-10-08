@@ -9,7 +9,12 @@ from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from apps.cameras.mediamtx import camera_path_name, get_camera_playback
+from apps.cameras.bridge_runtime import ProcessSnapshot
+from apps.cameras.mediamtx import (
+    camera_path_name,
+    get_camera_browser_playback,
+    get_camera_playback,
+)
 from apps.cameras.models import Camera
 from apps.cameras.monitor_diagnostics import (
     _load_bridge_statuses,
@@ -64,9 +69,50 @@ class MediaMTXPlaybackTests(SimpleTestCase):
         self.assertEqual(camera_path_name("CAM-004"), "cam004")
         self.assertEqual(camera_path_name("../CAM-004"), "")
 
+    @override_settings(
+        KRTC_MEDIAMTX_ENABLED=True,
+        KRTC_MONITOR_MEDIA_MODE="mediamtx",
+        KRTC_MEDIAMTX_WEBRTC_BASE_URL="http://localhost:8889",
+        KRTC_MEDIAMTX_PHASE1_CAMERA_CODES=("CAM-005", "CAM-020"),
+    )
+    def test_generic_camera_paths_need_no_python_mapping(self):
+        self.assertEqual(
+            get_camera_playback(self.camera("CAM-005")).path_name,
+            "cam005",
+        )
+        self.assertEqual(
+            get_camera_playback(self.camera("CAM-020")).path_name,
+            "cam020",
+        )
+
     @override_settings(KRTC_MEDIAMTX_ENABLED=False)
     def test_disabled_configuration_is_unavailable(self):
         self.assertEqual(get_camera_playback(self.camera()).reason, "disabled")
+
+    @override_settings(
+        KRTC_MEDIAMTX_ENABLED=False,
+        KRTC_MONITOR_MEDIA_MODE="mediamtx",
+        KRTC_MEDIAMTX_WEBRTC_BASE_URL="http://localhost:8889",
+        KRTC_MEDIAMTX_PHASE1_CAMERA_CODES=(),
+    )
+    def test_browser_metadata_uses_mode_and_canonical_path_contract(self):
+        playback = get_camera_browser_playback(
+            self.camera("CAM-020", status="offline", is_online=False)
+        )
+
+        self.assertTrue(playback.available)
+        self.assertEqual(playback.path_name, "cam020")
+        self.assertIn("/cam020?", playback.player_url)
+
+    @override_settings(
+        KRTC_MONITOR_MEDIA_MODE="legacy",
+        KRTC_MEDIAMTX_WEBRTC_BASE_URL="http://localhost:8889",
+    )
+    def test_browser_metadata_is_unavailable_outside_mediamtx_mode(self):
+        playback = get_camera_browser_playback(self.camera())
+
+        self.assertFalse(playback.available)
+        self.assertEqual(playback.reason, "legacy_mode")
 
     @override_settings(
         KRTC_MEDIAMTX_ENABLED=True,
@@ -142,9 +188,23 @@ class MediaMTXEndpointTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["kind"], "mediamtx_webrtc")
+        self.assertEqual(response.json()["path"], "cam004")
         self.assertIn("/cam004", response.json()["url"])
         self.assertNotIn("root", response.content.decode("utf-8"))
         self.assertNotIn("192.168.6.92", response.content.decode("utf-8"))
+
+    def test_camera_list_uses_the_canonical_browser_playback_contract(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("cameras:camera_list_api"))
+        playback = response.json()["cameras"][0]["browser_playback"]
+
+        self.assertEqual(
+            set(playback),
+            {"available", "kind", "path", "url", "whep_url", "reason"},
+        )
+        self.assertEqual(playback["path"], "cam004")
+        self.assertIn("/cam004?", playback["url"])
 
     def test_media_status_endpoint_requires_login(self):
         response = self.client.get(reverse("cameras:camera_media_status_api"))
@@ -312,6 +372,20 @@ class MediaMTXEndpointTests(TestCase):
         self.assertNotIn("root:root", content)
         self.assertNotIn("192.168.6.92", content)
 
+    @override_settings(KRTC_MEDIAMTX_ENABLED=False)
+    def test_monitor_mediamtx_mode_does_not_use_legacy_feature_gate(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("dashboard:monitor"))
+        content = response.content.decode("utf-8")
+
+        self.assertContains(response, 'data-media-mode="mediamtx"')
+        self.assertIn("/cam004?controls", content)
+        self.assertNotIn(
+            f'data-check-url="/api/cameras/{self.camera.id}/check/"',
+            content,
+        )
+
     def test_monitor_renders_four_independent_webrtc_players(self):
         for index in range(1, 4):
             Camera.objects.create(
@@ -335,7 +409,7 @@ class MediaMTXEndpointTests(TestCase):
             self.assertIn(f"/cam{index:03d}?", content)
         self.assertNotIn("private-password", content)
 
-    def test_offline_camera_uses_isolated_fallback(self):
+    def test_offline_database_status_does_not_block_mediamtx_player(self):
         Camera.objects.create(
             camera_code="CAM-002",
             name="Offline Camera",
@@ -352,10 +426,45 @@ class MediaMTXEndpointTests(TestCase):
         response = self.client.get(reverse("dashboard:monitor"))
         content = response.content.decode("utf-8")
 
-        self.assertEqual(content.count("data-mediamtx-player"), 2)
+        self.assertEqual(content.count("data-mediamtx-player"), 4)
+        self.assertIn("/cam002?controls", content)
         self.assertIn('data-stream-url="/api/cameras/2/stream/"', content)
-        self.assertNotIn("/cam002?controls", content)
         self.assertNotIn("private-password", content)
+
+
+@override_settings(
+    KRTC_MEDIAMTX_ENABLED=True,
+    KRTC_MONITOR_MEDIA_MODE="mediamtx",
+    KRTC_MEDIAMTX_WEBRTC_BASE_URL="http://127.0.0.1:8889",
+    KRTC_MEDIAMTX_PHASE1_CAMERA_CODES=tuple(
+        f"CAM-{index:03d}" for index in range(1, 17)
+    ),
+)
+class MediaMTXSixteenCameraTests(TestCase):
+    """驗證十六路 Camera metadata 不依賴固定 CAM-001～004 對照表。"""
+
+    def test_monitor_renders_sixteen_isolated_player_pairs(self):
+        user = User.objects.create_user("monitor-16-user", password="test-pass")
+        for index in range(1, 17):
+            Camera.objects.create(
+                camera_code=f"CAM-{index:03d}",
+                name=f"Synthetic Camera {index}",
+                area="Lab",
+                rtsp_url=f"rtsp://private-{index}/cam1/h264",
+                status="online",
+                is_online=True,
+                is_active=True,
+            )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("dashboard:monitor"))
+        content = response.content.decode("utf-8")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(content.count("data-monitor-camera-card"), 16)
+        self.assertEqual(content.count("data-mediamtx-player"), 32)
+        for index in range(1, 17):
+            self.assertIn(f"/cam{index:03d}?", content)
 
 
 class MediaMTXFrontendContractTests(SimpleTestCase):
@@ -373,9 +482,11 @@ class MediaMTXFrontendContractTests(SimpleTestCase):
 
         for path_name in ("cam001", "cam002", "cam003", "cam004"):
             self.assertIn(f"  {path_name}:", config)
-        self.assertEqual(config.count("source: publisher"), 6)
+        self.assertEqual(config.count("source: publisher"), 22)
         self.assertIn("  cam001_b:", config)
         self.assertIn("  cam003_b:", config)
+        for index in range(1, 17):
+            self.assertIn(f"  stress{index:02d}:", config)
         self.assertNotIn("source: rtsp://", config)
         self.assertNotIn("root:root", config)
         self.assertIn("function releaseWebRTCPlayer", script)
@@ -479,7 +590,8 @@ class MediaMTXFrontendContractTests(SimpleTestCase):
             "$pathName = [string]$cameraProfile.Path",
             bridge,
         )
-        self.assertIn("& $FfmpegPath @ffmpegArguments", bridge)
+        self.assertIn("-FilePath $FfmpegPath", bridge)
+        self.assertIn("$ffmpegProcess.WaitForExit()", bridge)
         self.assertNotIn("root:root", bridge)
         self.assertNotIn("Invoke-Expression", bridge)
         self.assertNotRegex(
@@ -514,6 +626,8 @@ class MediaMTXFrontendContractTests(SimpleTestCase):
             script,
             r"if \(isCameraMediaReady\(card\)\) \{\s*"
             r"activateWebRTCPlayer\(card, player\);\s*"
+            r"if \(hasExistingWebRTCPlayer\(player\)\) \{\s*"
+            r"verifyVisibleWebRTCPlayer\(card, player\);\s*\}\s*"
             r"\} else \{\s*activateCameraFallback\(card, player\);",
         )
         self.assertRegex(
@@ -660,6 +774,81 @@ class MediaMTXFrontendContractTests(SimpleTestCase):
             "window.clearInterval(monitorMediaRefreshTimer)",
             script,
         )
+        self.assertIn("WEBRTC_STABLE_READER_SAMPLES = 2", script)
+        self.assertIn("WEBRTC_STALE_READER_SAMPLES = 3", script)
+        self.assertIn("verifyVisibleWebRTCPlayer(card, player)", script)
+        self.assertIn("pathDetails", script)
+        self.assertIn("outbound_bytes", script)
+
+    def test_webrtc_startup_grace_does_not_treat_zero_readers_as_stale(self):
+        script = (
+            Path(settings.BASE_DIR) / "static/js/monitor.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("WEBRTC_STARTUP_GRACE_MS = 20000", script)
+        self.assertIn("function beginWebRTCStartup(player, detail)", script)
+        self.assertIn("function isWithinWebRTCStartupGrace(player, now)", script)
+        self.assertRegex(
+            script,
+            r"if \(isWithinWebRTCStartupGrace\(player, now\)\) \{[\s\S]*?"
+            r'player\.dataset\.readerStaleSamples = "0";[\s\S]*?return;',
+        )
+        self.assertLess(
+            script.index("if (isWithinWebRTCStartupGrace(player, now))"),
+            script.index("if (staleSamples >= WEBRTC_STALE_READER_SAMPLES)"),
+        )
+
+    def test_webrtc_rebuild_is_per_player_and_cooldown_limited(self):
+        script = (
+            Path(settings.BASE_DIR) / "static/js/monitor.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("WEBRTC_REBUILD_COOLDOWN_MS = 30000", script)
+        self.assertIn("player.dataset.playerGeneration", script)
+        self.assertIn("player.dataset.startupAt", script)
+        self.assertIn("player.dataset.lastRebuildAt", script)
+        self.assertIn("player.dataset.readerEverEstablished", script)
+        self.assertIn("isWithinWebRTCRebuildCooldown(player, now)", script)
+        self.assertIn(
+            "Number(player.dataset.playerGeneration || 0) !== reconnectGeneration",
+            script,
+        )
+        self.assertNotIn("CAM-005", script)
+        self.assertNotIn("CAM-020", script)
+
+    def test_webrtc_warming_player_remains_visible_until_reader_is_stable(self):
+        script = (
+            Path(settings.BASE_DIR) / "static/js/monitor.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            'player.dataset.playerLifecycleState = "warming";',
+            script,
+        )
+        self.assertIn(
+            'player.setAttribute(\n            "aria-hidden",',
+            script,
+        )
+        self.assertRegex(
+            script,
+            r"stableSamples >= WEBRTC_STABLE_READER_SAMPLES[\s\S]*?"
+            r"player\.hidden = false;[\s\S]*?hideOverlay\(card\);",
+        )
+
+    def test_layout_transition_initializes_an_isolated_player_generation(self):
+        script = (
+            Path(settings.BASE_DIR) / "static/js/monitor.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertRegex(
+            script,
+            r'item\.nextPlayer\.dataset\.playerActive = "true";\s*'
+            r"beginWebRTCStartup\(item\.nextPlayer, \{\}\);",
+        )
+        for layout in ("1", "4", "9", "16"):
+            self.assertIn(f'data-grid="{layout}"', (
+                Path(settings.BASE_DIR) / "templates/dashboard/monitor.html"
+            ).read_text(encoding="utf-8"))
 
     def test_bridge_manager_starts_isolated_camera_processes(self):
         tools_root = Path(settings.BASE_DIR) / "tools/mediamtx"
@@ -765,16 +954,16 @@ class MonitorMediaDiagnosticTests(SimpleTestCase):
                 KRTC_MEDIAMTX_BRIDGE_STATUS_DIR=temporary_directory
             ):
                 with patch(
-                    "apps.cameras.monitor_diagnostics."
-                    "_process_identity_matches",
-                    return_value=False,
+                    "apps.cameras.bridge_runtime.inspect_process",
+                    return_value=ProcessSnapshot(False),
                 ):
                     statuses = _load_bridge_statuses()
 
-        self.assertEqual(statuses[0]["state"], "stopped")
+        self.assertEqual(statuses[0]["declared_state"], "running")
+        self.assertEqual(statuses[0]["effective_state"], "stale")
         self.assertEqual(
             statuses[0]["last_error"],
-            "stale_process_identity",
+            "stale_process_missing",
         )
 
     @patch("apps.cameras.monitor_diagnostics._process_memory_bytes", return_value=1024)
@@ -868,7 +1057,22 @@ class MonitorMediaDiagnosticTests(SimpleTestCase):
         self.assertEqual(result["paths"][0]["next_path"], "cam001_b")
 
     @patch("apps.cameras.monitor_diagnostics._read_json")
-    def test_path_readiness_reports_each_camera_independently(self, read_json):
+    @patch(
+        "apps.cameras.monitor_diagnostics.load_bridge_statuses",
+        return_value=[
+            {
+                "camera_code": "CAM-001",
+                "publish_path": "cam001",
+                "state": "stopped",
+                "effective_state": "stopped",
+            },
+        ],
+    )
+    def test_path_readiness_reports_each_camera_independently(
+        self,
+        _load_bridge_statuses,
+        read_json,
+    ):
         read_json.return_value = {
             "items": [
                 {
@@ -922,17 +1126,14 @@ class MonitorMediaDiagnosticTests(SimpleTestCase):
         self.assertTrue(camera_transition["next_ready"])
         self.assertEqual(camera_transition["next_reader_count"], 1)
         self.assertIn("/cam001_b?", camera_transition["next_player_url"])
-        self.assertEqual(
-            result["path_details"]["CAM-001"],
-            {
-                "camera": "CAM-001",
-                "path": "cam001",
-                "ready": True,
-                "reader_count": 1,
-                "webrtc_reader_count": 1,
-                "transition_state": "preloading",
-            },
-        )
+        detail = result["path_details"]["CAM-001"]
+        self.assertEqual(detail["path"], "cam001")
+        self.assertTrue(detail["ready"])
+        self.assertEqual(detail["reader_count"], 1)
+        self.assertEqual(detail["webrtc_reader_count"], 1)
+        self.assertEqual(detail["transition_state"], "preloading")
+        self.assertFalse(detail["playback_allowed"])
+        self.assertEqual(detail["playback_reason"], "bridge_stopped")
 
     @patch(
         "apps.cameras.monitor_diagnostics._read_json",
@@ -942,7 +1143,21 @@ class MonitorMediaDiagnosticTests(SimpleTestCase):
         result = collect_mediamtx_path_readiness()
 
         self.assertFalse(result["reachable"])
-        self.assertEqual(result["paths"], {})
+        self.assertEqual(
+            result["paths"],
+            {
+                "CAM-001": False,
+                "CAM-002": False,
+                "CAM-003": False,
+                "CAM-004": False,
+            },
+        )
+        self.assertTrue(
+            all(
+                not detail["playback_allowed"]
+                for detail in result["path_details"].values()
+            )
+        )
         self.assertIn("mediamtx_unreachable", result["error"])
 
     @patch("apps.cameras.monitor_diagnostics._process_memory_bytes", return_value=1024)
@@ -1003,6 +1218,9 @@ class MonitorMediaDiagnosticTests(SimpleTestCase):
         self.assertFalse(result["mediamtx_reachable"])
         self.assertTrue(result["fallback_enabled"])
         self.assertIn("mediamtx_unreachable", result["error"])
+        self.assertEqual(len(result["paths"]), 4)
+        self.assertTrue(all(not item["ready"] for item in result["paths"]))
+        self.assertEqual(result["paths"][0]["canonical_path"], "cam001")
 
     @patch(
         "apps.cameras.management.commands.diagnose_monitor_media."

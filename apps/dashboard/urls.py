@@ -7,6 +7,11 @@ from .event_records import (
     export_event_records_excel,
 )
 from .system_logs import system_log_list
+from .stress import (
+    lab_stress_monitor,
+    lab_stress_status_api,
+    lab_stress_telemetry_api,
+)
 from .views import (
     dashboard_home,
     dashboard_live_state_api,
@@ -38,6 +43,17 @@ urlpatterns = [
     ),
     path("broadcast/", station_broadcast_console, name="station_broadcast"),
     path("monitor/", monitor_wall, name="monitor"),
+    path("lab/media-stress/", lab_stress_monitor, name="lab_stress_monitor"),
+    path(
+        "lab/media-stress/status/",
+        lab_stress_status_api,
+        name="lab_stress_status_api",
+    ),
+    path(
+        "lab/media-stress/telemetry/",
+        lab_stress_telemetry_api,
+        name="lab_stress_telemetry_api",
+    ),
     path(
         "api/live-state/",
         dashboard_live_state_api,

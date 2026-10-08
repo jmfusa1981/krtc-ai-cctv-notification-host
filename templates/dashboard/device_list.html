@@ -23,7 +23,7 @@
             <article class="summary-card summary-card--abnormal{% if camera_abnormal_count > 0 %} has-abnormal{% endif %}">
                 <span>攝影機異常</span>
                 <strong>{{ camera_abnormal_count }}</strong>
-                <small>包含離線、維護與異常</small>
+                <small>依 MediaMTX path 與 bridge 有效狀態</small>
             </article>
             <article class="summary-card">
                 <span>廣播喇叭總數</span>
@@ -60,9 +60,9 @@
                                 <tr>
                                     <th>攝影機編號</th>
                                     <th>區域</th>
-                                    <th>連線狀態</th>
+                                    <th>TCP 網路快照</th>
                                     <th>啟用狀態</th>
-                                    <th>串流狀態</th>
+                                    <th>媒體播放狀態</th>
                                     <th>說明</th>
                                 </tr>
                             </thead>
@@ -73,7 +73,7 @@
                                         <td>{{ camera.area|default:"未設定" }}</td>
                                         <td><span class="status-badge status-{{ camera.status|default:'unknown' }}">{{ camera.connection_status_label }}</span></td>
                                         <td><span class="status-badge {% if camera.is_active %}status-enabled{% else %}status-disabled{% endif %}">{{ camera.active_status_label }}</span></td>
-                                        <td><span class="status-badge {% if camera.status == 'online' and camera.is_active %}status-online{% elif camera.status == 'maintenance' %}status-maintenance{% else %}status-error{% endif %}">{{ camera.stream_status_label }}</span></td>
+                                        <td><span class="status-badge {% if camera.media_ready %}status-online{% elif not camera.is_active %}status-disabled{% else %}status-error{% endif %}">{{ camera.stream_status_label }}</span></td>
                                         <td class="description-cell">{{ camera.description|default:"—" }}</td>
                                     </tr>
                                 {% empty %}

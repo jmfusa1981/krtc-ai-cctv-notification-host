@@ -13,7 +13,7 @@ from apps.station_api.models import DeviceFaultLog
 
 from .forms import MonitorProfileForm, MonitorTransitionAckForm
 from .models import Camera
-from .mediamtx import get_camera_playback
+from .serializers import serialize_browser_playback
 from .monitor_diagnostics import collect_mediamtx_path_readiness
 from .monitor_profiles import request_monitor_profile
 from .monitor_transitions import acknowledge_monitor_transition
@@ -46,7 +46,6 @@ def camera_list_api(request):
     data = []
 
     for camera in cameras:
-        playback = get_camera_playback(camera)
         data.append({
             "id": camera.id,
             "name": camera.name,
@@ -58,12 +57,7 @@ def camera_list_api(request):
             "status": camera.status,
             "is_active": camera.is_active,
             "is_online": camera.is_online,
-            "browser_playback": {
-                "available": playback.available,
-                "kind": "mediamtx_webrtc" if playback.available else None,
-                "url": playback.player_url if playback.available else None,
-                "reason": playback.reason,
-            },
+            "browser_playback": serialize_browser_playback(camera),
             "description": camera.description,
             "last_checked_at": camera.last_checked_at.strftime("%Y-%m-%d %H:%M:%S") if camera.last_checked_at else None,
             "created_at": camera.created_at.strftime("%Y-%m-%d %H:%M:%S") if camera.created_at else None,
@@ -88,20 +82,16 @@ def camera_playback_api(request, camera_id):
     except Camera.DoesNotExist:
         raise Http404("Camera not found.")
 
-    playback = get_camera_playback(camera)
+    browser_playback = serialize_browser_playback(camera)
     payload = {
-        "success": playback.available,
+        "success": browser_playback["available"],
         "camera_id": camera.id,
         "camera_code": camera.camera_code,
-        "available": playback.available,
-        "kind": "mediamtx_webrtc" if playback.available else None,
-        "url": playback.player_url if playback.available else None,
-        "whep_url": playback.whep_url if playback.available else None,
-        "reason": playback.reason,
+        **browser_playback,
     }
     return JsonResponse(
         payload,
-        status=200 if playback.available else 503,
+        status=200 if browser_playback["available"] else 503,
         json_dumps_params={"ensure_ascii": False},
     )
 
@@ -110,7 +100,16 @@ def camera_playback_api(request, camera_id):
 def camera_media_status_api(request):
     """回傳不含來源網址與憑證的MediaMTX path ready快照。"""
 
-    status = collect_mediamtx_path_readiness()
+    cameras = list(
+        Camera.objects.filter(is_active=True).only(
+            "camera_code",
+            "status",
+            "is_online",
+            "is_active",
+            "last_checked_at",
+        )
+    )
+    status = collect_mediamtx_path_readiness(cameras=cameras)
     return JsonResponse(
         {
             "success": status["reachable"],

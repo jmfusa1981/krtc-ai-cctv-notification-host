@@ -119,16 +119,17 @@ $ffmpegArguments += @(
 
 New-Item -ItemType Directory -Path $StatusDirectory -Force | Out-Null
 $statusPath = Join-Path $StatusDirectory "$StatusKey.json"
-$processStartedAt = (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString("o")
 $statusRecord = [ordered]@{
     CameraCode = $normalizedCameraCode
     SourceCodec = $bridgeProfile.SourceCodec
     BridgeMode = $bridgeProfile.BridgeMode
     Destination = $destinationUrl
     PublishPath = $pathName
-    ProcessId = $PID
-    ProcessStartedAt = $processStartedAt
-    State = "running"
+    ProcessId = 0
+    ProcessStartedAt = ""
+    DeclaredState = "starting"
+    EffectiveState = "starting"
+    State = "starting"
     StartedAt = (Get-Date).ToUniversalTime().ToString("o")
     ExitCode = $null
     LastError = ""
@@ -137,7 +138,16 @@ $statusRecord = [ordered]@{
     OutputHeight = $resolvedMonitorProfile.Height
     OutputFps = $resolvedMonitorProfile.Fps
 }
-$statusRecord | ConvertTo-Json | Set-Content -LiteralPath $statusPath -Encoding ascii
+
+function Write-BridgeStatus {
+    $temporaryPath = "$statusPath.$PID.tmp"
+    $statusRecord | ConvertTo-Json | Set-Content `
+        -LiteralPath $temporaryPath `
+        -Encoding ascii
+    Move-Item -LiteralPath $temporaryPath -Destination $statusPath -Force
+}
+
+Write-BridgeStatus
 
 Write-Host (
     "Bridge starting: CameraCode={0} SourceCodec={1} BridgeMode={2} Destination={3}" -f `
@@ -160,9 +170,23 @@ Write-Host "Press Ctrl+C to stop the bridge."
 
 $exitCode = 1
 $lastError = ""
+$ffmpegProcess = $null
 try {
-    & $FfmpegPath @ffmpegArguments
-    $exitCode = $LASTEXITCODE
+    $ffmpegProcess = Start-Process `
+        -FilePath $FfmpegPath `
+        -ArgumentList $ffmpegArguments `
+        -NoNewWindow `
+        -PassThru
+    $statusRecord["ProcessId"] = $ffmpegProcess.Id
+    $statusRecord["ProcessStartedAt"] = (
+        $ffmpegProcess.StartTime.ToUniversalTime().ToString("o")
+    )
+    $statusRecord["DeclaredState"] = "running"
+    $statusRecord["EffectiveState"] = "running"
+    $statusRecord["State"] = "running"
+    Write-BridgeStatus
+    $ffmpegProcess.WaitForExit()
+    $exitCode = $ffmpegProcess.ExitCode
     if ($exitCode -ne 0) {
         $lastError = "ffmpeg_exit_code_$exitCode"
     }
@@ -174,10 +198,12 @@ try {
         $lastError = "bridge_interrupted_or_failed"
     }
     $statusRecord["State"] = "stopped"
+    $statusRecord["DeclaredState"] = "stopped"
+    $statusRecord["EffectiveState"] = "stopped"
     $statusRecord["StoppedAt"] = (Get-Date).ToUniversalTime().ToString("o")
     $statusRecord["ExitCode"] = $exitCode
     $statusRecord["LastError"] = $lastError
-    $statusRecord | ConvertTo-Json | Set-Content -LiteralPath $statusPath -Encoding ascii
+    Write-BridgeStatus
 }
 
 Write-Host (
