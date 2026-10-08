@@ -132,15 +132,64 @@ function Remove-StaleStressTempFiles {
     }
 }
 
+function Resolve-StressRuntimeFilePath {
+    param(
+        $Path,
+        [string]$ParameterName
+    )
+
+    if ($null -eq $Path -or $Path -is [System.Array]) {
+        throw ("{0} must be one scalar filesystem path." -f $ParameterName)
+    }
+    $pathValue = [string]$Path
+    if ([string]::IsNullOrWhiteSpace($pathValue)) {
+        throw ("{0} must not be empty." -f $ParameterName)
+    }
+
+    $runtimeDirectoryValue = Get-StressRuntimeDirectory
+    if (
+        $null -eq $runtimeDirectoryValue -or
+        $runtimeDirectoryValue -is [System.Array] -or
+        [string]::IsNullOrWhiteSpace([string]$runtimeDirectoryValue)
+    ) {
+        throw "Stress runtime directory must be one non-empty scalar filesystem path."
+    }
+
+    $runtimeDirectory = [System.IO.Path]::GetFullPath([string]$runtimeDirectoryValue).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $fullPath = [System.IO.Path]::GetFullPath($pathValue)
+    $parentDirectory = [System.IO.Path]::GetDirectoryName($fullPath).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    if (-not [string]::Equals(
+        $parentDirectory,
+        $runtimeDirectory,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw ("{0} must be directly inside the stress runtime directory." -f $ParameterName)
+    }
+    return $fullPath
+}
+
 function Write-StressState {
     param([array]$Records)
 
-    $runtimeDirectory = Get-StressRuntimeDirectory
+    $runtimeDirectoryValue = Get-StressRuntimeDirectory
+    if ($null -eq $runtimeDirectoryValue -or $runtimeDirectoryValue -is [System.Array]) {
+        throw "Stress runtime directory must be one scalar filesystem path."
+    }
+    $runtimeDirectory = [System.IO.Path]::GetFullPath([string]$runtimeDirectoryValue)
     New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
-    $statePath = Get-StressStatePath
-    $temporaryPath = Join-Path $runtimeDirectory (
+    $statePath = Resolve-StressRuntimeFilePath -Path (Get-StressStatePath) -ParameterName "StatePath"
+    $temporaryPath = Resolve-StressRuntimeFilePath -Path (Join-Path $runtimeDirectory (
         ".stress_processes.json.{0}.tmp" -f [Guid]::NewGuid().ToString("N")
-    )
+    )) -ParameterName "TemporaryPath"
+    $backupPath = Resolve-StressRuntimeFilePath -Path (Join-Path $runtimeDirectory (
+        ".stress_processes.json.{0}.bak" -f [Guid]::NewGuid().ToString("N")
+    )) -ParameterName "BackupPath"
     $normalizedRecords = @()
     foreach ($record in @($Records)) {
         $normalizedRecord = ConvertTo-NormalizedStressRecord -Record $record
@@ -152,7 +201,10 @@ function Write-StressState {
         $json = ConvertTo-Json -InputObject @($normalizedRecords) -Depth 4
         Set-Content -LiteralPath $temporaryPath -Value $json -Encoding ascii
         if (Test-Path -LiteralPath $statePath -PathType Leaf) {
-            [System.IO.File]::Replace($temporaryPath, $statePath, $null)
+            [System.IO.File]::Replace($temporaryPath, $statePath, $backupPath, $true)
+            if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+                Remove-Item -LiteralPath $backupPath -Force
+            }
         } else {
             [System.IO.File]::Move($temporaryPath, $statePath)
         }

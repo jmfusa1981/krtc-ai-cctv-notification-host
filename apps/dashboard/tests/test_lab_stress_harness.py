@@ -325,7 +325,16 @@ class LabStressSourceContractTests(SimpleTestCase):
         self.assertNotIn("[int]$Record.ProcessId", self.common)
         self.assertIn("[int]::TryParse", self.common)
         self.assertIn("ConvertTo-NormalizedStressRecord", self.common)
-        self.assertIn("[System.IO.File]::Replace", self.common)
+        self.assertIn(
+            "[System.IO.File]::Replace($temporaryPath, $statePath, "
+            "$backupPath, $true)",
+            self.common,
+        )
+        self.assertIn("Resolve-StressRuntimeFilePath", self.common)
+        self.assertNotIn(
+            "[System.IO.File]::Replace($temporaryPath, $statePath, $null)",
+            self.common,
+        )
         self.assertIn("Remove-StaleStressTempFiles", self.common)
         self.assertIn("RedirectStandardOutput", self.runner)
         self.assertIn("RedirectStandardError", self.runner)
@@ -336,6 +345,104 @@ class LabStressSourceContractTests(SimpleTestCase):
         self.assertIn('"-DurationMinutes", "1"', smoke)
         self.assertIn('"-SampleSeconds", "10"', smoke)
         self.assertIn("$samples.Count -lt 5", smoke)
+
+    def test_atomic_state_write_on_windows_powershell_and_powershell_7(self):
+        powershell_hosts = [
+            host
+            for host in (
+                shutil.which("powershell.exe"),
+                shutil.which("pwsh.exe"),
+            )
+            if host
+        ]
+        self.assertTrue(powershell_hosts)
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_path = Path(temporary_directory)
+            probe_path = temporary_path / "atomic_write_probe.ps1"
+            common_path = str(self.tools_root / "Stress_Common.ps1").replace(
+                "'", "''"
+            )
+            runtime_literal = str(temporary_path).replace("'", "''")
+            probe_path.write_text(
+                "\n".join(
+                    (
+                        f". '{common_path}'",
+                        "function Get-StressRuntimeDirectory {",
+                        f"    return '{runtime_literal}'",
+                        "}",
+                        "function Get-StressStatePath {",
+                        "    return Join-Path (Get-StressRuntimeDirectory) 'stress_processes.json'",
+                        "}",
+                        "$started = '2026-10-08T01:02:03Z'",
+                        "$one = [pscustomobject]@{ Path = 'stress01'; SourceCamera = 'CAM-001'; ProcessName = 'ffmpeg'; ProcessId = 101; ProcessStartedAt = $started; StartedAt = $started }",
+                        "$two = [pscustomobject]@{ Path = 'stress02'; SourceCamera = 'CAM-002'; ProcessName = 'ffmpeg'; ProcessId = 202; ProcessStartedAt = $started; StartedAt = $started }",
+                        "Write-StressState -Records @($one)",
+                        "$first = @(Read-StressState)",
+                        "Write-StressState -Records @($one, $two)",
+                        "$second = @(Read-StressState)",
+                        "Write-StressState -Records @($two)",
+                        "$third = @(Read-StressState)",
+                        "Write-StressState -Records @()",
+                        "$empty = @(Read-StressState)",
+                        "$statePath = Get-StressStatePath",
+                        "$beforeMalformed = Get-Content -LiteralPath $statePath -Raw",
+                        "$malformedRejected = $false",
+                        "function Get-StressStatePath { return @('bad-one', 'bad-two') }",
+                        "try { Write-StressState -Records @($one) } catch { $malformedRejected = $true }",
+                        "function Get-StressStatePath { return Join-Path (Get-StressRuntimeDirectory) 'stress_processes.json' }",
+                        "$afterMalformed = Get-Content -LiteralPath $statePath -Raw",
+                        "$leftovers = @(Get-ChildItem -LiteralPath (Get-StressRuntimeDirectory) -File | Where-Object { $_.Name -match '^\\.stress_processes\\.json\\.[0-9a-f]+\\.(tmp|bak)$' })",
+                        "$result = [pscustomobject]@{",
+                        "    FirstCount = $first.Count",
+                        "    SecondCount = $second.Count",
+                        "    ThirdCount = $third.Count",
+                        "    ThirdProcessId = $third[0].ProcessId",
+                        "    EmptyCount = $empty.Count",
+                        "    MalformedRejected = $malformedRejected",
+                        "    DestinationPreserved = $beforeMalformed -eq $afterMalformed",
+                        "    LeftoverCount = $leftovers.Count",
+                        "    StatePathType = $statePath.GetType().FullName",
+                        "    StatePathRooted = [System.IO.Path]::IsPathRooted($statePath)",
+                        "}",
+                        "$result | ConvertTo-Json -Compress",
+                    )
+                ),
+                encoding="ascii",
+            )
+
+            for powershell_host in powershell_hosts:
+                completed = subprocess.run(
+                    [
+                        powershell_host,
+                        "-NoProfile",
+                        "-ExecutionPolicy",
+                        "Bypass",
+                        "-File",
+                        str(probe_path),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                json_line = next(
+                    line
+                    for line in reversed(completed.stdout.splitlines())
+                    if line.startswith("{")
+                )
+                payload = json.loads(json_line)
+                self.assertEqual(payload["FirstCount"], 1)
+                self.assertEqual(payload["SecondCount"], 2)
+                self.assertEqual(payload["ThirdCount"], 1)
+                self.assertEqual(payload["ThirdProcessId"], 202)
+                self.assertEqual(payload["EmptyCount"], 0)
+                self.assertTrue(payload["MalformedRejected"])
+                self.assertTrue(payload["DestinationPreserved"])
+                self.assertEqual(payload["LeftoverCount"], 0)
+                self.assertEqual(payload["StatePathType"], "System.String")
+                self.assertTrue(payload["StatePathRooted"])
 
     def test_lab_config_keeps_production_paths_and_adds_sixteen_stress_paths(self):
         config = (self.project_root / "config/mediamtx.lab.yml").read_text(
