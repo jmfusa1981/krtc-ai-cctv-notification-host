@@ -21,6 +21,14 @@ _ALLOWED_FIELDS = {
     "last_heartbeat_success_at",
     "last_worker_cycle_at",
     "last_error",
+    "integration_enabled",
+    "integration_configured",
+    "last_attempt_at",
+    "last_success_at",
+    "last_failure_at",
+    "last_error_code",
+    "last_error_message",
+    "occ_reachable",
 }
 
 
@@ -64,7 +72,11 @@ def write_runtime_status(**updates) -> dict:
         for key, value in updates.items():
             if key not in _ALLOWED_FIELDS:
                 continue
-            payload[key] = _safe_error(value) if key == "last_error" else value
+            payload[key] = (
+                _safe_error(value)
+                if key in {"last_error", "last_error_message"}
+                else value
+            )
         payload["pid"] = os.getpid()
         payload["updated_at"] = timezone.now().isoformat()
 

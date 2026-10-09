@@ -18,6 +18,8 @@ from apps.settings_app.models import StationLocalSettings
 
 from .auth import require_occ_token
 from .fault_catalog import FAULT_CATALOG, FAULT_CATALOG_VERSION, SYSTEM_LOG_SCHEMA_VERSION
+from .integration.config import OccIntegrationConfig
+from .integration.state import integration_state
 from .media import resolve_recording, resolve_snapshot
 from .models import ConfigurationAuditLog, DeviceFaultChange, DeviceFaultLog, InferenceHostConfiguration, OccSyncState
 
@@ -36,7 +38,28 @@ def _identity():
 
 @require_GET
 def health(request):
-    return JsonResponse({**_identity(), "status": "ok", "time": _iso(timezone.now())})
+    now = timezone.now()
+    config = OccIntegrationConfig.from_settings()
+    state = integration_state()
+    return JsonResponse(
+        {
+            "success": True,
+            "schema_version": "1.0",
+            "station_code": config.station_code,
+            "host_code": config.host_code,
+            "notification_host_code": config.host_code,
+            "application_version": settings.KRTC_APP_VERSION,
+            "timestamp": _iso(now),
+            "time": _iso(now),
+            "status": "ok",
+            "service": {"status": "ok"},
+            "integration": {
+                **state,
+                "enabled": config.enabled,
+                "configured": config.configured,
+            },
+        }
+    )
 
 
 @require_GET

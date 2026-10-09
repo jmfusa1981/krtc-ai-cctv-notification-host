@@ -1,7 +1,10 @@
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from dataclasses import asdict, replace
 import json
 
+from apps.station_api.integration.config import OccIntegrationConfig
+from apps.station_api.integration.heartbeat import HeartbeatSender
 from apps.station_api.occ_sync import OccSyncClient, OccSyncError
 
 
@@ -21,11 +24,28 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if not settings.KRTC_OCC_SYNC_ENABLED and not options["force"]:
             raise CommandError("OCC sync is disabled. Set KRTC_OCC_SYNC_ENABLED=True or use --force.")
-        if not settings.KRTC_OCC_API_TOKEN:
+        if (
+            options["kind"] != "heartbeat"
+            and not settings.KRTC_OCC_API_TOKEN
+        ):
             raise CommandError("KRTC_OCC_API_TOKEN is required.")
         client = OccSyncClient()
+
+        def send_heartbeat():
+            """以 v1.0 HMAC client 送出單次 Heartbeat。"""
+
+            config = OccIntegrationConfig.from_settings()
+            if options["force"] and not config.enabled:
+                config = replace(config, enabled=True)
+            result = HeartbeatSender(config=config).send()
+            if not result.success:
+                raise CommandError(
+                    f"OCC heartbeat failed: {result.error.code}"
+                )
+            return asdict(result)
+
         actions = {
-            "heartbeat": lambda: client.send_heartbeat(options["forced_host_status"]),
+            "heartbeat": send_heartbeat,
             "events": client.send_pending_events,
             "devices": client.send_device_status,
             "daily": client.send_daily_sync,

@@ -12,6 +12,7 @@ from django.db import close_old_connections, connection
 from django.utils import timezone
 
 from apps.station_api.occ_runtime import write_runtime_status
+from apps.station_api.integration.heartbeat import HeartbeatSender
 from apps.station_api.occ_sync import (
     OccSyncClient,
     daily_sync_due,
@@ -67,6 +68,13 @@ def run_startup_preflight() -> list[str]:
     ).strip():
         errors.append(
             "KRTC_OCC_API_TOKEN is required."
+        )
+
+    if not str(
+        getattr(settings, "KRTC_OCC_SHARED_SECRET", "") or ""
+    ).strip():
+        errors.append(
+            "KRTC_OCC_SHARED_SECRET is required."
         )
 
     occ_url = str(
@@ -191,7 +199,7 @@ class OccSyncService:
         monotonic=time.monotonic,
     ):
         self.heartbeat_client = (
-            heartbeat_client or OccSyncClient()
+            heartbeat_client or HeartbeatSender()
         )
         self.worker_client = (
             worker_client or OccSyncClient()
